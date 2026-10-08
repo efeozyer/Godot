@@ -34,7 +34,6 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/string/string_buffer.h"
 #include "core/variant/container_type_validate.h"
 
@@ -1138,7 +1137,6 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			Dictionary dict;
 			Variant::Type key_type = Variant::NIL;
 			StringName key_class_name;
-			Variant key_script;
 			bool got_comma_token = false;
 			if (builtin_types.has(r_token.value)) {
 				key_type = builtin_types.get(r_token.value);
@@ -1154,13 +1152,6 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						got_comma_token = true;
 					} else {
 						return err;
-					}
-				} else {
-					Ref<Script> script = resource;
-					if (script.is_valid() && script->is_script_valid()) {
-						key_type = Variant::OBJECT;
-						key_class_name = script->get_instance_base_type();
-						key_script = script;
 					}
 				}
 			} else if (ClassDB::class_exists(r_token.value)) {
@@ -1184,7 +1175,6 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			Variant::Type value_type = Variant::NIL;
 			StringName value_class_name;
-			Variant value_script;
 			bool got_bracket_token = false;
 			if (builtin_types.has(r_token.value)) {
 				value_type = builtin_types.get(r_token.value);
@@ -1201,13 +1191,6 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					} else {
 						return err;
 					}
-				} else {
-					Ref<Script> script = resource;
-					if (script.is_valid() && script->is_script_valid()) {
-						value_type = Variant::OBJECT;
-						value_class_name = script->get_instance_base_type();
-						value_script = script;
-					}
 				}
 			} else if (ClassDB::class_exists(r_token.value)) {
 				value_type = Variant::OBJECT;
@@ -1215,7 +1198,7 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			}
 
 			if (key_type != Variant::NIL || value_type != Variant::NIL) {
-				dict.set_typed(key_type, key_class_name, key_script, value_type, value_class_name, value_script);
+				dict.set_typed(key_type, key_class_name, value_type, value_class_name);
 			}
 
 			if (!got_bracket_token) {
@@ -1278,7 +1261,7 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			Array array = Array();
 			bool got_bracket_token = false;
 			if (builtin_types.has(r_token.value)) {
-				array.set_typed(builtin_types.get(r_token.value), StringName(), Variant());
+				array.set_typed(builtin_types.get(r_token.value), StringName());
 			} else if (r_token.value == "Resource" || r_token.value == "SubResource" || r_token.value == "ExtResource") {
 				Variant resource;
 				err = parse_value(r_token, resource, p_stream, r_line, r_err_str, p_res_parser);
@@ -1286,19 +1269,14 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					if (r_token.value == "Resource" && err == ERR_PARSE_ERROR && r_err_str == "Expected '('" && r_token.type == TK_BRACKET_CLOSE) {
 						err = OK;
 						r_err_str = String();
-						array.set_typed(Variant::OBJECT, r_token.value, Variant());
+						array.set_typed(Variant::OBJECT, r_token.value);
 						got_bracket_token = true;
 					} else {
 						return err;
 					}
-				} else {
-					Ref<Script> script = resource;
-					if (script.is_valid() && script->is_script_valid()) {
-						array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
-					}
 				}
 			} else if (ClassDB::class_exists(r_token.value)) {
-				array.set_typed(Variant::OBJECT, r_token.value, Variant());
+				array.set_typed(Variant::OBJECT, r_token.value);
 			}
 
 			if (!got_bracket_token) {
@@ -2095,7 +2073,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 			obj->get_property_list(&props);
 			bool first = true;
 			for (const PropertyInfo &prop : props) {
-				if (prop.usage & PROPERTY_USAGE_STORAGE || prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) {
+				if (prop.usage & PROPERTY_USAGE_STORAGE) {
 					if (!first) {
 						p_store_string_func(p_store_string_ud, value_suffix);
 					}
@@ -2361,22 +2339,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 
 void VariantWriter::write_container_type(const ContainerType &p_type, StoreStringFunc p_store_string_func, void *p_store_string_ud,
 		EncodeResourceFunc p_encode_res_func, void *p_encode_res_ud) {
-	if (p_type.script.is_valid()) {
-		String resource_text;
-		if (p_encode_res_func) {
-			resource_text = p_encode_res_func(p_encode_res_ud, p_type.script);
-		}
-		if (resource_text.is_empty() && p_type.script->get_path().is_resource_file()) {
-			resource_text = encode_resource_reference(p_type.script->get_path());
-		}
-
-		if (!resource_text.is_empty()) {
-			p_store_string_func(p_store_string_ud, resource_text);
-		} else {
-			ERR_PRINT("Failed to encode a path to a custom script for a container type.");
-			p_store_string_func(p_store_string_ud, p_type.class_name);
-		}
-	} else if (p_type.class_name != StringName()) {
+	if (p_type.class_name != StringName()) {
 		p_store_string_func(p_store_string_ud, p_type.class_name);
 	} else if (p_type.variant_type == Variant::NIL) {
 		p_store_string_func(p_store_string_ud, "Variant");

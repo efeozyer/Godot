@@ -444,8 +444,7 @@ bool EditorExportPlatformWindows::get_export_option_visibility(const EditorExpor
 		return false;
 	}
 
-	if (p_option == "dotnet/embed_build_outputs" ||
-			p_option == "custom_template/debug" ||
+	if (p_option == "custom_template/debug" ||
 			p_option == "custom_template/release" ||
 			p_option == "application/d3d12_agility_sdk_multiarch" ||
 			p_option == "application/export_angle" ||

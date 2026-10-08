@@ -1048,7 +1048,7 @@ String EditorNode3DGizmoPlugin::get_gizmo_name() const {
 		return ret;
 	}
 
-	WARN_PRINT_ONCE("A 3D editor gizmo has no name defined (it will appear as \"Unnamed Gizmo\" in the \"View > Gizmos\" menu). To resolve this, override the `_get_gizmo_name()` function to return a String in the script that extends EditorNode3DGizmoPlugin.");
+	WARN_PRINT_ONCE("A 3D editor gizmo has no name defined (it will appear as \"Unnamed Gizmo\" in the \"View > Gizmos\" menu). To resolve this, override the `_get_gizmo_name()` function to return a String in the class that extends EditorNode3DGizmoPlugin.");
 	return TTR("Unnamed Gizmo");
 }
 
@@ -1061,10 +1061,6 @@ int EditorNode3DGizmoPlugin::get_priority() const {
 }
 
 Ref<EditorNode3DGizmo> EditorNode3DGizmoPlugin::get_gizmo(Node3D *p_spatial) {
-	if (get_script_instance() && get_script_instance()->has_method("_get_gizmo")) {
-		return get_script_instance()->call("_get_gizmo", p_spatial);
-	}
-
 	Ref<EditorNode3DGizmo> ref = create_gizmo(p_spatial);
 
 	if (ref.is_null()) {

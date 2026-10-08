@@ -105,10 +105,9 @@ public:
 	enum DuplicateFlags {
 		DUPLICATE_SIGNALS = 1,
 		DUPLICATE_GROUPS = 2,
-		DUPLICATE_SCRIPTS = 4,
 		DUPLICATE_USE_INSTANTIATION = 8,
 		DUPLICATE_INTERNAL_STATE = 16,
-		DUPLICATE_DEFAULT = DUPLICATE_SIGNALS | DUPLICATE_GROUPS | DUPLICATE_SCRIPTS | DUPLICATE_USE_INSTANTIATION,
+		DUPLICATE_DEFAULT = DUPLICATE_SIGNALS | DUPLICATE_GROUPS | DUPLICATE_USE_INSTANTIATION,
 #ifdef TOOLS_ENABLED
 		DUPLICATE_FROM_EDITOR = 32,
 #endif
@@ -319,7 +318,6 @@ private:
 	void _propagate_translation_domain_dirty();
 	Array _get_node_and_resource(const NodePath &p_path);
 
-	void _duplicate_scripts(const Node *p_original, Node *p_copy, int p_flags) const;
 	void _duplicate_properties(const Node *p_root, const Node *p_original, Node *p_copy, int p_flags) const;
 	void _duplicate_signals(const Node *p_original, Node *p_copy) const;
 	Node *_duplicate(int p_flags, HashMap<const Node *, Node *> *r_duplimap = nullptr) const;
@@ -729,7 +727,7 @@ public:
 
 	virtual PackedStringArray get_accessibility_configuration_warnings() const;
 
-	Node *duplicate(int p_flags = DUPLICATE_GROUPS | DUPLICATE_SIGNALS | DUPLICATE_SCRIPTS) const;
+	Node *duplicate(int p_flags = DUPLICATE_GROUPS | DUPLICATE_SIGNALS) const;
 #ifdef TOOLS_ENABLED
 	Node *duplicate_from_editor(HashMap<const Node *, Node *> &r_duplimap) const;
 	Node *duplicate_from_editor(HashMap<const Node *, Node *> &r_duplimap, Node *p_scene_root, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resource_remap) const;
@@ -875,9 +873,6 @@ public:
 
 	// These inherited functions need proper multithread locking when overridden in Node.
 #ifdef DEBUG_ENABLED
-
-	virtual void set_script(const Variant &p_script) override;
-	virtual Variant get_script() const override;
 
 	virtual bool has_meta(const StringName &p_name) const override;
 	virtual void set_meta(const StringName &p_name, const Variant &p_value) override;

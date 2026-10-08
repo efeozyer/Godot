@@ -30,16 +30,14 @@
 
 #pragma once
 
-#include "core/object/script_language.h"
+#include "core/variant/typed_array.h"
 #include "editor/debugger/editor_debugger_server.h"
 #include "editor/docks/editor_dock.h"
 
 class Button;
-class DebugAdapterParser;
 class EditorDebuggerPlugin;
 class EditorDebuggerTree;
 class EditorDebuggerRemoteObjects;
-class MenuButton;
 class ScriptEditorDebugger;
 class TabContainer;
 class UndoRedo;
@@ -55,49 +53,9 @@ public:
 	};
 
 private:
-	enum Options {
-		DEBUG_NEXT,
-		DEBUG_STEP,
-		DEBUG_BREAK,
-		DEBUG_CONTINUE,
-		DEBUG_WITH_EXTERNAL_EDITOR,
-	};
-
-	class Breakpoint {
-	public:
-		String source;
-		int line = 0;
-
-		static uint32_t hash(const Breakpoint &p_val) {
-			uint32_t h = HashMapHasherDefault::hash(p_val.source);
-			return hash_murmur3_one_32(p_val.line, h);
-		}
-		bool operator==(const Breakpoint &p_b) const {
-			return (line == p_b.line && source == p_b.source);
-		}
-
-		bool operator<(const Breakpoint &p_b) const {
-			if (line == p_b.line) {
-				return source < p_b.source;
-			}
-			return line < p_b.line;
-		}
-
-		Breakpoint() {}
-
-		Breakpoint(const String &p_source, int p_line) {
-			line = p_line;
-			source = p_source;
-		}
-	};
-
 	Ref<EditorDebuggerServer> server;
 	TabContainer *tabs = nullptr;
-	MenuButton *script_menu = nullptr;
 
-	Ref<Script> stack_script; // Why?!?
-
-	bool initializing = true;
 	int last_error_count = 0;
 	int last_warning_count = 0;
 
@@ -109,14 +67,12 @@ private:
 	bool remote_scene_tree_queue_update = false;
 	float remote_scene_tree_timeout = 0.0;
 	bool auto_switch_remote_scene_tree = false;
-	bool debug_with_external_editor = false;
 	bool keep_open = false;
 	String current_uri;
 
 	bool debug_mute_audio = false;
 
 	CameraOverride camera_override = OVERRIDE_NONE;
-	HashMap<Breakpoint, bool, Breakpoint> breakpoints;
 
 	HashSet<Ref<EditorDebuggerPlugin>> debugger_plugins;
 
@@ -130,7 +86,6 @@ private:
 	void _update_debugger_tabs();
 
 	friend class DebuggerEditorPlugin;
-	friend class DebugAdapterParser;
 	static EditorDebuggerNode *singleton;
 	EditorDebuggerNode();
 
@@ -149,23 +104,6 @@ protected:
 	void _remote_selection_cleared(int p_debugger);
 	void _save_node_requested(ObjectID p_id, const String &p_file, int p_debugger);
 
-	void _breakpoint_set_in_tree(Ref<RefCounted> p_script, int p_line, bool p_enabled, int p_debugger);
-	void _breakpoints_cleared_in_tree(int p_debugger);
-
-	void _clear_execution(Ref<RefCounted> p_script) {
-		emit_signal(SNAME("clear_execution"), p_script);
-	}
-
-	void _text_editor_stack_goto(const ScriptEditorDebugger *p_debugger);
-	void _text_editor_stack_clear(const ScriptEditorDebugger *p_debugger);
-	void _stack_frame_selected(int p_debugger);
-	void _error_selected(const String &p_file, int p_line, int p_debugger);
-	void _breaked(bool p_breaked, bool p_can_debug, const String &p_message, bool p_has_stackdump, int p_debugger);
-	void _paused();
-	void _break_state_changed();
-	void _menu_option(int p_id);
-	void _update_debug_options();
-
 protected:
 	void _notification(int p_what);
 	static void _bind_methods();
@@ -182,25 +120,6 @@ public:
 	ScriptEditorDebugger *get_default_debugger() const;
 	ScriptEditorDebugger *get_debugger(int p_debugger) const;
 	int get_debugger_id(const ScriptEditorDebugger *p_debugger);
-
-	void debug_next();
-	void debug_step();
-	void debug_break();
-	void debug_continue();
-
-	void set_script_debug_button(MenuButton *p_button);
-
-	String get_var_value(const String &p_var) const;
-	Ref<Script> get_dump_stack_script() const { return stack_script; } // Why do we need this?
-
-	bool get_debug_with_external_editor() { return debug_with_external_editor; }
-
-	bool is_skip_breakpoints() const;
-	bool is_ignore_error_breaks() const;
-	void set_breakpoint(const String &p_path, int p_line, bool p_enabled);
-	void set_breakpoints(const String &p_path, const Array &p_lines);
-	void reload_all_scripts();
-	void reload_scripts(const Vector<String> &p_script_paths);
 
 	// Remote inspector/edit.
 	void request_remote_tree();

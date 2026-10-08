@@ -31,7 +31,7 @@
 #include "thread_apple.h"
 
 #include "core/error/error_macros.h"
-#include "core/object/script_language.h"
+#include "core/os/memory.h"
 #include "core/string/ustring.h"
 
 SafeNumeric<uint64_t> Thread::id_counter(1); // The first value after .increment() is 2, hence by default the main thread ID should be 1.
@@ -49,12 +49,8 @@ void *Thread::thread_callback(void *p_data) {
 	// Set the caller ID for this thread
 	caller_id = thread_data->caller_id;
 
-	ScriptServer::thread_enter(); // Scripts may need to attach a stack.
-
 	// Call the actual callback
 	thread_data->callback(thread_data->userdata);
-
-	ScriptServer::thread_exit();
 
 	// Clean up
 	memdelete(thread_data);

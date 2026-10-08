@@ -198,8 +198,6 @@ class CodeTextEditor : public VBoxContainer {
 
 	Color completion_font_color;
 	Color completion_string_color;
-	Color completion_string_name_color;
-	Color completion_node_path_color;
 	Color completion_comment_color;
 	Color completion_doc_comment_color;
 	CodeTextEditorCodeCompleteFunc code_complete_func;
@@ -261,8 +259,6 @@ public:
 	void goto_line_selection(int p_line, int p_begin, int p_end);
 	void goto_line_centered(int p_line, int p_column = 0);
 	void goto_line_and_center_if_necessary(int p_line, int p_column = 0);
-	void set_executing_line(int p_line);
-	void clear_executing_line();
 
 	Dictionary get_edit_state();
 	void set_edit_state(const Dictionary &p_state);

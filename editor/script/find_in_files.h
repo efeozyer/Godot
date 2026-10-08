@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "core/object/editor_language.h"
 #include "core/templates/hash_map.h"
 #include "editor/docks/editor_dock.h"
 #include "scene/gui/scroll_container.h"
@@ -47,7 +46,6 @@ class FindInFilesSearch : public Node {
 	String root_dir;
 	bool whole_words = false;
 	bool match_case = false;
-	EditorLanguage::LookupResult symbol_rename;
 
 	// State.
 	HashSet<String> include_wildcards;
@@ -82,7 +80,6 @@ public:
 	void set_includes(const String &p_include_wildcards);
 	void set_excludes(const String &p_exclude_wildcards);
 	void set_folder(const String &p_folder);
-	void set_symbol_rename(const EditorLanguage::LookupResult &p_symbol) { symbol_rename = p_symbol; }
 
 	String get_search_text() const { return pattern; }
 	bool get_whole_words() { return whole_words; }
@@ -91,11 +88,9 @@ public:
 	String get_includes() { return include_string; }
 	String get_excludes() { return exclude_string; }
 	String get_folder() { return root_dir; }
-	EditorLanguage::LookupResult get_symbol_rename() const { return symbol_rename; }
 
 	bool is_whole_words() const { return whole_words; }
 	bool is_match_case() const { return match_case; }
-	bool is_rename_mode() const { return !symbol_rename.script_path.is_empty(); }
 
 	void start();
 	void stop();
@@ -127,8 +122,6 @@ class FindInFilesSearchPanel : public ScrollContainer {
 	void _emit_find_requested();
 	void _toggle_replace_pressed(bool p_with_replace);
 	void _on_replace_all_clicked(bool p_dialog);
-	void _on_rename_apply(bool p_confirm);
-	void _on_rename_discard();
 	void _on_additional_options_toggled(bool p_toggled);
 	void _on_add_new_tab_clicked();
 	void _on_filter_toggled(bool p_pressed, const String &p_ext);
@@ -164,13 +157,6 @@ class FindInFilesSearchPanel : public ScrollContainer {
 	LineEdit *includes_line_edit = nullptr;
 	LineEdit *excludes_line_edit = nullptr;
 
-	VBoxContainer *rename_view = nullptr;
-	LineEdit *renamed_symbol_name = nullptr;
-	LineEdit *rename_line_edit = nullptr;
-	Button *apply_rename = nullptr;
-
-	ConfirmationDialog *rename_confirm = nullptr;
-
 protected:
 	void _notification(int p_what);
 
@@ -185,11 +171,9 @@ public:
 
 	String get_search_text() const;
 	bool is_replace_pressed() const;
-	bool is_rename_mode() const;
 	HashSet<String> get_filter() const;
 
 	LineEdit *get_replace_line_edit() const { return replace_line_edit; }
-	LineEdit *get_rename_line_edit() const { return rename_line_edit; }
 
 	FindInFilesSearchPanel();
 };
@@ -239,7 +223,6 @@ class FindInFilesResultsPanel : public MarginContainer {
 	bool with_replace = false;
 
 	String replace_text;
-	EditorLanguage::LookupResult symbol_rename;
 
 	MarginContainer *results_mc = nullptr;
 
@@ -274,7 +257,6 @@ public:
 
 	void set_with_replace(bool p_with_replace);
 	void set_replace_text(const String &p_text);
-	void set_symbol_rename(const EditorLanguage::LookupResult &p_symbol);
 	void set_search_labels_visibility(bool p_visible);
 
 	void start_search();
@@ -318,7 +300,6 @@ class FindInFilesContainer : public EditorDock {
 	void _on_theme_changed();
 
 	void _update_current_title();
-	void _close_current_tab();
 
 	void _result_selected(const String &p_fpath, int p_line_number, int p_begin, int p_end);
 	void _files_modified();
@@ -337,7 +318,6 @@ public:
 
 	FindInFilesSearchPanel *get_search_control() { return search_control; }
 	FindInFilesResultsPanel *create_new_panel();
-	void create_rename_control(const String &p_symbol, const EditorLanguage::LookupResult &p_lookup);
 
 	FindInFilesContainer();
 };
@@ -348,6 +328,8 @@ class FindInFiles : public Object {
 	FindInFilesContainer *container = nullptr;
 
 	static inline FindInFiles *find_in_files = nullptr;
+
+	void _result_selected(const String &p_fpath, int p_line_number, int p_begin, int p_end);
 
 public:
 	static FindInFiles *get_singleton() { return find_in_files; }

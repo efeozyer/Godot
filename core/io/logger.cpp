@@ -33,7 +33,6 @@
 #include "core/core_globals.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
-#include "core/object/script_backtrace.h"
 #include "core/os/time.h"
 #include "core/string/regex.h"
 #include "core/templates/rb_set.h"
@@ -52,7 +51,7 @@ void Logger::set_flush_stdout_on_print(bool p_value) {
 	_flush_stdout_on_print = p_value;
 }
 
-void Logger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void Logger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
 	if (!should_log(true)) {
 		return;
 	}
@@ -68,12 +67,6 @@ void Logger::log_error(const char *p_function, const char *p_file, int p_line, c
 
 	logf_error("%s: %s\n", err_type, err_details);
 	logf_error("   at: %s (%s:%i)\n", p_function, p_file, p_line);
-
-	for (const Ref<ScriptBacktrace> &backtrace : p_script_backtraces) {
-		if (!backtrace->is_empty()) {
-			logf_error("%s\n", backtrace->format(3).utf8().get_data());
-		}
-	}
 }
 
 void Logger::logf(const char *p_format, ...) {
@@ -244,13 +237,13 @@ void CompositeLogger::logv(const char *p_format, va_list p_list, bool p_err) {
 	}
 }
 
-void CompositeLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void CompositeLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
 	if (!should_log(true)) {
 		return;
 	}
 
 	for (int i = 0; i < loggers.size(); ++i) {
-		loggers[i]->log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, p_type, p_script_backtraces);
+		loggers[i]->log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, p_type);
 	}
 }
 

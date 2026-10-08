@@ -35,7 +35,6 @@
 #include "core/config/project_settings.h"
 #include "core/crypto/crypto_core.h"
 #include "core/debugger/engine_debugger.h"
-#include "core/debugger/script_debugger.h"
 #include "core/io/file_access.h"
 #include "core/io/marshalls.h"
 #include "core/math/geometry_2d.h"
@@ -232,7 +231,7 @@ void ResourceSaver::_bind_methods() {
 ////// Logger ///////
 
 void Logger::_bind_methods() {
-	GDVIRTUAL_BIND(_log_error, "function", "file", "line", "code", "rationale", "editor_notify", "error_type", "script_backtraces");
+	GDVIRTUAL_BIND(_log_error, "function", "file", "line", "code", "rationale", "editor_notify", "error_type");
 	GDVIRTUAL_BIND(_log_message, "message", "error");
 	BIND_ENUM_CONSTANT(ERROR_TYPE_ERROR);
 	BIND_ENUM_CONSTANT(ERROR_TYPE_WARNING);
@@ -240,8 +239,8 @@ void Logger::_bind_methods() {
 	BIND_ENUM_CONSTANT(ERROR_TYPE_SHADER);
 }
 
-void Logger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const TypedArray<ScriptBacktrace> &p_script_backtraces) {
-	GDVIRTUAL_CALL(_log_error, String::utf8(p_function), String::utf8(p_file), p_line, String::utf8(p_code), String::utf8(p_rationale), p_editor_notify, p_type, p_script_backtraces);
+void Logger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
+	GDVIRTUAL_CALL(_log_error, String::utf8(p_function), String::utf8(p_file), p_line, String::utf8(p_code), String::utf8(p_rationale), p_editor_notify, p_type);
 }
 
 void Logger::log_message(const String &p_text, bool p_error) {
@@ -278,19 +277,13 @@ void OS::LoggerBind::logv(const char *p_format, va_list p_list, bool p_err) {
 	}
 }
 
-void OS::LoggerBind::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void OS::LoggerBind::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
 	if (!should_log(true)) {
 		return;
 	}
 
-	TypedArray<ScriptBacktrace> backtraces;
-	backtraces.resize(p_script_backtraces.size());
-	for (int i = 0; i < p_script_backtraces.size(); i++) {
-		backtraces[i] = p_script_backtraces[i];
-	}
-
 	for (Ref<CoreBind::Logger> &logger : loggers) {
-		logger->log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, CoreBind::Logger::ErrorType(p_type), backtraces);
+		logger->log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, CoreBind::Logger::ErrorType(p_type));
 	}
 }
 
@@ -738,27 +731,6 @@ void OS::remove_logger(RequiredParam<Logger> p_logger) {
 	EXTRACT_PARAM_OR_FAIL(logger, p_logger);
 	ERR_FAIL_COND_MSG(!logger_bind || logger_bind->loggers.find(logger) == -1, "Could not remove logger, as it hasn't been added.");
 	logger_bind->loggers.erase(logger);
-}
-
-void OS::remove_script_loggers(const ScriptLanguage *p_script) {
-	if (logger_bind) {
-		LocalVector<Ref<CoreBind::Logger>> to_remove;
-		for (const Ref<CoreBind::Logger> &logger : logger_bind->loggers) {
-			if (logger.is_null()) {
-				continue;
-			}
-			ScriptInstance *si = logger->get_script_instance();
-			if (!si) {
-				continue;
-			}
-			if (si->get_language() == p_script) {
-				to_remove.push_back(logger);
-			}
-		}
-		for (const Ref<CoreBind::Logger> &logger : to_remove) {
-			logger_bind->loggers.erase(logger);
-		}
-	}
 }
 
 void OS::_bind_methods() {
@@ -2040,34 +2012,6 @@ Vector<String> Engine::get_singleton_list() const {
 	return ret;
 }
 
-Error Engine::register_script_language(RequiredParam<ScriptLanguage> p_language) {
-	EXTRACT_PARAM_OR_FAIL_V(language, p_language, ERR_INVALID_PARAMETER);
-	return ScriptServer::register_language(language);
-}
-
-Error Engine::unregister_script_language(RequiredParam<const ScriptLanguage> p_language) {
-	EXTRACT_PARAM_OR_FAIL_V(language, p_language, ERR_INVALID_PARAMETER);
-	return ScriptServer::unregister_language(language);
-}
-
-int Engine::get_script_language_count() {
-	return ScriptServer::get_language_count();
-}
-
-ScriptLanguage *Engine::get_script_language(int p_index) const {
-	return ScriptServer::get_language(p_index);
-}
-
-TypedArray<ScriptBacktrace> Engine::capture_script_backtraces(bool p_include_variables) const {
-	Vector<Ref<ScriptBacktrace>> backtraces = ScriptServer::capture_script_backtraces(p_include_variables);
-	TypedArray<ScriptBacktrace> result;
-	result.resize(backtraces.size());
-	for (int i = 0; i < backtraces.size(); i++) {
-		result[i] = backtraces[i];
-	}
-	return result;
-}
-
 void Engine::set_editor_hint(bool p_enabled) {
 	::Engine::get_singleton()->set_editor_hint(p_enabled);
 }
@@ -2150,12 +2094,6 @@ void Engine::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("register_singleton", "name", "instance"), &Engine::register_singleton);
 	ClassDB::bind_method(D_METHOD("unregister_singleton", "name"), &Engine::unregister_singleton);
 	ClassDB::bind_method(D_METHOD("get_singleton_list"), &Engine::get_singleton_list);
-
-	ClassDB::bind_method(D_METHOD("register_script_language", "language"), &Engine::register_script_language);
-	ClassDB::bind_method(D_METHOD("unregister_script_language", "language"), &Engine::unregister_script_language);
-	ClassDB::bind_method(D_METHOD("get_script_language_count"), &Engine::get_script_language_count);
-	ClassDB::bind_method(D_METHOD("get_script_language", "index"), &Engine::get_script_language);
-	ClassDB::bind_method(D_METHOD("capture_script_backtraces", "include_variables"), &Engine::capture_script_backtraces, DEFVAL(false));
 
 	ClassDB::bind_method(D_METHOD("is_editor_hint"), &Engine::is_editor_hint);
 	ClassDB::bind_method(D_METHOD("is_embedded_in_editor"), &Engine::is_embedded_in_editor);
@@ -2243,16 +2181,6 @@ void EngineDebugger::send_message(const String &p_msg, const Array &p_data) {
 	::EngineDebugger::get_singleton()->send_message(p_msg, p_data);
 }
 
-void EngineDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::is_active(), "Can't send debug. No active debugger");
-	::EngineDebugger::get_singleton()->debug(p_can_continue, p_is_error_breakpoint);
-}
-
-void EngineDebugger::script_debug(ScriptLanguage *p_lang, bool p_can_continue, bool p_is_error_breakpoint) {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::get_script_debugger(), "Can't send debug. No active debugger");
-	::EngineDebugger::get_script_debugger()->debug(p_lang, p_can_continue, p_is_error_breakpoint);
-}
-
 Error EngineDebugger::call_capture(void *p_user, const String &p_cmd, const Array &p_data, bool &r_captured) {
 	Callable &capture = *(Callable *)p_user;
 	if (!capture.is_valid()) {
@@ -2267,56 +2195,6 @@ Error EngineDebugger::call_capture(void *p_user, const String &p_cmd, const Arra
 	ERR_FAIL_COND_V_MSG(retval.get_type() != Variant::BOOL, FAILED, vformat("Error calling 'capture' to callable: '%s'. Return type is not bool.", String(capture)));
 	r_captured = retval;
 	return OK;
-}
-
-void EngineDebugger::line_poll() {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::is_active(), "Can't poll. No active debugger");
-	::EngineDebugger::get_singleton()->line_poll();
-}
-
-void EngineDebugger::set_lines_left(int p_lines) {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::get_script_debugger(), "Can't set lines left. No active debugger");
-	::EngineDebugger::get_script_debugger()->set_lines_left(p_lines);
-}
-
-int EngineDebugger::get_lines_left() const {
-	ERR_FAIL_COND_V_MSG(!::EngineDebugger::get_script_debugger(), 0, "Can't get lines left. No active debugger");
-	return ::EngineDebugger::get_script_debugger()->get_lines_left();
-}
-
-void EngineDebugger::set_depth(int p_depth) {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::get_script_debugger(), "Can't set depth. No active debugger");
-	::EngineDebugger::get_script_debugger()->set_depth(p_depth);
-}
-
-int EngineDebugger::get_depth() const {
-	ERR_FAIL_COND_V_MSG(!::EngineDebugger::get_script_debugger(), 0, "Can't get depth. No active debugger");
-	return ::EngineDebugger::get_script_debugger()->get_depth();
-}
-
-bool EngineDebugger::is_breakpoint(int p_line, const StringName &p_source) const {
-	ERR_FAIL_COND_V_MSG(!::EngineDebugger::get_script_debugger(), false, "Can't check breakpoint. No active debugger");
-	return ::EngineDebugger::get_script_debugger()->is_breakpoint(p_line, p_source);
-}
-
-bool EngineDebugger::is_skipping_breakpoints() const {
-	ERR_FAIL_COND_V_MSG(!::EngineDebugger::get_script_debugger(), false, "Can't check skipping breakpoint. No active debugger");
-	return ::EngineDebugger::get_script_debugger()->is_skipping_breakpoints();
-}
-
-void EngineDebugger::insert_breakpoint(int p_line, const StringName &p_source) {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::get_script_debugger(), "Can't insert breakpoint. No active debugger");
-	::EngineDebugger::get_script_debugger()->insert_breakpoint(p_line, p_source);
-}
-
-void EngineDebugger::remove_breakpoint(int p_line, const StringName &p_source) {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::get_script_debugger(), "Can't remove breakpoint. No active debugger");
-	::EngineDebugger::get_script_debugger()->remove_breakpoint(p_line, p_source);
-}
-
-void EngineDebugger::clear_breakpoints() {
-	ERR_FAIL_COND_MSG(!::EngineDebugger::get_script_debugger(), "Can't clear breakpoints. No active debugger");
-	::EngineDebugger::get_script_debugger()->clear_breakpoints();
 }
 
 EngineDebugger::~EngineDebugger() {
@@ -2342,23 +2220,7 @@ void EngineDebugger::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("unregister_message_capture", "name"), &EngineDebugger::unregister_message_capture);
 	ClassDB::bind_method(D_METHOD("has_capture", "name"), &EngineDebugger::has_capture);
 
-	ClassDB::bind_method(D_METHOD("line_poll"), &EngineDebugger::line_poll);
-
 	ClassDB::bind_method(D_METHOD("send_message", "message", "data"), &EngineDebugger::send_message);
-	ClassDB::bind_method(D_METHOD("debug", "can_continue", "is_error_breakpoint"), &EngineDebugger::debug, DEFVAL(true), DEFVAL(false));
-	ClassDB::bind_method(D_METHOD("script_debug", "language", "can_continue", "is_error_breakpoint"), &EngineDebugger::script_debug, DEFVAL(true), DEFVAL(false));
-
-	ClassDB::bind_method(D_METHOD("set_lines_left", "lines"), &EngineDebugger::set_lines_left);
-	ClassDB::bind_method(D_METHOD("get_lines_left"), &EngineDebugger::get_lines_left);
-
-	ClassDB::bind_method(D_METHOD("set_depth", "depth"), &EngineDebugger::set_depth);
-	ClassDB::bind_method(D_METHOD("get_depth"), &EngineDebugger::get_depth);
-
-	ClassDB::bind_method(D_METHOD("is_breakpoint", "line", "source"), &EngineDebugger::is_breakpoint);
-	ClassDB::bind_method(D_METHOD("is_skipping_breakpoints"), &EngineDebugger::is_skipping_breakpoints);
-	ClassDB::bind_method(D_METHOD("insert_breakpoint", "line", "source"), &EngineDebugger::insert_breakpoint);
-	ClassDB::bind_method(D_METHOD("remove_breakpoint", "line", "source"), &EngineDebugger::remove_breakpoint);
-	ClassDB::bind_method(D_METHOD("clear_breakpoints"), &EngineDebugger::clear_breakpoints);
 }
 
 Variant WeakRef::get_ref() const {

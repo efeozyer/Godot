@@ -38,9 +38,9 @@
 #include "core/os/os.h"
 #include "core/version.h"
 #include "editor/docks/editor_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -215,16 +215,18 @@ void EditorLog::_meta_clicked(const String &p_meta) {
 	if (path.begins_with("res://")) {
 		if (ResourceLoader::exists(path)) {
 			const Ref<Resource> res = ResourceLoader::load(path);
-			ScriptEditor::get_singleton()->edit(res, line, 0);
+			const bool opened = DocumentEditor::get_singleton()->edit(res, line, 0);
 			EditorNode *editor_node = EditorNode::get_singleton();
 			if (res.is_valid() && editor_node->get_editor_selection_history()->get_current() != res->get_instance_id()) {
-				// Avoid re-editing the current script without the clicked line number.
+				// Avoid re-editing the current document without the clicked line number.
 				editor_node->push_item(res.ptr(), "", true);
 			}
-			ScriptEditor::get_singleton()->focus_script_editor(res);
+			if (opened) {
+				DocumentEditor::get_singleton()->focus_editor();
+			}
 		}
 	} else if (path.has_extension("cpp") || path.has_extension("h") || path.has_extension("mm") || path.has_extension("hpp")) {
-		// Godot source file. Try to open it in external editor.
+		// Godot source file. Try to open it with the system's default application.
 		if (path.begins_with("./") || path.begins_with(".\\")) {
 			// Relative path. Convert to absolute, using executable path as reference.
 			path = path.trim_prefix("./").trim_prefix(".\\");
@@ -245,9 +247,8 @@ void EditorLog::_meta_clicked(const String &p_meta) {
 			return;
 		}
 
-		if (!ScriptEditorPlugin::open_in_external_editor(path, line, -1, true)) {
-			OS::get_singleton()->shell_open(path);
-		}
+		OS::get_singleton()->shell_open(path);
+
 	} else {
 		OS::get_singleton()->shell_open(p_meta);
 	}

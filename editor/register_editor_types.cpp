@@ -34,12 +34,12 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "editor/animation/animation_tree_editor_plugin.h"
 #include "editor/audio/audio_stream_randomizer_editor_plugin.h"
-#include "editor/debugger/debug_adapter/debug_adapter_server.h"
 #include "editor/debugger/editor_debugger_plugin.h"
+#include "editor/doc/editor_help.h"
+#include "editor/docks/editor_dock.h"
 #include "editor/docks/filesystem_dock.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
@@ -73,12 +73,15 @@
 #include "editor/import/resource_importer_texture_atlas.h"
 #include "editor/import/resource_importer_wav.h"
 #include "editor/inspector/editor_context_menu_plugin.h"
+#include "editor/inspector/editor_inspector.h"
 #include "editor/inspector/editor_resource_picker.h"
 #include "editor/inspector/editor_resource_preview.h"
 #include "editor/inspector/editor_resource_tooltip_plugins.h"
 #include "editor/inspector/input_event_editor_plugin.h"
 #include "editor/inspector/sub_viewport_preview_editor_plugin.h"
 #include "editor/inspector/tool_button_editor_plugin.h"
+#include "editor/plugins/editor_plugin.h"
+#include "editor/plugins/editor_resource_conversion_plugin.h"
 #include "editor/scene/2d/camera_2d_editor_plugin.h"
 #include "editor/scene/2d/light_occluder_2d_editor_plugin.h"
 #include "editor/scene/2d/line_2d_editor_plugin.h"
@@ -125,9 +128,6 @@
 #include "editor/scene/texture/texture_editor_plugin.h"
 #include "editor/scene/texture/texture_layered_editor_plugin.h"
 #include "editor/scene/texture/texture_region_editor_plugin.h"
-#include "editor/script/editor_script.h"
-#include "editor/script/editor_script_plugin.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/script/syntax_highlighters.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_feature_profile.h"
@@ -156,7 +156,6 @@ void register_editor_types() {
 	GDREGISTER_VIRTUAL_CLASS(EditorPlugin);
 	GDREGISTER_CLASS(EditorTranslationParserPlugin);
 	GDREGISTER_CLASS(EditorImportPlugin);
-	GDREGISTER_CLASS(EditorScript);
 	GDREGISTER_CLASS(EditorDock);
 	GDREGISTER_CLASS(EditorSelection);
 	GDREGISTER_CLASS(EditorFileDialog);
@@ -168,8 +167,6 @@ void register_editor_types() {
 	GDREGISTER_ABSTRACT_CLASS(EditorFileSystem);
 	GDREGISTER_CLASS(EditorFileSystemDirectory);
 	GDREGISTER_CLASS(EditorVCSInterface);
-	GDREGISTER_ABSTRACT_CLASS(ScriptEditor);
-	GDREGISTER_ABSTRACT_CLASS(ScriptEditorBase);
 	GDREGISTER_CLASS(EditorSyntaxHighlighter);
 	GDREGISTER_ABSTRACT_CLASS(EditorInterface);
 	GDREGISTER_CLASS(EditorExportPlugin);
@@ -185,11 +182,9 @@ void register_editor_types() {
 	GDREGISTER_CLASS(EditorInspector);
 	GDREGISTER_CLASS(EditorInspectorPlugin);
 	GDREGISTER_CLASS(EditorProperty);
-	GDREGISTER_CLASS(ScriptCreateDialog);
 	GDREGISTER_CLASS(EditorFeatureProfile);
 	GDREGISTER_CLASS(EditorSpinSlider);
 	GDREGISTER_CLASS(EditorResourcePicker);
-	GDREGISTER_CLASS(EditorScriptPicker);
 	GDREGISTER_ABSTRACT_CLASS(EditorUndoRedoManager);
 	GDREGISTER_CLASS(EditorContextMenuPlugin);
 
@@ -230,10 +225,6 @@ void register_editor_types() {
 	EditorPlugins::add_by_type<BitMapEditorPlugin>();
 	EditorPlugins::add_by_type<ControlEditorPlugin>();
 	EditorPlugins::add_by_type<CurveEditorPlugin>();
-	if (!Engine::get_singleton()->is_recovery_mode_hint()) {
-		EditorPlugins::add_by_type<DebugAdapterServer>();
-	}
-	EditorPlugins::add_by_type<EditorScriptPlugin>();
 	EditorPlugins::add_by_type<FontEditorPlugin>();
 	EditorPlugins::add_by_type<GradientEditorPlugin>();
 	EditorPlugins::add_by_type<GradientTexture2DEditorPlugin>();
@@ -299,12 +290,9 @@ void register_editor_types() {
 	// For correct doc generation.
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, "editor/run/main_run_args", PROPERTY_HINT_NONE, "monospace"), "");
 
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, "editor/script/templates_search_path", PROPERTY_HINT_DIR), "res://script_templates");
-
 	GLOBAL_DEF("editor/naming/default_signal_callback_name", "_on_{node_name}_{signal_name}");
 	GLOBAL_DEF("editor/naming/default_signal_callback_to_self_name", "_on_{signal_name}");
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "editor/naming/scene_name_casing", PROPERTY_HINT_ENUM, "Auto,PascalCase,snake_case,kebab-case,camelCase"), EditorNode::SCENE_NAME_CASING_SNAKE_CASE);
-	GLOBAL_DEF(PropertyInfo(Variant::INT, "editor/naming/script_name_casing", PROPERTY_HINT_ENUM, "Auto,PascalCase,snake_case,kebab-case,camelCase"), ScriptLanguage::SCRIPT_NAME_CASING_AUTO);
 
 	GLOBAL_DEF("editor/import/reimport_missing_imported_files", true);
 	GLOBAL_DEF("editor/import/use_multiple_threads", true);

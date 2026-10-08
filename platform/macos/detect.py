@@ -88,7 +88,7 @@ def get_flags():
         "arch": detect_arch(),
         "use_volk": False,
         "metal": True,
-        "supported": ["library", "metal", "mono"],
+        "supported": ["library", "metal"],
     }
 
 

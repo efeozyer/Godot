@@ -49,8 +49,6 @@
 #include "scene/gui/separator.h"
 #include "servers/physics_3d/physics_server_3d_manager.h"
 
-#include "modules/modules_enabled.gen.h" // IWYU pragma: keep. For mono.
-
 const char *EditorBuildProfile::build_option_identifiers[BUILD_OPTION_MAX] = {
 	// This maps to SCons build options.
 	"disable_2d",
@@ -808,9 +806,6 @@ void EditorBuildProfileManager::_profile_action(int p_action) {
 
 		case ACTION_DETECT: {
 			String text = TTR("This will scan all files in the current project to detect used classes.\nNote that the first scan may take a while, specially in larger projects.");
-#ifdef MODULE_MONO_ENABLED
-			text += "\n\n" + TTR("Warning: Class detection for C# scripts is not currently available, and such files will be ignored.");
-#endif // MODULE_MONO_ENABLED
 			confirm_dialog->set_text(text);
 			confirm_dialog->popup_centered();
 		} break;

@@ -67,12 +67,6 @@
 				Called when the ID of the [MultiplayerPeer] who sent the most recent packet is requested (see [method MultiplayerPeer.get_packet_peer]).
 			</description>
 		</method>
-		<method name="_get_packet_script" qualifiers="virtual">
-			<return type="PackedByteArray" />
-			<description>
-				Called when a packet needs to be received by the [MultiplayerAPI], if [method _get_packet] isn't implemented. Use this when extending this class via GDScript.
-			</description>
-		</method>
 		<method name="_get_transfer_channel" qualifiers="virtual required const">
 			<return type="int" />
 			<description>
@@ -121,13 +115,6 @@
 			<param index="1" name="buffer_size" type="int" />
 			<description>
 				Called when a packet needs to be sent by the [MultiplayerAPI], with [param buffer_size] being the size of the binary [param buffer] in bytes.
-			</description>
-		</method>
-		<method name="_put_packet_script" qualifiers="virtual">
-			<return type="int" enum="Error" />
-			<param index="0" name="buffer" type="PackedByteArray" />
-			<description>
-				Called when a packet needs to be sent by the [MultiplayerAPI], if [method _put_packet] isn't implemented. Use this when extending this class via GDScript.
 			</description>
 		</method>
 		<method name="_set_refuse_new_connections" qualifiers="virtual">

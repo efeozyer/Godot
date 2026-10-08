@@ -34,6 +34,7 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, Array);
 STATIC_ASSERT_INCOMPLETE_TYPE(class, Object);
 STATIC_ASSERT_INCOMPLETE_TYPE(class, String);
 
+#include "core/io/resource.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/safe_refcount.h"
 #include "core/variant/container_type_validate.h"
@@ -401,7 +402,7 @@ uint32_t Dictionary::recursive_hash(int p_recursion_count) const {
 Array Dictionary::keys() const {
 	Array varr;
 	if (is_typed_key()) {
-		varr.set_typed(get_typed_key_builtin(), get_typed_key_class_name(), get_typed_key_script());
+		varr.set_typed(get_typed_key_builtin(), get_typed_key_class_name());
 	}
 	if (_p->variant_map.is_empty()) {
 		return varr;
@@ -421,7 +422,7 @@ Array Dictionary::keys() const {
 Array Dictionary::values() const {
 	Array varr;
 	if (is_typed_value()) {
-		varr.set_typed(get_typed_value_builtin(), get_typed_value_class_name(), get_typed_value_script());
+		varr.set_typed(get_typed_value_builtin(), get_typed_value_class_name());
 	}
 	if (_p->variant_map.is_empty()) {
 		return varr;
@@ -655,28 +656,22 @@ Dictionary Dictionary::recursive_duplicate(bool p_deep, ResourceDeepDuplicateMod
 }
 
 void Dictionary::set_typed(const ContainerType &p_key_type, const ContainerType &p_value_type) {
-	set_typed(p_key_type.variant_type, p_key_type.class_name, p_key_type.script, p_value_type.variant_type, p_value_type.class_name, p_value_type.script);
+	set_typed(p_key_type.variant_type, p_key_type.class_name, p_value_type.variant_type, p_value_type.class_name);
 }
 
-void Dictionary::set_typed(uint32_t p_key_type, const StringName &p_key_class_name, const Variant &p_key_script, uint32_t p_value_type, const StringName &p_value_class_name, const Variant &p_value_script) {
+void Dictionary::set_typed(uint32_t p_key_type, const StringName &p_key_class_name, uint32_t p_value_type, const StringName &p_value_class_name) {
 	ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
 	ERR_FAIL_COND_MSG(_p->variant_map.size() > 0, "Type can only be set when dictionary is empty.");
 	ERR_FAIL_COND_MSG(_p->refcount.get() > 1, "Type can only be set when dictionary has no more than one user.");
 	ERR_FAIL_COND_MSG(_p->typed_key.variant_type != Variant::NIL || _p->typed_value.variant_type != Variant::NIL, "Type can only be set once.");
 	ERR_FAIL_COND_MSG((p_key_class_name != StringName() && p_key_type != Variant::OBJECT) || (p_value_class_name != StringName() && p_value_type != Variant::OBJECT), "Class names can only be set for type OBJECT.");
-	Ref<Script> key_script = p_key_script;
-	ERR_FAIL_COND_MSG(key_script.is_valid() && p_key_class_name == StringName(), "Script class can only be set together with base class name.");
-	Ref<Script> value_script = p_value_script;
-	ERR_FAIL_COND_MSG(value_script.is_valid() && p_value_class_name == StringName(), "Script class can only be set together with base class name.");
 
 	_p->typed_key.variant_type = Variant::Type(p_key_type);
 	_p->typed_key.class_name = p_key_class_name;
-	_p->typed_key.script = key_script;
 	_p->typed_key.where = "TypedDictionary.Key";
 
 	_p->typed_value.variant_type = Variant::Type(p_value_type);
 	_p->typed_value.class_name = p_value_class_name;
-	_p->typed_value.script = value_script;
 	_p->typed_value.where = "TypedDictionary.Value";
 }
 
@@ -732,14 +727,6 @@ StringName Dictionary::get_typed_value_class_name() const {
 	return _p->typed_value.class_name;
 }
 
-Variant Dictionary::get_typed_key_script() const {
-	return _p->typed_key.script;
-}
-
-Variant Dictionary::get_typed_value_script() const {
-	return _p->typed_value.script;
-}
-
 const ContainerTypeValidate &Dictionary::get_key_validator() const {
 	return _p->typed_key;
 }
@@ -766,10 +753,10 @@ Dictionary::Dictionary(const Dictionary &p_base, const ContainerType &p_key_type
 	assign(p_base);
 }
 
-Dictionary::Dictionary(const Dictionary &p_base, uint32_t p_key_type, const StringName &p_key_class_name, const Variant &p_key_script, uint32_t p_value_type, const StringName &p_value_class_name, const Variant &p_value_script) {
+Dictionary::Dictionary(const Dictionary &p_base, uint32_t p_key_type, const StringName &p_key_class_name, uint32_t p_value_type, const StringName &p_value_class_name) {
 	_p = memnew(DictionaryPrivate);
 	_p->refcount.init();
-	set_typed(p_key_type, p_key_class_name, p_key_script, p_value_type, p_value_class_name, p_value_script);
+	set_typed(p_key_type, p_key_class_name, p_value_type, p_value_class_name);
 	assign(p_base);
 }
 

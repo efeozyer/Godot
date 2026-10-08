@@ -49,9 +49,7 @@ bool MultiNodeEdit::_set_impl(const StringName &p_name, const Variant &p_value, 
 
 	String name = p_name;
 
-	if (name == "scripts") { // Script set is intercepted at object level (check Variant Object::get()), so use a different name.
-		name = "script";
-	} else if (name.begins_with("Metadata/")) {
+	if (name.begins_with("Metadata/")) {
 		name = name.replace_first("Metadata/", "metadata/");
 	}
 
@@ -128,9 +126,7 @@ bool MultiNodeEdit::_get(const StringName &p_name, Variant &r_ret) const {
 	}
 
 	String name = p_name;
-	if (name == "scripts") { // Script set is intercepted at object level (check Variant Object::get()), so use a different name.
-		name = "script";
-	} else if (name.begins_with("Metadata/")) {
+	if (name.begins_with("Metadata/")) {
 		name = name.replace_first("Metadata/", "metadata/");
 	}
 
@@ -172,9 +168,7 @@ void MultiNodeEdit::_get_property_list(List<PropertyInfo> *p_list) const {
 		n->get_property_list(&plist, true);
 
 		for (PropertyInfo F : plist) {
-			if (F.name == "script") {
-				continue; // Added later manually, since this is intercepted before being set (check Variant Object::get()).
-			} else if (F.name.begins_with("metadata/")) {
+			if (F.name.begins_with("metadata/")) {
 				F.name = F.name.replace_first("metadata/", "Metadata/"); // Trick to not get actual metadata edited from MultiNodeEdit.
 			}
 
@@ -222,8 +216,6 @@ void MultiNodeEdit::_get_property_list(List<PropertyInfo> *p_list) const {
 			p_list->push_back(E->info);
 		}
 	}
-
-	p_list->push_back(PropertyInfo(Variant::OBJECT, "scripts", PROPERTY_HINT_RESOURCE_TYPE, Script::get_class_static()));
 }
 
 String MultiNodeEdit::_get_editor_name() const {
@@ -372,7 +364,6 @@ void MultiNodeEdit::set_property_field(const StringName &p_property, const Varia
 }
 
 void MultiNodeEdit::_bind_methods() {
-	ClassDB::bind_method("_hide_script_from_inspector", &MultiNodeEdit::_hide_script_from_inspector);
 	ClassDB::bind_method("_hide_metadata_from_inspector", &MultiNodeEdit::_hide_metadata_from_inspector);
 	ClassDB::bind_method("_get_editor_name", &MultiNodeEdit::_get_editor_name);
 }

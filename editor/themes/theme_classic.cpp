@@ -1684,8 +1684,8 @@ void ThemeClassic::populate_editor_styles(const Ref<EditorTheme> &p_theme, Edito
 		toolbar_stylebox->set_expand_margin_individual(EDSCALE_RND(4), EDSCALE_RND(2), EDSCALE_RND(4), EDSCALE_RND(4));
 		p_theme->set_stylebox("ContextualToolbar", EditorStringName(EditorStyles), toolbar_stylebox);
 
-		// Script editor.
-		p_theme->set_stylebox("ScriptEditor", EditorStringName(EditorStyles), EditorThemeManager::make_empty_stylebox(0, 0, 0, 0));
+		// Document editor.
+		p_theme->set_stylebox("DocumentEditor", EditorStringName(EditorStyles), EditorThemeManager::make_empty_stylebox(0, 0, 0, 0));
 
 		// Game view.
 		p_theme->set_type_variation("GamePanel", "Panel");

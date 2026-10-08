@@ -106,8 +106,6 @@ public:
 		bool is_experimental = false;
 		String experimental_message;
 		Vector<ArgumentDoc> arguments;
-		// NOTE: Only for GDScript for now. The rest argument is not saved to the XML file.
-		ArgumentDoc rest_argument;
 		Vector<int> errors_returned;
 		String keywords;
 		bool operator<(const MethodDoc &p_method) const {
@@ -716,8 +714,6 @@ public:
 		String deprecated_message;
 		bool is_experimental = false;
 		String experimental_message;
-		bool is_script_doc = false;
-		String script_path;
 		bool operator<(const ClassDoc &p_class) const {
 			return name < p_class.name;
 		}
@@ -848,14 +844,6 @@ public:
 				doc.experimental_message = p_dict["experimental"];
 			}
 
-			if (p_dict.has("is_script_doc")) {
-				doc.is_script_doc = p_dict["is_script_doc"];
-			}
-
-			if (p_dict.has("script_path")) {
-				doc.script_path = p_dict["script_path"];
-			}
-
 			return doc;
 		}
 		static Dictionary to_dict(const ClassDoc &p_doc) {
@@ -967,12 +955,6 @@ public:
 
 			if (p_doc.is_experimental) {
 				dict["experimental"] = p_doc.experimental_message;
-			}
-
-			dict["is_script_doc"] = p_doc.is_script_doc;
-
-			if (!p_doc.script_path.is_empty()) {
-				dict["script_path"] = p_doc.script_path;
 			}
 
 			if (!p_doc.keywords.is_empty()) {

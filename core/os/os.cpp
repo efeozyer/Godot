@@ -93,13 +93,13 @@ String OS::get_identifier() const {
 	return get_name().to_lower();
 }
 
-void OS::print_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, Logger::ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void OS::print_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, Logger::ErrorType p_type) {
 	if (!_stderr_enabled) {
 		return;
 	}
 
 	if (_logger) {
-		_logger->log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, p_type, p_script_backtraces);
+		_logger->log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, p_type);
 	}
 }
 
@@ -186,10 +186,6 @@ int OS::get_process_id() const {
 
 bool OS::is_stdout_verbose() const {
 	return _verbose_stdout;
-}
-
-bool OS::is_stdout_debug_enabled() const {
-	return _debug_stdout;
 }
 
 bool OS::is_stdout_enabled() const {

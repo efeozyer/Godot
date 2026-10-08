@@ -66,6 +66,7 @@
 #include "editor/docks/inspector_dock.h"
 #include "editor/docks/scene_tree_dock.h"
 #include "editor/docks/signals_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_data.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_log.h"
@@ -121,7 +122,6 @@
 #include "editor/plugins/editor_plugin.h"
 #include "editor/plugins/editor_plugin_list.h"
 #include "editor/plugins/editor_resource_conversion_plugin.h"
-#include "editor/plugins/plugin_config_dialog.h"
 #include "editor/project_upgrade/project_upgrade_tool.h"
 #include "editor/run/editor_run.h"
 #include "editor/run/editor_run_bar.h"
@@ -135,10 +135,7 @@
 #include "editor/scene/editor_scene_tabs.h"
 #include "editor/scene/material_editor_plugin.h"
 #include "editor/scene/particle_process_material_editor_plugin.h"
-#include "editor/script/editor_script.h"
 #include "editor/script/find_in_files.h"
-#include "editor/script/script_text_editor.h"
-#include "editor/script/text_editor.h"
 #include "editor/settings/editor_build_profile.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_feature_profile.h"
@@ -219,8 +216,6 @@
 #else
 #include "editor/export/android_sdk_manager.h"
 #endif // ANDROID_ENABLED
-
-#include "modules/modules_enabled.gen.h" // For gdscript, mono.
 
 #include <cstdlib>
 
@@ -639,12 +634,8 @@ void EditorNode::_gdextensions_reloaded() {
 	// In case the developer is inspecting an object that will be changed by the reload.
 	InspectorDock::get_inspector_singleton()->update_tree();
 
-	// Reload script editor to revalidate GDScript if classes are added or removed.
-	ScriptEditor::get_singleton()->reload_scripts(true);
-
-	// Regenerate documentation without using script documentation cache since that would
-	// revert doc changes during this session.
-	EditorHelp::generate_doc(true, false);
+	// Regenerate documentation.
+	EditorHelp::generate_doc(true);
 }
 
 void EditorNode::_update_translations() {
@@ -747,13 +738,6 @@ void EditorNode::_update_theme(bool p_skip_creation) {
 	if (!p_skip_creation) {
 		theme = EditorThemeManager::generate_theme(theme);
 		DisplayServer::set_early_window_clear_color_override(true, theme->get_color(SNAME("background"), EditorStringName(Editor)));
-
-#if defined(MODULE_GDSCRIPT_ENABLED) || defined(MODULE_MONO_ENABLED)
-		if (EditorHelpHighlighter::get_singleton()) {
-			// Update syntax colors.
-			EditorHelpHighlighter::get_singleton()->clear_cache();
-		}
-#endif
 	}
 
 	Vector<Ref<Theme>> editor_themes;
@@ -929,9 +913,6 @@ void EditorNode::_notification(int p_what) {
 
 		case NOTIFICATION_POSTINITIALIZE: {
 			EditorHelp::generate_doc();
-#if defined(MODULE_GDSCRIPT_ENABLED) || defined(MODULE_MONO_ENABLED)
-			EditorHelpHighlighter::create_singleton();
-#endif
 		} break;
 
 		case NOTIFICATION_PROCESS: {
@@ -1049,7 +1030,6 @@ void EditorNode::_notification(int p_what) {
 			if (save_accept) {
 				save_accept->queue_free();
 			}
-			EditorHelp::save_script_doc_cache();
 			editor_data.save_editor_external_data();
 			EditorSettings::get_singleton()->save_project_metadata();
 			FileAccess::set_file_close_fail_notify_callback(nullptr);
@@ -1284,48 +1264,6 @@ void EditorNode::_execute_upgrades() {
 	}
 }
 
-void EditorNode::init_plugins() {
-	_initializing_plugins = true;
-	Vector<String> addons;
-	if (ProjectSettings::get_singleton()->has_setting("editor_plugins/enabled")) {
-		addons = GLOBAL_GET("editor_plugins/enabled");
-	}
-
-	for (const String &addon : addons) {
-		set_addon_plugin_enabled(addon, true);
-	}
-	_initializing_plugins = false;
-
-	if (!pending_addons.is_empty()) {
-		EditorFileSystem::get_singleton()->connect("script_classes_updated", callable_mp(this, &EditorNode::_enable_pending_addons), CONNECT_ONE_SHOT);
-	}
-}
-
-void EditorNode::_on_plugin_ready(Object *p_script, const String &p_activate_name) {
-	Ref<Script> scr = Object::cast_to<Script>(p_script);
-	if (scr.is_null()) {
-		return;
-	}
-	project_settings_editor->update_plugins();
-	project_settings_editor->hide();
-	push_item(scr.operator->());
-	if (p_activate_name.length()) {
-		set_addon_plugin_enabled(p_activate_name, true);
-	}
-}
-
-void EditorNode::_remove_plugin_from_enabled(const String &p_name) {
-	ProjectSettings *ps = ProjectSettings::get_singleton();
-	PackedStringArray enabled_plugins = ps->get("editor_plugins/enabled");
-	for (int i = 0; i < enabled_plugins.size(); ++i) {
-		if (enabled_plugins.get(i) == p_name) {
-			enabled_plugins.remove_at(i);
-			break;
-		}
-	}
-	ps->set("editor_plugins/enabled", enabled_plugins);
-}
-
 void EditorNode::_plugin_over_edit(EditorPlugin *p_plugin, Object *p_object, bool p_set_current) {
 	if (p_object) {
 		editor_plugins_over->add_plugin(p_plugin);
@@ -1390,7 +1328,7 @@ void EditorNode::_fs_changed() {
 	// FIXME: Move this to a cleaner location, it's hacky to do this in _fs_changed.
 	String export_error;
 	Error err = OK;
-	// It's important to wait for the first scan to finish; otherwise, scripts or resources might not be imported.
+	// It's important to wait for the first scan to finish; otherwise, resources might not be imported.
 	if (!export_defer.preset.is_empty() && !EditorFileSystem::get_singleton()->is_scanning()) {
 		String preset_name = export_defer.preset;
 		// Ensures export_project does not loop infinitely, because notifications may
@@ -1753,13 +1691,13 @@ Error EditorNode::load_resource(const String &p_resource, bool p_ignore_broken_d
 		if (res.is_null()) {
 			res = ResourceCache::get_ref(p_resource);
 			if (res.is_null() || !res->is_class("TextFile")) {
-				res = ScriptEditor::get_singleton()->open_file(p_resource);
+				res = DocumentEditor::get_singleton()->open_file(p_resource);
 			}
 		}
 	} else if (ResourceLoader::exists(p_resource, "")) {
 		res = ResourceLoader::load(p_resource, "", ResourceFormatLoader::CACHE_MODE_REUSE, &err);
 	} else if (textfile_extensions.has(p_resource.get_extension())) {
-		res = ScriptEditor::get_singleton()->open_file(p_resource);
+		res = DocumentEditor::get_singleton()->open_file(p_resource);
 	} else if (other_file_extensions.has(p_resource.get_extension())) {
 		OS::get_singleton()->shell_open(ProjectSettings::get_singleton()->globalize_path(p_resource));
 		return OK;
@@ -1910,10 +1848,6 @@ void EditorNode::save_resource_as(const Ref<Resource> &p_resource, const String 
 
 	List<String> preferred;
 	for (const String &E : extensions) {
-		if (p_resource->is_class("Script") && (E == "tres" || E == "res")) {
-			// This serves no purpose and confused people.
-			continue;
-		}
 		file->add_filter("*." + E, E.to_upper());
 		preferred.push_back(E);
 	}
@@ -2452,7 +2386,6 @@ int EditorNode::_save_external_resources(bool p_also_save_external_data) {
 		res->set_edited(false);
 	}
 
-	bool script_was_saved = false;
 	for (const String &E : edited_resources) {
 		Ref<Resource> res = ResourceCache::get_ref(E);
 		if (res.is_null()) {
@@ -2462,16 +2395,8 @@ int EditorNode::_save_external_resources(bool p_also_save_external_data) {
 		if (ps.is_valid()) {
 			continue; // Do not save PackedScenes, this will mess up the editor.
 		}
-		if (!script_was_saved) {
-			Ref<Script> scr = res;
-			script_was_saved = scr.is_valid();
-		}
 		ResourceSaver::save(res, res->get_path(), flg);
 		saved++;
-	}
-
-	if (script_was_saved) {
-		ScriptEditor::get_singleton()->update_script_times();
 	}
 
 	if (p_also_save_external_data) {
@@ -3505,9 +3430,6 @@ void EditorNode::_menu_option_confirm(int p_option, bool p_confirmed) {
 		case SCENE_QUICK_OPEN_SCENE: {
 			quick_open_dialog->popup_dialog({ "PackedScene" }, callable_mp(this, &EditorNode::_quick_opened), true);
 		} break;
-		case SCENE_QUICK_OPEN_SCRIPT: {
-			quick_open_dialog->popup_dialog({ "Script" }, callable_mp(this, &EditorNode::_quick_opened), true);
-		} break;
 		case SCENE_OPEN_PREV: {
 			if (!prev_closed_scenes.is_empty()) {
 				String path = prev_closed_scenes[prev_closed_scenes.size() - 1];
@@ -3593,16 +3515,16 @@ void EditorNode::_menu_option_confirm(int p_option, bool p_confirmed) {
 			Node *scene = editor_data.get_edited_scene_root(scene_idx);
 			if (!scene) {
 				if (p_option == SCENE_SAVE_SCENE) {
-					// Pressing Ctrl + S saves the current script if a scene is currently open, but it won't if the scene has no root node.
-					// Work around this by explicitly saving the script in this case (similar to pressing Ctrl + Alt + S).
-					ScriptEditor::get_singleton()->save_current_script();
+					// Pressing Ctrl + S saves the current document if a scene is currently open, but it won't if the scene has no root node.
+					// Work around this by explicitly saving the document in this case (similar to pressing Ctrl + Alt + S).
+					DocumentEditor::get_singleton()->save_current_document();
 				}
 
 				const int saved = _save_external_resources(true);
 				if (saved > 0) {
 					EditorToaster::get_singleton()->popup_str(vformat(TTR("The current scene has no root node, but %d modified external resource(s) and/or plugin data were saved anyway."), saved), EditorToaster::SEVERITY_INFO);
 				} else if (p_option == SCENE_SAVE_AS_SCENE) {
-					// Don't show this dialog when pressing Ctrl + S to avoid interfering with script saving.
+					// Don't show this dialog when pressing Ctrl + S to avoid interfering with document saving.
 					show_warning(TTR("A root node is required to save the scene. You can add a root node using the Scene dock."));
 				}
 
@@ -4067,29 +3989,6 @@ String EditorNode::adjust_scene_name_casing(const String &p_root_name) {
 	return p_root_name;
 }
 
-String EditorNode::adjust_script_name_casing(const String &p_file_name, ScriptLanguage::ScriptNameCasing p_auto_casing) {
-	int editor_casing = GLOBAL_GET("editor/naming/script_name_casing");
-	if (editor_casing == ScriptLanguage::SCRIPT_NAME_CASING_AUTO) {
-		// Use the script language's preferred casing.
-		editor_casing = p_auto_casing;
-	}
-
-	switch (editor_casing) {
-		case ScriptLanguage::SCRIPT_NAME_CASING_AUTO:
-			// Script language has no preference, so do not adjust.
-			break;
-		case ScriptLanguage::SCRIPT_NAME_CASING_PASCAL_CASE:
-			return p_file_name.to_pascal_case();
-		case ScriptLanguage::SCRIPT_NAME_CASING_SNAKE_CASE:
-			return p_file_name.to_snake_case();
-		case ScriptLanguage::SCRIPT_NAME_CASING_KEBAB_CASE:
-			return p_file_name.to_kebab_case();
-		case ScriptLanguage::SCRIPT_NAME_CASING_CAMEL_CASE:
-			return p_file_name.to_camel_case();
-	}
-	return p_file_name;
-}
-
 void EditorNode::_request_screenshot() {
 	_screenshot();
 }
@@ -4300,9 +4199,6 @@ void EditorNode::_exit_editor(int p_exit_code) {
 	// Dim the editor window while it's quitting to make it clearer that it's busy.
 	dim_editor(true);
 
-	// Unload addons before quitting to allow cleanup.
-	unload_editor_addons();
-
 	if (!files_to_delete_on_exit.is_empty()) {
 		Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_RESOURCES);
 		for (const String &path : files_to_delete_on_exit) {
@@ -4312,16 +4208,6 @@ void EditorNode::_exit_editor(int p_exit_code) {
 		}
 	}
 	get_tree()->quit(p_exit_code);
-}
-
-void EditorNode::unload_editor_addons() {
-	for (const KeyValue<String, EditorPlugin *> &E : addon_name_to_plugin) {
-		print_verbose(vformat("Unloading addon: %s", E.key));
-		remove_editor_plugin(E.value, false);
-		memdelete(E.value);
-	}
-
-	addon_name_to_plugin.clear();
 }
 
 void EditorNode::_discard_changes(const String &p_str) {
@@ -4360,12 +4246,9 @@ void EditorNode::_discard_changes(const String &p_str) {
 			files_to_delete_on_exit = LocalVector<String>{
 				"res://.godot/imported",
 				"res://.godot/exported",
-				"res://.godot/mono",
 				"res://.godot/extension_list.cfg",
-				"res://.godot/global_script_class_cache.cfg",
 				"res://.godot/scene_groups_cache.cfg",
 				"res://.godot/uid_cache.bin",
-				"res://.godot/editor/editor_script_doc_cache.res",
 				"res://.godot/editor/" + EditorFileSystem::CACHE_FILE_NAME,
 				"res://.godot/editor/filesystem_update4",
 			};
@@ -4491,7 +4374,7 @@ void EditorNode::replace_resources_in_scenes(const Vector<Ref<Resource>> &p_sour
 	}
 }
 
-void EditorNode::add_editor_plugin(EditorPlugin *p_editor, bool p_config_changed) {
+void EditorNode::add_editor_plugin(EditorPlugin *p_editor) {
 #ifndef DISABLE_DEPRECATED
 	if (p_editor->has_main_screen()) {
 		singleton->editor_main_screen->add_main_plugin(p_editor);
@@ -4499,12 +4382,9 @@ void EditorNode::add_editor_plugin(EditorPlugin *p_editor, bool p_config_changed
 #endif
 	singleton->editor_data.add_editor_plugin(p_editor);
 	singleton->add_child(p_editor);
-	if (p_config_changed) {
-		p_editor->enable_plugin();
-	}
 }
 
-void EditorNode::remove_editor_plugin(EditorPlugin *p_editor, bool p_config_changed) {
+void EditorNode::remove_editor_plugin(EditorPlugin *p_editor) {
 #ifndef DISABLE_DEPRECATED
 	if (p_editor->has_main_screen()) {
 		singleton->editor_main_screen->remove_main_plugin(p_editor);
@@ -4512,9 +4392,6 @@ void EditorNode::remove_editor_plugin(EditorPlugin *p_editor, bool p_config_chan
 #endif
 	p_editor->make_visible(false);
 	p_editor->clear();
-	if (p_config_changed) {
-		p_editor->disable_plugin();
-	}
 	singleton->editor_plugins_over->remove_plugin(p_editor);
 	singleton->editor_plugins_force_over->remove_plugin(p_editor);
 	singleton->editor_plugins_force_input_forwarding->remove_plugin(p_editor);
@@ -4550,132 +4427,6 @@ void EditorNode::remove_extension_editor_plugin(const StringName &p_class_name) 
 	singleton->editor_data.remove_extension_editor_plugin(p_class_name);
 }
 
-void EditorNode::_update_addon_config() {
-	if (_initializing_plugins) {
-		return;
-	}
-
-	Vector<String> enabled_addons;
-
-	for (const KeyValue<String, EditorPlugin *> &E : addon_name_to_plugin) {
-		enabled_addons.push_back(E.key);
-	}
-
-	if (enabled_addons.is_empty()) {
-		ProjectSettings::get_singleton()->set("editor_plugins/enabled", Variant());
-	} else {
-		enabled_addons.sort();
-		ProjectSettings::get_singleton()->set("editor_plugins/enabled", enabled_addons);
-	}
-
-	project_settings_editor->queue_save();
-}
-
-void EditorNode::set_addon_plugin_enabled(const String &p_addon, bool p_enabled, bool p_config_changed) {
-	String addon_path = p_addon;
-
-	if (!addon_path.begins_with("res://")) {
-		addon_path = "res://addons/" + addon_path + "/plugin.cfg";
-	}
-
-	ERR_FAIL_COND(p_enabled && addon_name_to_plugin.has(addon_path));
-	ERR_FAIL_COND(!p_enabled && !addon_name_to_plugin.has(addon_path));
-
-	if (!p_enabled) {
-		EditorPlugin *addon = addon_name_to_plugin[addon_path];
-		remove_editor_plugin(addon, p_config_changed);
-		memdelete(addon);
-		addon_name_to_plugin.erase(addon_path);
-		_update_addon_config();
-		return;
-	}
-
-	Ref<ConfigFile> cf;
-	cf.instantiate();
-	if (!DirAccess::exists(addon_path.get_base_dir())) {
-		_remove_plugin_from_enabled(addon_path);
-		WARN_PRINT("Addon '" + addon_path + "' failed to load. No directory found. Removing from enabled plugins.");
-		return;
-	}
-	Error err = cf->load(addon_path);
-	if (err != OK) {
-		show_warning(vformat(TTR("Unable to enable addon plugin at: '%s' parsing of config failed."), addon_path));
-		return;
-	}
-
-	String plugin_version;
-	if (cf->has_section_key("plugin", "version")) {
-		plugin_version = cf->get_value("plugin", "version");
-	}
-
-	if (!cf->has_section_key("plugin", "script")) {
-		show_warning(vformat(TTR("Unable to find script field for addon plugin at: '%s'."), addon_path));
-		return;
-	}
-
-	String script_path = cf->get_value("plugin", "script");
-	Ref<Script> scr; // We need to save it for creating "ep" below.
-
-	// Only try to load the script if it has a name. Else, the plugin has no init script.
-	EditorPlugin *ep = nullptr;
-	if (script_path.length() > 0) {
-		script_path = addon_path.get_base_dir().path_join(script_path);
-		// We should not use the cached version on startup to prevent a script reload
-		// if it is already loaded and potentially running from autoloads. See GH-100750.
-		scr = ResourceLoader::load(script_path, "Script", EditorFileSystem::get_singleton()->doing_first_scan() ? ResourceFormatLoader::CACHE_MODE_REUSE : ResourceFormatLoader::CACHE_MODE_IGNORE);
-
-		if (scr.is_null()) {
-			show_warning(vformat(TTR("Unable to load addon script from path: '%s'."), script_path));
-			return;
-		}
-
-		// Errors in the script cause the base_type to be an empty StringName.
-		if (scr->get_instance_base_type() == StringName()) {
-			if (_initializing_plugins) {
-				// However, if it happens during initialization, waiting for file scan might help.
-				pending_addons.push_back(p_addon);
-				return;
-			}
-
-			show_warning(vformat(TTR("Unable to load addon script from path: '%s'. This might be due to a code error in that script.\nDisabling the addon at '%s' to prevent further errors."), script_path, addon_path));
-			_remove_plugin_from_enabled(addon_path);
-			return;
-		}
-
-		// Plugin init scripts must inherit from EditorPlugin and be tools.
-		if (!ClassDB::is_parent_class(scr->get_instance_base_type(), "EditorPlugin")) {
-			show_warning(vformat(TTR("Unable to load addon script from path: '%s'. Base type is not 'EditorPlugin'."), script_path));
-			return;
-		}
-
-		if (!scr->is_tool()) {
-			show_warning(vformat(TTR("Unable to load addon script from path: '%s'. Script is not in tool mode."), script_path));
-			return;
-		}
-
-		Object *obj = ClassDB::instantiate(scr->get_instance_base_type());
-		ep = Object::cast_to<EditorPlugin>(obj);
-		ERR_FAIL_NULL(ep);
-		ep->set_script(scr);
-	} else {
-		ep = memnew(EditorPlugin);
-	}
-
-	ep->set_plugin_version(plugin_version);
-	addon_name_to_plugin[addon_path] = ep;
-	add_editor_plugin(ep, p_config_changed);
-
-	_update_addon_config();
-}
-
-bool EditorNode::is_addon_plugin_enabled(const String &p_addon) const {
-	if (p_addon.begins_with("res://")) {
-		return addon_name_to_plugin.has(p_addon);
-	}
-
-	return addon_name_to_plugin.has("res://addons/" + p_addon + "/plugin.cfg");
-}
-
 void EditorNode::_remove_edited_scene(bool p_change_tab) {
 	// When scene gets closed no node is edited anymore, so make sure the editors are notified before nodes are freed.
 	hide_unused_editors(SceneTreeDock::get_singleton());
@@ -4703,9 +4454,7 @@ void EditorNode::_remove_edited_scene(bool p_change_tab) {
 }
 
 void EditorNode::_remove_scene(int p_idx, bool p_change_tab) {
-	// Clear icon cache in case some scripts are no longer needed or class icons are outdated.
-	// FIXME: Ideally the cache should never be cleared and only updated on per-script basis, when an icon changes.
-	editor_data.clear_script_icon_cache();
+	// Clear icon cache in case class icons are outdated.
 	class_icon_cache.clear();
 
 	_save_editor_states(editor_data.get_scene_path(p_idx), p_idx);
@@ -4804,7 +4553,6 @@ void EditorNode::_set_main_scene_state(const Dictionary &p_state) {
 	// This should only happen at the very end.
 
 	EditorDebuggerNode::get_singleton()->update_live_edit_root();
-	ScriptEditor::get_singleton()->set_scene_root_script(editor_data.get_scene_root_script(editor_data.get_edited_scene()));
 	editor_data.notify_edited_scene_changed();
 	emit_signal(SNAME("scene_changed"));
 
@@ -4848,7 +4596,6 @@ void EditorNode::_set_current_scene_nocheck(int p_idx, bool p_ignore_state) {
 	Node *old_scene = get_editor_data().get_edited_scene_root();
 
 	editor_selection->clear();
-	SceneTreeDock::get_singleton()->clear_previous_node_selection();
 	editor_data.set_edited_scene(p_idx);
 
 	Node *new_scene = editor_data.get_edited_scene_root();
@@ -5190,12 +4937,6 @@ HashMap<StringName, Variant> EditorNode::get_modified_properties_reference_to_no
 
 void EditorNode::update_node_from_node_modification_entry(Node *p_node, ModificationNodeEntry &p_node_modification) {
 	if (p_node) {
-		// First, attempt to restore the script property since it may affect the get_property_list method.
-		Variant *script_property_table_entry = p_node_modification.property_table.getptr(CoreStringName(script));
-		if (script_property_table_entry) {
-			p_node->set_script(*script_property_table_entry);
-		}
-
 		// Get properties for this node.
 		List<PropertyInfo> pinfo;
 		p_node->get_property_list(&pinfo);
@@ -5255,9 +4996,6 @@ void EditorNode::update_node_from_node_modification_entry(Node *p_node, Modifica
 		// Restore the connections from other nodes.
 		for (const Connection &E : p_node_modification.connections_from) {
 			Connection conn = E;
-
-			bool valid = p_node->has_method(conn.callable.get_method()) || Ref<Script>(p_node->get_script()).is_null() || Ref<Script>(p_node->get_script())->has_method(conn.callable.get_method());
-			ERR_CONTINUE_MSG(!valid, vformat("Attempt to connect signal '%s.%s' to nonexistent method '%s.%s'.", conn.signal.get_object()->get_class(), conn.signal.get_name(), conn.callable.get_object()->get_class(), conn.callable.get_method()));
 
 			// Get the object which the signal is connected from.
 			Object *source_object = conn.signal.get_object();
@@ -5803,76 +5541,6 @@ void EditorNode::stop_child_process(ProcessID p_pid) {
 	project_run_bar->stop_child_process(p_pid);
 }
 
-Ref<Script> EditorNode::get_object_custom_type_base(const Object *p_object) const {
-	ERR_FAIL_NULL_V(p_object, nullptr);
-
-	const Node *node = Object::cast_to<const Node>(p_object);
-	if (node && node->has_meta(SceneStringName(_custom_type_script))) {
-		return PropertyUtils::get_custom_type_script(node);
-	}
-
-	Ref<Script> scr = p_object->get_script();
-
-	if (scr.is_valid()) {
-		// Uncommenting would break things! Consider adding a parameter if you need it.
-		// StringName name = EditorNode::get_editor_data().script_class_get_name(base_script->get_path());
-		// if (name != StringName()) {
-		// 	return name;
-		// }
-
-		// TODO: Should probably be deprecated in 4.x
-		StringName base = scr->get_instance_base_type();
-		if (base != StringName() && EditorNode::get_editor_data().get_custom_types().has(base)) {
-			const Vector<EditorData::CustomType> &types = EditorNode::get_editor_data().get_custom_types()[base];
-
-			Ref<Script> base_scr = scr;
-			while (base_scr.is_valid()) {
-				for (int i = 0; i < types.size(); ++i) {
-					if (types[i].script == base_scr) {
-						return types[i].script;
-					}
-				}
-				base_scr = base_scr->get_base_script();
-			}
-		}
-	}
-
-	return nullptr;
-}
-
-StringName EditorNode::get_object_custom_type_name(const Object *p_object) const {
-	ERR_FAIL_NULL_V(p_object, StringName());
-
-	Ref<Script> scr = p_object->get_script();
-	if (scr.is_null() && Object::cast_to<Script>(p_object)) {
-		scr = p_object;
-	}
-
-	if (scr.is_valid()) {
-		Ref<Script> base_scr = scr;
-		while (base_scr.is_valid()) {
-			StringName name = EditorNode::get_editor_data().script_class_get_name(base_scr->get_path());
-			if (name != StringName()) {
-				return name;
-			}
-
-			// TODO: Should probably be deprecated in 4.x.
-			StringName base = base_scr->get_instance_base_type();
-			if (base != StringName() && EditorNode::get_editor_data().get_custom_types().has(base)) {
-				const Vector<EditorData::CustomType> &types = EditorNode::get_editor_data().get_custom_types()[base];
-				for (int i = 0; i < types.size(); ++i) {
-					if (types[i].script == base_scr) {
-						return types[i].name;
-					}
-				}
-			}
-			base_scr = base_scr->get_base_script();
-		}
-	}
-
-	return StringName();
-}
-
 void EditorNode::_pick_main_scene_custom_action(const String &p_custom_action_name) {
 	if (p_custom_action_name == "select_current") {
 		Node *scene = editor_data.get_edited_scene_root();
@@ -5895,58 +5563,14 @@ void EditorNode::_pick_main_scene_custom_action(const String &p_custom_action_na
 	}
 }
 
-Ref<Texture2D> EditorNode::_get_class_or_script_icon(const String &p_class, const String &p_script_path, const String &p_fallback, bool p_fallback_script_to_theme, bool p_skip_fallback_virtual) {
+Ref<Texture2D> EditorNode::_get_class_icon(const String &p_class, const String &p_fallback, bool p_skip_fallback_virtual) {
 	ERR_FAIL_COND_V_MSG(p_class.is_empty(), nullptr, "Class name cannot be empty.");
 	EditorData &ed = EditorNode::get_editor_data();
-
-	// Check for a script icon first.
-	if (!p_script_path.is_empty()) {
-		Ref<Texture2D> script_icon = ed.get_script_icon(p_script_path);
-		if (script_icon.is_valid()) {
-			return script_icon;
-		}
-
-		if (p_fallback_script_to_theme) {
-			// Look for the native base type in the editor theme. This is relevant for
-			// scripts extending other scripts and for built-in classes.
-			String base_type;
-			if (ScriptServer::is_global_class(p_class)) {
-				base_type = ScriptServer::get_global_class_native_base(p_class);
-			} else {
-				Ref<Script> scr = ResourceLoader::load(p_script_path, "Script");
-				if (scr.is_valid()) {
-					base_type = scr->get_instance_base_type();
-				}
-			}
-			if (theme.is_valid()) {
-				bool instantiable = false;
-
-				// If the class doesn't exist or isn't global, then it's not instantiable
-				if (ClassDB::class_exists(p_class)) {
-					instantiable = !ClassDB::is_virtual(p_class) && ClassDB::can_instantiate(p_class);
-				} else if (ScriptServer::is_global_class(p_class)) {
-					instantiable = !ScriptServer::is_global_class_abstract(p_class);
-				}
-
-				return _get_class_or_script_icon(base_type, "", "", false, p_skip_fallback_virtual || instantiable);
-			}
-		}
-	}
-
-	// Script was not valid or didn't yield any useful values, try the class name
-	// directly.
 
 	// Check if the class name is an extension-defined type.
 	Ref<Texture2D> ext_icon = ed.extension_class_get_icon(p_class);
 	if (ext_icon.is_valid()) {
 		return ext_icon;
-	}
-
-	// Check if the class name is a custom type.
-	// TODO: Should probably be deprecated in 4.x
-	const EditorData::CustomType *ctype = ed.get_custom_type_by_name(p_class);
-	if (ctype && ctype->icon.is_valid()) {
-		return ctype->icon;
 	}
 
 	// Look up the class name or the fallback name in the editor theme.
@@ -5975,7 +5599,7 @@ Ref<Texture2D> EditorNode::_get_class_or_script_icon(const String &p_class, cons
 			StringName parent = ClassDB::get_parent_class_nocheck(p_class);
 			if (parent) {
 				// Skip virtual class if `p_skip_fallback_virtual` is true or `p_class` is instantiable.
-				return _get_class_or_script_icon(parent, "", "", false, true);
+				return _get_class_icon(parent, "", true);
 			}
 		}
 	}
@@ -5986,35 +5610,15 @@ Ref<Texture2D> EditorNode::_get_class_or_script_icon(const String &p_class, cons
 Ref<Texture2D> EditorNode::get_object_icon(const Object *p_object, const String &p_fallback) {
 	ERR_FAIL_NULL_V_MSG(p_object, nullptr, "Object cannot be null.");
 
-	Ref<Script> scr = p_object->get_script();
-
 	const EditorDebuggerRemoteObjects *robjs = Object::cast_to<EditorDebuggerRemoteObjects>(p_object);
 	if (robjs) {
-		String class_name;
-		if (scr.is_valid()) {
-			class_name = scr->get_global_name();
-
-			if (class_name.is_empty()) {
-				// If there is no class_name in this script we just take the script path.
-				class_name = scr->get_path();
-			}
-		}
-
-		if (class_name.is_empty()) {
-			return get_class_icon(robjs->type_name, p_fallback);
-		}
-
-		return get_class_icon(class_name, p_fallback);
-	}
-
-	if (scr.is_null() && p_object->is_class("Script")) {
-		scr = p_object;
+		return get_class_icon(robjs->type_name, p_fallback);
 	}
 
 	if (Object::cast_to<MultiNodeEdit>(p_object)) {
 		return get_class_icon(Object::cast_to<MultiNodeEdit>(p_object)->get_edited_class_name(), p_fallback);
 	} else {
-		return _get_class_or_script_icon(p_object->get_class(), scr.is_valid() ? scr->get_path() : String(), p_fallback);
+		return _get_class_icon(p_object->get_class(), p_fallback);
 	}
 }
 
@@ -6030,37 +5634,9 @@ Ref<Texture2D> EditorNode::get_class_icon(const String &p_class, const String &p
 		}
 	}
 
-	String script_path;
-	if (ScriptServer::is_global_class(p_class)) {
-		script_path = ScriptServer::get_global_class_path(p_class);
-	} else if (!p_class.get_extension().is_empty() && ResourceLoader::exists(p_class)) { // If the script is not a class_name we check if the script resource exists.
-		script_path = p_class;
-	}
-
-	Ref<Texture2D> icon = _get_class_or_script_icon(p_class, script_path, p_fallback, true);
+	Ref<Texture2D> icon = _get_class_icon(p_class, p_fallback);
 	class_icon_cache[key] = icon;
 	return icon;
-}
-
-bool EditorNode::is_object_of_custom_type(const Object *p_object, const StringName &p_class) {
-	ERR_FAIL_NULL_V(p_object, false);
-
-	Ref<Script> scr = p_object->get_script();
-	if (scr.is_null() && Object::cast_to<Script>(p_object)) {
-		scr = p_object;
-	}
-
-	if (scr.is_valid()) {
-		Ref<Script> base_script = scr;
-		while (base_script.is_valid()) {
-			StringName name = EditorNode::get_editor_data().script_class_get_name(base_script->get_path());
-			if (name == p_class) {
-				return true;
-			}
-			base_script = base_script->get_base_script();
-		}
-	}
-	return false;
 }
 
 // Used to track the progress of tasks in the CLI output (since we don't have any other frame of reference).
@@ -6357,13 +5933,6 @@ void EditorNode::_build_icon_type_cache() {
 		}
 		icon_type_cache[E] = theme->get_icon(E, EditorStringName(EditorIcons));
 	}
-}
-
-void EditorNode::_enable_pending_addons() {
-	for (uint32_t i = 0; i < pending_addons.size(); i++) {
-		set_addon_plugin_enabled(pending_addons[i], true);
-	}
-	pending_addons.clear();
 }
 
 void EditorNode::_file_dialog_register(FileDialog *p_dialog) {
@@ -6692,41 +6261,6 @@ bool EditorNode::validate_custom_directory() {
 	return true;
 }
 
-void EditorNode::run_editor_script(const Ref<Script> &p_script) {
-	Error err = p_script->reload(true); // Always hard reload the script before running.
-	if (err != OK || !p_script->is_script_valid()) {
-		EditorToaster::get_singleton()->popup_str(TTR("Cannot run the script because it contains errors, check the output log."), EditorToaster::SEVERITY_WARNING);
-		return;
-	}
-
-	// Perform additional checks on the script to evaluate if it's runnable.
-
-	bool is_runnable = true;
-	if (!ClassDB::is_parent_class(p_script->get_instance_base_type(), "EditorScript")) {
-		is_runnable = false;
-
-		EditorToaster::get_singleton()->popup_str(TTR("Cannot run the script because it doesn't extend EditorScript."), EditorToaster::SEVERITY_WARNING);
-	}
-	if (!p_script->is_tool()) {
-		is_runnable = false;
-
-		if (p_script->get_class() == "GDScript") {
-			EditorToaster::get_singleton()->popup_str(TTR("Cannot run the script because it's not a tool script (add the @tool annotation at the top)."), EditorToaster::SEVERITY_WARNING);
-		} else if (p_script->get_class() == "CSharpScript") {
-			EditorToaster::get_singleton()->popup_str(TTR("Cannot run the script because it's not a tool script (add the [Tool] attribute above the class definition)."), EditorToaster::SEVERITY_WARNING);
-		} else {
-			EditorToaster::get_singleton()->popup_str(TTR("Cannot run the script because it's not a tool script."), EditorToaster::SEVERITY_WARNING);
-		}
-	}
-	if (!is_runnable) {
-		return;
-	}
-
-	Ref<EditorScript> es = memnew(EditorScript);
-	es->set_script(p_script);
-	es->run();
-}
-
 void EditorNode::_immediate_dialog_confirmed() {
 	immediate_dialog_confirmed = true;
 }
@@ -6995,9 +6529,9 @@ void EditorNode::_prepare_save_confirmation_popup() {
 void EditorNode::_toggle_distraction_free_mode() {
 	if (EDITOR_GET("interface/editor/behavior/separate_distraction_mode")) {
 		Control *screen = editor_main_screen->get_current_tab_control();
-		if (screen == ScriptEditor::get_singleton()) {
-			script_distraction_free = !script_distraction_free;
-			set_distraction_free_mode(script_distraction_free);
+		if (screen == DocumentEditor::get_singleton()) {
+			document_distraction_free = !document_distraction_free;
+			set_distraction_free_mode(document_distraction_free);
 		} else {
 			scene_distraction_free = !scene_distraction_free;
 			set_distraction_free_mode(scene_distraction_free);
@@ -7012,8 +6546,8 @@ void EditorNode::update_distraction_free_mode() {
 		return;
 	}
 	Control *screen = editor_main_screen->get_current_tab_control();
-	if (screen == ScriptEditor::get_singleton()) {
-		set_distraction_free_mode(script_distraction_free);
+	if (screen == DocumentEditor::get_singleton()) {
+		set_distraction_free_mode(document_distraction_free);
 	} else {
 		set_distraction_free_mode(scene_distraction_free);
 	}
@@ -7245,7 +6779,7 @@ void EditorNode::_file_access_close_error_notify_impl(const String &p_str) {
 
 // Recursive function to inform nodes that an array of nodes have had their scene reimported.
 // It will attempt to call a method named '_nodes_scene_reimported' on every node in the
-// tree so that editor scripts which create transient nodes will have the opportunity
+// tree so that editor plugins which create transient nodes will have the opportunity
 // to recreate them.
 void EditorNode::_notify_nodes_scene_reimported(Node *p_node, Array p_reimported_nodes) {
 	Skeleton3D *skel_3d = Object::cast_to<Skeleton3D>(p_node);
@@ -8001,7 +7535,6 @@ void EditorNode::_feature_profile_changed() {
 		editor_dock_manager->set_dock_enabled(history_dock, !profile->is_feature_disabled(EditorFeatureProfile::FEATURE_HISTORY_DOCK));
 
 		editor_dock_manager->set_dock_enabled(Node3DEditor::get_singleton(), !profile->is_feature_disabled(EditorFeatureProfile::FEATURE_3D));
-		editor_dock_manager->set_dock_enabled(ScriptEditor::get_singleton(), !profile->is_feature_disabled(EditorFeatureProfile::FEATURE_SCRIPT));
 		if (!Engine::get_singleton()->is_recovery_mode_hint()) {
 			editor_dock_manager->set_dock_enabled(GameView::get_dock(), !profile->is_feature_disabled(EditorFeatureProfile::FEATURE_GAME));
 		}
@@ -8015,7 +7548,6 @@ void EditorNode::_feature_profile_changed() {
 		editor_dock_manager->set_dock_enabled(FileSystemDock::get_singleton(), true);
 		editor_dock_manager->set_dock_enabled(history_dock, true);
 		editor_dock_manager->set_dock_enabled(Node3DEditor::get_singleton(), true);
-		editor_dock_manager->set_dock_enabled(ScriptEditor::get_singleton(), true);
 		if (!Engine::get_singleton()->is_recovery_mode_hint() && GameView::get_dock()) {
 			editor_dock_manager->set_dock_enabled(GameView::get_dock(), true);
 		}
@@ -8037,7 +7569,6 @@ void EditorNode::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("update_node_reference", "value", "node", "remove"), &EditorNode::update_node_reference, DEFVAL(false));
 
 	ADD_SIGNAL(MethodInfo("request_help_search"));
-	ADD_SIGNAL(MethodInfo("script_add_function_request", PropertyInfo(Variant::OBJECT, "obj"), PropertyInfo(Variant::STRING, "function"), PropertyInfo(Variant::PACKED_STRING_ARRAY, "args")));
 	ADD_SIGNAL(MethodInfo("resource_saved", PropertyInfo(Variant::OBJECT, "obj")));
 	ADD_SIGNAL(MethodInfo("scene_saved", PropertyInfo(Variant::STRING, "path")));
 	ADD_SIGNAL(MethodInfo("scene_changed"));
@@ -8165,7 +7696,6 @@ void EditorNode::_build_file_menu(bool p_dark_mode) {
 
 	file_menu->add_icon_shortcut(get_editor_theme_native_menu_icon(SNAME("Load"), menu_type == MENU_TYPE_GLOBAL, p_dark_mode), ED_GET_SHORTCUT("editor/quick_open"), SCENE_QUICK_OPEN);
 	file_menu->add_shortcut(ED_GET_SHORTCUT("editor/quick_open_scene"), SCENE_QUICK_OPEN_SCENE);
-	file_menu->add_shortcut(ED_GET_SHORTCUT("editor/quick_open_script"), SCENE_QUICK_OPEN_SCRIPT);
 	file_menu->add_separator();
 
 	if (!export_as_menu) {
@@ -8541,9 +8071,6 @@ EditorNode::EditorNode() {
 #ifndef PHYSICS_2D_DISABLED
 		PhysicsServer2D::get_singleton()->set_active(false);
 #endif // PHYSICS_2D_DISABLED
-
-		// No scripting by default if in editor (except for tool).
-		ScriptServer::set_scripting_enabled(false);
 
 		if (!DisplayServer::get_singleton()->is_touchscreen_available()) {
 			// Only if no touchscreen ui hint, disable emulation just in case.
@@ -9129,7 +8656,7 @@ EditorNode::EditorNode() {
 
 	clear_cache_dialog = memnew(ConfirmationDialog);
 	clear_cache_dialog->set_autowrap(true);
-	clear_cache_dialog->set_text(TTRC("Clear all caches for the current project, including the cache for imported assets, exported assets, shaders, UIDs, scripts, and scene groups. New caches will be built upon restarting or exporting the project.\n\nNote that clearing the cache is almost always a workaround for a bug. If you can consistently reproduce the invalid cache or unexpected behavior that is solved by clearing the cache, please report this bug (\"Help > Report a Bug\") with reproduction steps."));
+	clear_cache_dialog->set_text(TTRC("Clear all caches for the current project, including the cache for imported assets, exported assets, shaders, UIDs, and scene groups. New caches will be built upon restarting or exporting the project.\n\nNote that clearing the cache is almost always a workaround for a bug. If you can consistently reproduce the invalid cache or unexpected behavior that is solved by clearing the cache, please report this bug (\"Help > Report a Bug\") with reproduction steps."));
 	clear_cache_dialog->set_ok_button_text(TTRC("Clear & Restart"));
 	clear_cache_dialog->get_label()->set_custom_minimum_size(Vector2(600 * EDSCALE, 0));
 	gui_base->add_child(clear_cache_dialog);
@@ -9156,7 +8683,6 @@ EditorNode::EditorNode() {
 	ED_SHORTCUT_ARRAY_AND_COMMAND("editor/quick_open", TTRC("Quick Open..."), { int32_t(KeyModifierMask::SHIFT + KeyModifierMask::ALT + Key::O), int32_t(KeyModifierMask::CMD_OR_CTRL + Key::P) });
 	ED_SHORTCUT_OVERRIDE_ARRAY("editor/quick_open", "macos", { int32_t(KeyModifierMask::META + KeyModifierMask::CTRL + Key::O), int32_t(KeyModifierMask::CMD_OR_CTRL + Key::P) });
 	ED_SHORTCUT_AND_COMMAND("editor/quick_open_scene", TTRC("Quick Open Scene..."), KeyModifierMask::CMD_OR_CTRL + KeyModifierMask::SHIFT + Key::O);
-	ED_SHORTCUT_AND_COMMAND("editor/quick_open_script", TTRC("Quick Open Script..."), KeyModifierMask::CMD_OR_CTRL + KeyModifierMask::ALT + Key::O);
 
 	ED_SHORTCUT("editor/export_as_mesh_library", TTRC("MeshLibrary..."));
 
@@ -9212,13 +8738,13 @@ EditorNode::EditorNode() {
 	// Use the Ctrl modifier so F2 can be used to rename nodes in the scene tree dock.
 	ED_SHORTCUT_AND_COMMAND("editor/editor_2d", TTRC("Open 2D Workspace"), KeyModifierMask::CTRL | Key::F1);
 	ED_SHORTCUT_AND_COMMAND("editor/editor_3d", TTRC("Open 3D Workspace"), KeyModifierMask::CTRL | Key::F2);
-	ED_SHORTCUT_AND_COMMAND("editor/editor_script", TTRC("Open Script Editor"), KeyModifierMask::CTRL | Key::F3);
+	ED_SHORTCUT_AND_COMMAND("editor/editor_docs", TTRC("Open Docs Editor"), KeyModifierMask::CTRL | Key::F3);
 	ED_SHORTCUT_AND_COMMAND("editor/editor_game", TTRC("Open Game View"), KeyModifierMask::CTRL | Key::F4);
 	ED_SHORTCUT_AND_COMMAND("editor/editor_asset_store", TTRC("Open Asset Store"), KeyModifierMask::CTRL | Key::F5);
 
 	ED_SHORTCUT_OVERRIDE("editor/editor_2d", "macos", KeyModifierMask::META | KeyModifierMask::CTRL | Key::KEY_1);
 	ED_SHORTCUT_OVERRIDE("editor/editor_3d", "macos", KeyModifierMask::META | KeyModifierMask::CTRL | Key::KEY_2);
-	ED_SHORTCUT_OVERRIDE("editor/editor_script", "macos", KeyModifierMask::META | KeyModifierMask::CTRL | Key::KEY_3);
+	ED_SHORTCUT_OVERRIDE("editor/editor_docs", "macos", KeyModifierMask::META | KeyModifierMask::CTRL | Key::KEY_3);
 	ED_SHORTCUT_OVERRIDE("editor/editor_game", "macos", KeyModifierMask::META | KeyModifierMask::CTRL | Key::KEY_4);
 	ED_SHORTCUT_OVERRIDE("editor/editor_asset_store", "macos", KeyModifierMask::META | KeyModifierMask::CTRL | Key::KEY_5);
 
@@ -9270,7 +8796,7 @@ EditorNode::EditorNode() {
 
 	_update_main_menu_type();
 
-	// Spacer to center 2D / 3D / Script buttons.
+	// Spacer to center 2D / 3D / Docs buttons.
 	left_spacer = memnew(HBoxContainer);
 	left_spacer->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	left_spacer->set_h_size_flags(Control::SIZE_EXPAND_FILL);
@@ -9286,7 +8812,7 @@ EditorNode::EditorNode() {
 	project_title->set_visible(can_expand && menu_type == MENU_TYPE_GLOBAL);
 	left_spacer->add_child(project_title);
 
-	// Spacer to center 2D / 3D / Script buttons.
+	// Spacer to center 2D / 3D / Docs buttons.
 	right_spacer = memnew(Control);
 	right_spacer->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	right_spacer->set_h_size_flags(Control::SIZE_EXPAND_FILL);
@@ -9561,7 +9087,7 @@ EditorNode::EditorNode() {
 
 	add_editor_plugin(memnew(CanvasItemEditorPlugin));
 	add_editor_plugin(memnew(Node3DEditorPlugin));
-	add_editor_plugin(memnew(ScriptEditorPlugin));
+	add_editor_plugin(memnew(DocumentEditorPlugin));
 
 	if (!Engine::get_singleton()->is_recovery_mode_hint()) {
 		add_editor_plugin(get_game_view_plugin());
@@ -9569,8 +9095,6 @@ EditorNode::EditorNode() {
 
 	EditorAudioBuses *audio_bus_editor = EditorAudioBuses::register_editor();
 
-	ScriptTextEditor::register_editor(); // Register one for text scripts.
-	TextEditor::register_editor();
 	ShaderTextEditor::register_editor();
 
 	if (AssetLibraryEditorPlugin::is_available()) {
@@ -9606,7 +9130,6 @@ EditorNode::EditorNode() {
 	resource_preview->add_preview_generator(Ref<EditorImagePreviewPlugin>(memnew(EditorImagePreviewPlugin)));
 	resource_preview->add_preview_generator(Ref<EditorPackedScenePreviewPlugin>(memnew(EditorPackedScenePreviewPlugin)));
 	resource_preview->add_preview_generator(Ref<EditorMaterialPreviewPlugin>(memnew(EditorMaterialPreviewPlugin)));
-	resource_preview->add_preview_generator(Ref<EditorScriptPreviewPlugin>(memnew(EditorScriptPreviewPlugin)));
 	resource_preview->add_preview_generator(Ref<EditorAudioStreamPreviewPlugin>(memnew(EditorAudioStreamPreviewPlugin)));
 	resource_preview->add_preview_generator(Ref<EditorMeshPreviewPlugin>(memnew(EditorMeshPreviewPlugin)));
 	resource_preview->add_preview_generator(Ref<EditorBitmapPreviewPlugin>(memnew(EditorBitmapPreviewPlugin)));
@@ -9829,7 +9352,7 @@ EditorNode::EditorNode() {
 	{
 		const String _2d_key = CanvasItemEditor::get_singleton()->get_effective_layout_key();
 		const String _3d_key = Node3DEditor::get_singleton()->get_effective_layout_key();
-		const String script_key = ScriptEditor::get_singleton()->get_effective_layout_key();
+		const String docs_key = DocumentEditor::get_singleton()->get_effective_layout_key();
 		String game_key;
 		if (GameView::get_dock()) {
 			game_key = GameView::get_dock()->get_effective_layout_key();
@@ -9838,7 +9361,7 @@ EditorNode::EditorNode() {
 		if (AssetLibraryEditorPlugin::get_library()) {
 			asset_lib_key = AssetLibraryEditorPlugin::get_library()->get_effective_layout_key();
 		}
-		default_layout->set_value(docks_section, DockTabContainer::get_config_key(EditorDock::DOCK_SLOT_MAIN_SCREEN), vformat("%s,%s,%s,%s,%s", _2d_key, _3d_key, script_key, game_key, asset_lib_key));
+		default_layout->set_value(docks_section, DockTabContainer::get_config_key(EditorDock::DOCK_SLOT_MAIN_SCREEN), vformat("%s,%s,%s,%s,%s", _2d_key, _3d_key, docs_key, game_key, asset_lib_key));
 	}
 
 	int hsplits[] = { 0, dock_hsize, -dock_hsize, 0 };
@@ -9872,9 +9395,6 @@ EditorNode::~EditorNode() {
 
 	remove_print_handler(&print_handler);
 	EditorHelp::cleanup_doc();
-#if defined(MODULE_GDSCRIPT_ENABLED) || defined(MODULE_MONO_ENABLED)
-	EditorHelpHighlighter::free_singleton();
-#endif
 	memdelete(editor_selection);
 	memdelete(editor_plugins_over);
 	memdelete(editor_plugins_force_over);

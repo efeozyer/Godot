@@ -38,7 +38,6 @@
 
 #include "core/config/engine.h"
 #include "core/debugger/engine_debugger.h"
-#include "core/debugger/script_debugger.h"
 #include "core/os/main_loop.h"
 #include "core/profiling/profiling.h"
 #include "core/version_generated.gen.h"
@@ -231,27 +230,9 @@ bool OS_Windows::is_using_con_wrapper() const {
 	return found_conwrap_exe;
 }
 
-BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
-	if (!EngineDebugger::is_active()) {
-		return FALSE;
-	}
-
-	switch (dwCtrlType) {
-		case CTRL_C_EVENT:
-			EngineDebugger::get_script_debugger()->set_depth(-1);
-			EngineDebugger::get_script_debugger()->set_lines_left(1);
-			return TRUE;
-		default:
-			return FALSE;
-	}
-}
 
 void OS_Windows::alert(const String &p_alert, const String &p_title) {
 	MessageBoxW(nullptr, (LPCWSTR)(p_alert.utf16().get_data()), (LPCWSTR)(p_title.utf16().get_data()), MB_OK | MB_ICONEXCLAMATION | MB_TASKMODAL);
-}
-
-void OS_Windows::initialize_debugging() {
-	SetConsoleCtrlHandler(HandlerRoutine, TRUE);
 }
 
 #ifdef WINDOWS_DEBUG_OUTPUT_ENABLED

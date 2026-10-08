@@ -129,6 +129,8 @@
 			[b]Note:[/b] The mesh must have both normals and tangents defined in its vertex data. Otherwise, the shading produced by the bent normal map will not look correct. If creating geometry with [SurfaceTool], you can use [method SurfaceTool.generate_normals] and [method SurfaceTool.generate_tangents] to automatically generate normals and tangents respectively.
 			[b]Note:[/b] Godot expects the bent normal map to use X+, Y+, and Z+ coordinates. See [url=http://wiki.polycount.com/wiki/Normal_Map_Technical_Details#Common_Swizzle_Coordinates]this page[/url] for a comparison of normal map coordinates expected by popular engines.
 		</member>
+		<member name="billboard_camera_offset" type="float" setter="set_billboard_camera_offset" getter="get_billboard_camera_offset" default="0.0">
+		</member>
 		<member name="billboard_keep_scale" type="bool" setter="set_flag" getter="get_flag" default="false">
 			If [code]true[/code], the shader will keep the scale set for the mesh. Otherwise, the scale is lost when billboarding. Only applies when [member billboard_mode] is not [constant BILLBOARD_DISABLED].
 		</member>
@@ -136,9 +138,13 @@
 			Controls how the object faces the camera.
 			[b]Note:[/b] Billboard mode is not suitable for VR because the left-right vector of the camera is not horizontal when the screen is attached to your head instead of on the table. See [url=https://github.com/godotengine/godot/issues/41567]GitHub issue #41567[/url] for details.
 		</member>
+		<member name="blend_dst_factor" type="int" setter="set_blend_dst_factor" getter="get_blend_dst_factor" enum="BaseMaterial3D.BlendFactor">
+		</member>
 		<member name="blend_mode" type="int" setter="set_blend_mode" getter="get_blend_mode" enum="BaseMaterial3D.BlendMode" default="0">
 			The material's blend mode.
 			[b]Note:[/b] Values other than [code]Mix[/code] force the object into the transparent pipeline.
+		</member>
+		<member name="blend_src_factor" type="int" setter="set_blend_src_factor" getter="get_blend_src_factor" enum="BaseMaterial3D.BlendFactor">
 		</member>
 		<member name="clearcoat" type="float" setter="set_clearcoat" getter="get_clearcoat" default="1.0">
 			Sets the strength of the clearcoat effect. Setting to [code]0[/code] looks the same as disabling the clearcoat effect.
@@ -674,6 +680,20 @@
 		</constant>
 		<constant name="BLEND_MODE_PREMULT_ALPHA" value="4" enum="BlendMode">
 			The color of the object is added to the background and the alpha channel is used to mask out the background. This is effectively a hybrid of the blend mix and add modes, useful for effects like fire where you want the flame to add but the smoke to mix. By default, this works with unshaded materials using premultiplied textures. For shaded materials, use the [code]PREMUL_ALPHA_FACTOR[/code] built-in so that lighting can be modulated as well.
+		</constant>
+		<constant name="BLEND_MODE_CUSTOM" value="5" enum="BlendMode">
+		</constant>
+		<constant name="BLEND_FACTOR_ZERO" value="0" enum="BlendFactor">
+		</constant>
+		<constant name="BLEND_FACTOR_ONE" value="1" enum="BlendFactor">
+		</constant>
+		<constant name="BLEND_FACTOR_SRC_COLOR" value="2" enum="BlendFactor">
+		</constant>
+		<constant name="BLEND_FACTOR_INV_SRC_COLOR" value="3" enum="BlendFactor">
+		</constant>
+		<constant name="BLEND_FACTOR_SRC_ALPHA" value="4" enum="BlendFactor">
+		</constant>
+		<constant name="BLEND_FACTOR_INV_SRC_ALPHA" value="5" enum="BlendFactor">
 		</constant>
 		<constant name="ALPHA_ANTIALIASING_OFF" value="0" enum="AlphaAntiAliasing">
 			Disables Alpha AntiAliasing for the material.

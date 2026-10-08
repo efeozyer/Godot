@@ -95,7 +95,7 @@ protected:
 	void _send_rpc(Node *p_from, int p_to, uint16_t p_rpc_id, const RPCConfig &p_config, const StringName &p_name, const Variant **p_arg, int p_argcount);
 	Node *_process_get_node(int p_from, const uint8_t *p_packet, uint32_t p_node_target, int p_packet_len);
 
-	void _parse_rpc_config(const Variant &p_config, bool p_for_node, RPCConfigCache &r_cache);
+	void _parse_rpc_config(const Variant &p_config, RPCConfigCache &r_cache);
 	const RPCConfigCache &_get_node_config(const Node *p_node);
 
 public:

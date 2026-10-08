@@ -32,7 +32,6 @@
 
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "scene/resources/packed_scene.h"
 
 void PackedSceneEditorTranslationParserPlugin::get_recognized_extensions(List<String> *r_extensions) const {
@@ -222,19 +221,8 @@ Error PackedSceneEditorTranslationParserPlugin::parse_file(const String &p_path,
 			}
 
 			Variant property_value = state->get_node_property_value(i, j);
-			if (property_name == "script" && property_value.get_type() == Variant::OBJECT && !property_value.is_null()) {
-				// Parse built-in script.
-				Ref<Script> s = Object::cast_to<Script>(property_value);
-				if (s.is_null() || !s->is_built_in()) {
-					continue;
-				}
-
-				String extension = s->get_language()->get_extension();
-				if (EditorTranslationParser::get_singleton()->can_parse(extension)) {
-					EditorTranslationParser::get_singleton()->get_parser(extension)->parse_file(s->get_path(), r_translations);
-				}
-			} else if ((node_type == "FileDialog" || node_type == "EditorFileDialog") && property_name == "filters") {
-				// Extract FileDialog's filters property with values in format "*.png ; PNG Images","*.gd ; GDScript Files".
+			if ((node_type == "FileDialog" || node_type == "EditorFileDialog") && property_name == "filters") {
+				// Extract FileDialog's filters property with values in format "*.png ; PNG Images","*.txt ; Text Files".
 				Vector<String> str_values = property_value;
 				for (int k = 0; k < str_values.size(); k++) {
 					String desc = str_values[k].get_slicec(';', 1).strip_edges();
@@ -282,7 +270,6 @@ PackedSceneEditorTranslationParserPlugin::PackedSceneEditorTranslationParserPlug
 	lookup_properties.insert("popup/*/text");
 	lookup_properties.insert("title");
 	lookup_properties.insert("filters");
-	lookup_properties.insert("script");
 	lookup_properties.insert("item_*/text");
 	lookup_properties.insert("accessibility_name");
 	lookup_properties.insert("accessibility_description");

@@ -80,8 +80,6 @@ public:
 	FindBar();
 };
 
-class EditorFileSystemDirectory;
-
 class EditorHelp : public VBoxContainer {
 	GDCLASS(EditorHelp, VBoxContainer);
 
@@ -187,23 +185,11 @@ class EditorHelp : public VBoxContainer {
 	inline static int doc_generation_count = 0;
 	inline static String doc_version_hash;
 	inline static Thread worker_thread;
-	inline static Thread loader_thread; // Only load scripts here to avoid deadlocking with main thread.
-
-	inline static SafeFlag _script_docs_loaded = SafeFlag(false);
-	inline static LocalVector<DocData::ClassDoc> _docs_to_add;
-	inline static LocalVector<String> _docs_to_remove;
-	inline static LocalVector<String> _docs_to_remove_by_path;
 
 	static void _wait_for_thread(Thread &p_thread = worker_thread);
 	static void _load_doc_thread(void *p_udata);
 	static void _gen_doc_thread(void *p_udata);
 	static void _gen_extensions_docs();
-	static void _process_postponed_docs();
-	static void _load_script_doc_cache_thread(void *p_udata);
-	static void _regen_script_doc_thread(void *p_udata);
-	static void _finish_regen_script_doc_thread(void *p_udata);
-	static void _reload_scripts_documentation(EditorFileSystemDirectory *p_dir);
-	static void _delete_script_doc_cache();
 	static void _compute_doc_version_hash();
 
 	struct PropertyCompare {
@@ -223,22 +209,15 @@ protected:
 	static void _bind_methods();
 
 public:
-	static void generate_doc(bool p_use_cache = true, bool p_use_script_cache = true);
+	static void generate_doc(bool p_use_cache = true);
 	static void cleanup_doc();
-	static void load_script_doc_cache();
-	static void regenerate_script_doc_cache();
-	static void save_script_doc_cache();
 	static String get_cache_full_path();
-	static String get_script_doc_cache_full_path();
 
-	// Adding scripts to DocData directly may make script doc cache inconsistent. Use methods below when adding script docs.
-	// Usage during startup can also cause deadlocks.
+	// Usage during startup can cause deadlocks.
 	static DocTools *get_doc_data();
-	// Method forwarding to underlying DocTools to keep script doc cache consistent.
 	static DocData::ClassDoc *get_doc(const String &p_class_name);
 	static void add_doc(const DocData::ClassDoc &p_class_doc);
 	static void remove_doc(const String &p_class_name);
-	static void remove_script_doc_by_path(const String &p_path);
 	static bool has_doc(const String &p_class_name);
 
 	static void load_xml_buffer(const uint8_t *p_buffer, int p_size);
@@ -246,7 +225,6 @@ public:
 
 	void go_to_help(const String &p_help);
 	void go_to_class(const String &p_class);
-	void update_doc();
 	void trigger_history_save_on_navigate();
 	Dictionary get_state();
 
@@ -297,7 +275,6 @@ class EditorHelpBit : public VBoxContainer {
 		DocType doc_type;
 		String value;
 		Vector<ArgumentData> arguments;
-		ArgumentData rest_argument;
 		String qualifiers;
 		String resource_path;
 	};
@@ -408,39 +385,4 @@ public:
 	bool is_shortcut_pressed() const { return _is_shortcut_pressed; }
 
 	EditorHelpBitTooltip(Control *p_target, bool p_shortcut = false);
-};
-
-class EditorSyntaxHighlighter;
-
-class EditorHelpHighlighter {
-public:
-	enum Language {
-		LANGUAGE_GDSCRIPT,
-		LANGUAGE_CSHARP,
-		LANGUAGE_MAX,
-	};
-
-private:
-	using HighlightData = Vector<Pair<int, Color>>;
-
-	static EditorHelpHighlighter *singleton;
-
-	HashMap<String, HighlightData> highlight_data_caches[LANGUAGE_MAX];
-
-	TextEdit *text_edits[LANGUAGE_MAX];
-	Ref<Script> scripts[LANGUAGE_MAX];
-	Ref<EditorSyntaxHighlighter> highlighters[LANGUAGE_MAX];
-
-	HighlightData _get_highlight_data(Language p_language, const String &p_source, bool p_use_cache);
-
-public:
-	static void create_singleton();
-	static void free_singleton();
-	static EditorHelpHighlighter *get_singleton();
-
-	void highlight(RichTextLabel *p_rich_text_label, Language p_language, const String &p_source, bool p_use_cache);
-	void clear_cache();
-
-	EditorHelpHighlighter();
-	virtual ~EditorHelpHighlighter();
 };

@@ -31,7 +31,6 @@
 #include "crash_handler_windows.h"
 
 #include "core/config/project_settings.h"
-#include "core/object/script_language.h"
 #include "core/os/main_loop.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
@@ -246,14 +245,6 @@ DWORD CrashHandlerException(EXCEPTION_POINTERS *ep) {
 	print_error("================================================================");
 
 	SymCleanup(process);
-
-	for (const Ref<ScriptBacktrace> &backtrace : ScriptServer::capture_script_backtraces(false)) {
-		if (!backtrace->is_empty()) {
-			print_error(backtrace->format());
-			print_error(vformat("-- END OF %s BACKTRACE --", backtrace->get_language_name().to_upper()));
-			print_error("================================================================");
-		}
-	}
 
 	// Pass the exception to the OS
 	return EXCEPTION_CONTINUE_SEARCH;

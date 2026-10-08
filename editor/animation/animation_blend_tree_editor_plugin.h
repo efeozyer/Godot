@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "core/object/script_language.h"
 #include "editor/animation/animation_tree_editor_plugin.h"
 #include "editor/inspector/editor_inspector.h"
 #include "scene/animation/animation_blend_tree.h"
@@ -78,7 +77,6 @@ class AnimationNodeBlendTreeEditor : public AnimationTreeNodeEditorPlugin {
 	struct AddOption {
 		String name;
 		String type;
-		Ref<Script> script;
 		int input_port_count;
 		AddOption(const String &p_name = String(), const String &p_type = String(), int p_input_port_count = 0) :
 				name(p_name),
@@ -158,8 +156,6 @@ protected:
 public:
 	static AnimationNodeBlendTreeEditor *get_singleton() { return singleton; }
 
-	void add_custom_type(const String &p_name, const Ref<Script> &p_script);
-	void remove_custom_type(const Ref<Script> &p_script);
 
 	virtual Size2 get_minimum_size() const override;
 

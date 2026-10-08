@@ -136,7 +136,7 @@ private:
 	enum Runlevel {
 		RUNLEVEL_NORMAL,
 		RUNLEVEL_PRE_EXIT_LANGUAGES, // Block adding new tasks
-		RUNLEVEL_EXIT_LANGUAGES, // All threads detach from scripting threads.
+		RUNLEVEL_EXIT_LANGUAGES, // All threads are idle and adding tasks blocks.
 		RUNLEVEL_EXIT,
 	} runlevel = RUNLEVEL_NORMAL;
 	union { // Cleared on every runlevel change.

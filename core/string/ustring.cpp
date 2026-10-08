@@ -5189,7 +5189,7 @@ String String::lpad(int p_min_length, const String &p_character) const {
 	return s;
 }
 
-// sprintf is implemented in GDScript via:
+// sprintf is used via the `%` operator:
 //   "fish %s pie" % "frog"
 //   "fish %s %d pie" % ["frog", 12]
 // In case of an error, the string returned is the error description and "error" is true.

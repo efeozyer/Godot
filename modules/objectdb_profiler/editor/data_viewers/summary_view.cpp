@@ -114,11 +114,6 @@ void SnapshotSummaryView::show_snapshot(GameStateSnapshot *p_data, GameStateSnap
 	if (diff_data) {
 		_push_refcounted_blurb(snapshot_b_name + " " + TTR("RefCounteds"), diff_data);
 	}
-
-	_push_object_blurb(snapshot_a_name + " " + TTR("Objects"), snapshot_data);
-	if (diff_data) {
-		_push_object_blurb(snapshot_b_name + " " + TTR("Objects"), diff_data);
-	}
 }
 
 void SnapshotSummaryView::clear_snapshot() {
@@ -237,36 +232,6 @@ void SnapshotSummaryView::_push_refcounted_blurb(const String &p_title, GameStat
 	c += "[ul]\n";
 	for (const String &rc : rcs) {
 		c += " " + rc + "\n";
-	}
-	c += "[/ul]\n";
-
-	blurb_list->add_child(memnew(SummaryBlurb(p_title, c)));
-}
-
-void SnapshotSummaryView::_push_object_blurb(const String &p_title, GameStateSnapshot *p_snapshot) {
-	LocalVector<String> objects;
-	objects.reserve(p_snapshot->objects.size());
-
-	for (const KeyValue<ObjectID, SnapshotDataObject *> &pair : p_snapshot->objects) {
-		if (pair.value->inbound_references.is_empty() && pair.value->outbound_references.is_empty()) {
-			if (!pair.value->get_script().is_null()) {
-				// This blurb will have a lot of false positives, but we can at least suppress false positives
-				// from unreferenced nodes that are part of the scene tree.
-				if (pair.value->is_node() && (bool)pair.value->extra_debug_data["node_is_scene_root"]) {
-					objects.push_back(pair.value->get_name());
-				}
-			}
-		}
-	}
-
-	if (objects.is_empty()) {
-		return;
-	}
-
-	String c = TTR("Scripted objects not referenced by any other objects [i](unreferenced objects may indicate a memory leak)[/i]") + "\n";
-	c += "[ul]\n";
-	for (const String &object : objects) {
-		c += " " + object + "\n";
 	}
 	c += "[/ul]\n";
 

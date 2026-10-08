@@ -111,7 +111,7 @@ public:
 	Dictionary recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_deep_subresources_mode, int p_recursion_count) const;
 
 	void set_typed(const ContainerType &p_key_type, const ContainerType &p_value_type);
-	void set_typed(uint32_t p_key_type, const StringName &p_key_class_name, const Variant &p_key_script, uint32_t p_value_type, const StringName &p_value_class_name, const Variant &p_value_script);
+	void set_typed(uint32_t p_key_type, const StringName &p_key_class_name, uint32_t p_value_type, const StringName &p_value_class_name);
 
 	bool is_typed() const;
 	bool is_typed_key() const;
@@ -127,8 +127,6 @@ public:
 	uint32_t get_typed_value_builtin() const;
 	StringName get_typed_key_class_name() const;
 	StringName get_typed_value_class_name() const;
-	Variant get_typed_key_script() const;
-	Variant get_typed_value_script() const;
 	const ContainerTypeValidate &get_key_validator() const;
 	const ContainerTypeValidate &get_value_validator() const;
 
@@ -138,7 +136,7 @@ public:
 	const void *id() const;
 
 	Dictionary(const Dictionary &p_base, const ContainerType &p_key_type, const ContainerType &p_value_type);
-	Dictionary(const Dictionary &p_base, uint32_t p_key_type, const StringName &p_key_class_name, const Variant &p_key_script, uint32_t p_value_type, const StringName &p_value_class_name, const Variant &p_value_script);
+	Dictionary(const Dictionary &p_base, uint32_t p_key_type, const StringName &p_key_class_name, uint32_t p_value_type, const StringName &p_value_class_name);
 	Dictionary(const Dictionary &p_from);
 	Dictionary(std::initializer_list<KeyValue<Variant, Variant>> p_init);
 	Dictionary();

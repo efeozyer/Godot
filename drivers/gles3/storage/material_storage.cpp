@@ -3038,6 +3038,14 @@ void SceneShaderData::set_code(const String &p_code) {
 	actions.render_mode_values["blend_mul"] = Pair<int *, int>(&blend_modei, BLEND_MODE_MUL);
 	actions.render_mode_values["blend_premul_alpha"] = Pair<int *, int>(&blend_modei, BLEND_MODE_PREMULT_ALPHA);
 
+	int blend_srci = -1;
+	int blend_dsti = -1;
+	static const char *custom_blend_factor_names[] = { "zero", "one", "src_color", "inv_src_color", "src_alpha", "inv_src_alpha" };
+	for (int i = 0; i < 6; i++) {
+		actions.render_mode_values[String("blend_src_") + custom_blend_factor_names[i]] = Pair<int *, int>(&blend_srci, i);
+		actions.render_mode_values[String("blend_dst_") + custom_blend_factor_names[i]] = Pair<int *, int>(&blend_dsti, i);
+	}
+
 	actions.render_mode_values["alpha_to_coverage"] = Pair<int *, int>(&alpha_antialiasing_modei, ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE);
 	actions.render_mode_values["alpha_to_coverage_and_one"] = Pair<int *, int>(&alpha_antialiasing_modei, ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE_AND_TO_ONE);
 
@@ -3207,7 +3215,14 @@ void SceneShaderData::set_code(const String &p_code) {
 		blend_mode = BLEND_MODE_ALPHA_TO_COVERAGE;
 	}
 
-	if (blend_mode == BLEND_MODE_ADD || blend_mode == BLEND_MODE_SUB || blend_mode == BLEND_MODE_MUL) {
+	if (blend_srci >= 0 || blend_dsti >= 0) {
+		blend_mode = BLEND_MODE_CUSTOM;
+		// A factor left unset keeps the regular alpha blending value.
+		blend_src = blend_srci < 0 ? 4 : blend_srci;
+		blend_dst = blend_dsti < 0 ? 5 : blend_dsti;
+	}
+
+	if (blend_mode == BLEND_MODE_ADD || blend_mode == BLEND_MODE_SUB || blend_mode == BLEND_MODE_MUL || blend_mode == BLEND_MODE_CUSTOM) {
 		uses_blend_alpha = true; // Force alpha used because of blend.
 	}
 

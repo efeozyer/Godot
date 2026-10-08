@@ -72,8 +72,4 @@ bool MainLoop::process(double p_time) {
 
 void MainLoop::finalize() {
 	GDVIRTUAL_CALL(_finalize);
-
-	if (get_script_instance()) {
-		set_script(Variant()); //clear script
-	}
 }

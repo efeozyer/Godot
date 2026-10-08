@@ -593,6 +593,7 @@ void BaseMaterial3D::init_shaders() {
 	shader_names->heightmap_flip = "heightmap_flip";
 
 	shader_names->grow = "grow";
+	shader_names->billboard_camera_offset = "billboard_camera_offset";
 
 	shader_names->ao_light_affect = "ao_light_affect";
 
@@ -765,6 +766,10 @@ void BaseMaterial3D::_update_shader() {
 		case BLEND_MODE_PREMULT_ALPHA:
 			code += "blend_premul_alpha";
 			break;
+		case BLEND_MODE_CUSTOM: {
+			static const char *blend_factor_names[BLEND_FACTOR_MAX] = { "zero", "one", "src_color", "inv_src_color", "src_alpha", "inv_src_alpha" };
+			code += vformat("blend_src_%s, blend_dst_%s", blend_factor_names[blend_src_factor], blend_factor_names[blend_dst_factor]);
+		} break;
 		case BLEND_MODE_MAX:
 			break; // Internal value, skip.
 	}
@@ -949,6 +954,10 @@ uniform sampler2D texture_albedo : source_color, %s;
 
 	if (grow_enabled) {
 		code += "uniform float grow : hint_range(-16.0, 16.0, 0.001);\n";
+	}
+
+	if (billboard_mode != BILLBOARD_DISABLED) {
+		code += "uniform float billboard_camera_offset;\n";
 	}
 
 	if (proximity_fade_enabled) {
@@ -1317,6 +1326,17 @@ void vertex() {)";
 		} break;
 		case BILLBOARD_MAX:
 			break; // Internal value, skip.
+	}
+
+	if (billboard_mode != BILLBOARD_DISABLED) {
+		// Moves the billboard towards the camera, never past the camera itself.
+		code += R"(
+	// Billboard Camera Offset
+	float billboard_camera_distance = length(MODELVIEW_MATRIX[3].xyz);
+	if (billboard_camera_distance > 0.0001) {
+		MODELVIEW_MATRIX[3].xyz -= (MODELVIEW_MATRIX[3].xyz / billboard_camera_distance) * min(billboard_camera_offset, billboard_camera_distance);
+	}
+)";
 	}
 
 	// Handle animation.
@@ -2038,6 +2058,7 @@ void fragment() {)";
 				// but there are only 5 bits left, so I'm going to leave this disabled unless it's actually requested.
 				//code += "\tvec3 detail = (1.0-detail_tex.a)*ALBEDO.rgb+detail_tex.rgb;\n";
 			} break;
+			case BLEND_MODE_CUSTOM:
 			case BLEND_MODE_MAX:
 				break; // Internal value, skip.
 		}
@@ -2365,6 +2386,35 @@ void BaseMaterial3D::set_blend_mode(BlendMode p_mode) {
 
 	blend_mode = p_mode;
 	_queue_shader_change();
+	notify_property_list_changed();
+}
+
+void BaseMaterial3D::set_blend_src_factor(BlendFactor p_factor) {
+	ERR_FAIL_INDEX(p_factor, BLEND_FACTOR_MAX);
+	if (blend_src_factor == p_factor) {
+		return;
+	}
+
+	blend_src_factor = p_factor;
+	_queue_shader_change();
+}
+
+BaseMaterial3D::BlendFactor BaseMaterial3D::get_blend_src_factor() const {
+	return blend_src_factor;
+}
+
+void BaseMaterial3D::set_blend_dst_factor(BlendFactor p_factor) {
+	ERR_FAIL_INDEX(p_factor, BLEND_FACTOR_MAX);
+	if (blend_dst_factor == p_factor) {
+		return;
+	}
+
+	blend_dst_factor = p_factor;
+	_queue_shader_change();
+}
+
+BaseMaterial3D::BlendFactor BaseMaterial3D::get_blend_dst_factor() const {
+	return blend_dst_factor;
 }
 
 BaseMaterial3D::BlendMode BaseMaterial3D::get_blend_mode() const {
@@ -2592,7 +2642,7 @@ void BaseMaterial3D::_validate_property(PropertyInfo &p_property) const {
 #endif
 
 	if (Engine::get_singleton()->is_editor_hint()) {
-		if (p_property.name == "billboard_keep_scale" && billboard_mode == BILLBOARD_DISABLED) {
+		if ((p_property.name == "billboard_keep_scale" || p_property.name == "billboard_camera_offset") && billboard_mode == BILLBOARD_DISABLED) {
 			p_property.usage = PROPERTY_USAGE_NO_EDITOR;
 		}
 
@@ -2662,6 +2712,10 @@ void BaseMaterial3D::_validate_property(PropertyInfo &p_property) const {
 	}
 
 	if (p_property.name == "blend_mode" && alpha_aa_enabled) {
+		p_property.usage = PROPERTY_USAGE_NONE;
+	}
+
+	if ((p_property.name == "blend_src_factor" || p_property.name == "blend_dst_factor") && (blend_mode != BLEND_MODE_CUSTOM || alpha_aa_enabled)) {
 		p_property.usage = PROPERTY_USAGE_NONE;
 	}
 
@@ -2955,6 +3009,15 @@ void BaseMaterial3D::set_grow(float p_grow) {
 
 float BaseMaterial3D::get_grow() const {
 	return grow;
+}
+
+void BaseMaterial3D::set_billboard_camera_offset(float p_offset) {
+	billboard_camera_offset = p_offset;
+	_material_set_param(shader_names->billboard_camera_offset, p_offset);
+}
+
+float BaseMaterial3D::get_billboard_camera_offset() const {
+	return billboard_camera_offset;
 }
 
 static Vector4 _get_texture_mask(BaseMaterial3D::TextureChannel p_channel) {
@@ -3443,6 +3506,12 @@ void BaseMaterial3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_blend_mode", "blend_mode"), &BaseMaterial3D::set_blend_mode);
 	ClassDB::bind_method(D_METHOD("get_blend_mode"), &BaseMaterial3D::get_blend_mode);
 
+	ClassDB::bind_method(D_METHOD("set_blend_src_factor", "factor"), &BaseMaterial3D::set_blend_src_factor);
+	ClassDB::bind_method(D_METHOD("get_blend_src_factor"), &BaseMaterial3D::get_blend_src_factor);
+
+	ClassDB::bind_method(D_METHOD("set_blend_dst_factor", "factor"), &BaseMaterial3D::set_blend_dst_factor);
+	ClassDB::bind_method(D_METHOD("get_blend_dst_factor"), &BaseMaterial3D::get_blend_dst_factor);
+
 	ClassDB::bind_method(D_METHOD("set_depth_draw_mode", "depth_draw_mode"), &BaseMaterial3D::set_depth_draw_mode);
 	ClassDB::bind_method(D_METHOD("get_depth_draw_mode"), &BaseMaterial3D::get_depth_draw_mode);
 
@@ -3520,6 +3589,9 @@ void BaseMaterial3D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_grow", "amount"), &BaseMaterial3D::set_grow);
 	ClassDB::bind_method(D_METHOD("get_grow"), &BaseMaterial3D::get_grow);
+
+	ClassDB::bind_method(D_METHOD("set_billboard_camera_offset", "offset"), &BaseMaterial3D::set_billboard_camera_offset);
+	ClassDB::bind_method(D_METHOD("get_billboard_camera_offset"), &BaseMaterial3D::get_billboard_camera_offset);
 
 	ClassDB::bind_method(D_METHOD("set_emission_operator", "operator"), &BaseMaterial3D::set_emission_operator);
 	ClassDB::bind_method(D_METHOD("get_emission_operator"), &BaseMaterial3D::get_emission_operator);
@@ -3599,7 +3671,9 @@ void BaseMaterial3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "alpha_hash_scale", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_alpha_hash_scale", "get_alpha_hash_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "alpha_antialiasing_mode", PROPERTY_HINT_ENUM, "Disabled,Alpha Edge Blend,Alpha Edge Clip"), "set_alpha_antialiasing", "get_alpha_antialiasing");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "alpha_antialiasing_edge", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_alpha_antialiasing_edge", "get_alpha_antialiasing_edge");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "blend_mode", PROPERTY_HINT_ENUM, "Mix,Add,Subtract,Multiply,Premultiplied Alpha"), "set_blend_mode", "get_blend_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "blend_mode", PROPERTY_HINT_ENUM, "Mix,Add,Subtract,Multiply,Premultiplied Alpha,Custom"), "set_blend_mode", "get_blend_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "blend_src_factor", PROPERTY_HINT_ENUM, "Zero,One,Source Color,Inverse Source Color,Source Alpha,Inverse Source Alpha"), "set_blend_src_factor", "get_blend_src_factor");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "blend_dst_factor", PROPERTY_HINT_ENUM, "Zero,One,Source Color,Inverse Source Color,Source Alpha,Inverse Source Alpha"), "set_blend_dst_factor", "get_blend_dst_factor");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cull_mode", PROPERTY_HINT_ENUM, "Back,Front,Disabled"), "set_cull_mode", "get_cull_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "depth_draw_mode", PROPERTY_HINT_ENUM, "Opaque Only,Always,Never"), "set_depth_draw_mode", "get_depth_draw_mode");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "no_depth_test"), "set_flag", "get_flag", FLAG_DISABLE_DEPTH_TEST);
@@ -3748,6 +3822,7 @@ void BaseMaterial3D::_bind_methods() {
 	ADD_GROUP("Billboard", "billboard_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "billboard_mode", PROPERTY_HINT_ENUM, "Disabled,Enabled,Y-Billboard,Particle Billboard"), "set_billboard_mode", "get_billboard_mode");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "billboard_keep_scale"), "set_flag", "get_flag", FLAG_BILLBOARD_KEEP_SCALE);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "billboard_camera_offset", PROPERTY_HINT_RANGE, "-16,16,0.001,or_less,or_greater,suffix:m"), "set_billboard_camera_offset", "get_billboard_camera_offset");
 
 	ADD_GROUP("Particles Anim", "particles_anim_");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "particles_anim_enabled", PROPERTY_HINT_GROUP_ENABLE), "set_feature", "get_feature", FEATURE_PARTICLES_ANIMATION);
@@ -3856,6 +3931,14 @@ void BaseMaterial3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(BLEND_MODE_SUB);
 	BIND_ENUM_CONSTANT(BLEND_MODE_MUL);
 	BIND_ENUM_CONSTANT(BLEND_MODE_PREMULT_ALPHA);
+	BIND_ENUM_CONSTANT(BLEND_MODE_CUSTOM);
+
+	BIND_ENUM_CONSTANT(BLEND_FACTOR_ZERO);
+	BIND_ENUM_CONSTANT(BLEND_FACTOR_ONE);
+	BIND_ENUM_CONSTANT(BLEND_FACTOR_SRC_COLOR);
+	BIND_ENUM_CONSTANT(BLEND_FACTOR_INV_SRC_COLOR);
+	BIND_ENUM_CONSTANT(BLEND_FACTOR_SRC_ALPHA);
+	BIND_ENUM_CONSTANT(BLEND_FACTOR_INV_SRC_ALPHA);
 
 	BIND_ENUM_CONSTANT(ALPHA_ANTIALIASING_OFF);
 	BIND_ENUM_CONSTANT(ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE);
@@ -4000,6 +4083,7 @@ BaseMaterial3D::BaseMaterial3D(bool p_orm) :
 	set_refraction_texture_channel(TEXTURE_CHANNEL_RED);
 
 	set_grow(0.0);
+	set_billboard_camera_offset(0.0);
 
 	set_msdf_pixel_range(4.0);
 	set_msdf_outline_size(0.0);

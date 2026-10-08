@@ -110,7 +110,6 @@ public:
 	};
 
 private:
-	Label *connect_to_label = nullptr;
 	LineEdit *from_signal = nullptr;
 	LineEdit *filter_nodes = nullptr;
 	Object *source = nullptr;
@@ -131,7 +130,6 @@ private:
 	Tree *method_tree = nullptr;
 	Label *empty_tree_label = nullptr;
 	LineEdit *method_search = nullptr;
-	CheckButton *script_methods_only = nullptr;
 	CheckButton *compatible_methods_only = nullptr;
 
 	SpinBox *unbind_count = nullptr;
@@ -142,9 +140,6 @@ private:
 	CheckBox *append_source = nullptr;
 	CheckButton *advanced = nullptr;
 	Vector<Control *> bind_controls;
-
-	Label *warning_label = nullptr;
-	Label *error_label = nullptr;
 
 	void ok_pressed() override;
 	void _cancel_pressed();
@@ -164,7 +159,6 @@ private:
 	void _remove_bind(const String &p_bind);
 	void _advanced_pressed();
 	void _update_ok_enabled();
-	void _update_warning_label();
 
 protected:
 	virtual void _post_popup() override;
@@ -228,7 +222,6 @@ class ConnectionsDock : public VBoxContainer {
 	};
 	enum SlotMenuOption {
 		SLOT_MENU_EDIT,
-		SLOT_MENU_GO_TO_METHOD,
 		SLOT_MENU_DISCONNECT,
 	};
 
@@ -263,7 +256,6 @@ class ConnectionsDock : public VBoxContainer {
 
 	void _open_connection_dialog(TreeItem &p_item);
 	void _open_edit_connection_dialog(TreeItem &p_item);
-	void _go_to_method(TreeItem &p_item);
 
 	void _handle_class_menu_option(int p_option);
 	void _class_menu_about_to_popup();

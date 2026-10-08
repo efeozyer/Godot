@@ -32,9 +32,6 @@
 
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
-
-const uint32_t PROP_EDITOR_SCRIPT_VAR = PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_SCRIPT_VARIABLE;
 
 bool EditorSceneExporterGLTFSettings::_set(const StringName &p_name, const Variant &p_value) {
 	String name_str = String(p_name);
@@ -156,13 +153,6 @@ String get_friendly_config_prefix(Ref<GLTFDocumentExtension> p_extension) {
 	if (!config_prefix.is_empty()) {
 		return config_prefix;
 	}
-	const Ref<Script> script = p_extension->get_script();
-	if (script.is_valid()) {
-		config_prefix = String(script->get_global_name()).trim_prefix("GLTFDocumentExtension").trim_suffix("GLTFDocumentExtension");
-		if (!config_prefix.is_empty()) {
-			return config_prefix;
-		}
-	}
 	const String class_name = p_extension->get_class_name();
 	config_prefix = class_name.trim_prefix("GLTFDocumentExtension").trim_suffix("GLTFDocumentExtension");
 	if (!config_prefix.is_empty()) {
@@ -233,19 +223,6 @@ void EditorSceneExporterGLTFSettings::generate_property_list(Ref<GLTFDocument> p
 			PropertyInfo ext_prop = prop;
 			ext_prop.name = config_prefix + "/" + prop.name;
 			_property_list.push_back(ext_prop);
-		}
-		List<PropertyInfo> ext_prop_list;
-		extension->get_property_list(&ext_prop_list);
-		for (const PropertyInfo &prop : ext_prop_list) {
-			// We only want properties that will show up in the exporter
-			// settings list. Exclude Resource's properties, as they are
-			// not relevant to the exporter. Include any user-defined script
-			// variables exposed to the editor (PROP_EDITOR_SCRIPT_VAR).
-			if ((prop.usage & PROP_EDITOR_SCRIPT_VAR) == PROP_EDITOR_SCRIPT_VAR) {
-				PropertyInfo ext_prop = prop;
-				ext_prop.name = config_prefix + "/" + prop.name;
-				_property_list.push_back(ext_prop);
-			}
 		}
 	}
 }

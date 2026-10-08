@@ -88,6 +88,11 @@ public:
 
 		static RD::PipelineColorBlendState::Attachment blend_mode_to_blend_attachment(BlendMode p_mode);
 		static bool blend_mode_uses_blend_alpha(BlendMode p_mode);
+
+		// Custom blend factors set by the `blend_src_*` / `blend_dst_*` render modes. A negative index means unset.
+		static const int CUSTOM_BLEND_FACTOR_COUNT = 6;
+		static const char *custom_blend_factor_names[CUSTOM_BLEND_FACTOR_COUNT];
+		static void custom_blend_factors_apply(int p_src, int p_dst, RD::PipelineColorBlendState::Attachment &r_attachment);
 	};
 
 	struct MaterialData {

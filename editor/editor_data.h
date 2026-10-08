@@ -105,12 +105,6 @@ class EditorSelection;
 
 class EditorData {
 public:
-	struct CustomType {
-		String name;
-		Ref<Script> script;
-		Ref<Texture2D> icon;
-	};
-
 	struct EditedScene {
 		Node *root = nullptr;
 		Ref<PackedScene> scene;
@@ -135,7 +129,6 @@ private:
 		String name;
 		Variant value;
 	};
-	HashMap<String, Vector<CustomType>> custom_types;
 
 	List<PropertyData> clipboard;
 	EditorUndoRedoManager *undo_redo_manager;
@@ -148,11 +141,7 @@ private:
 
 	bool _find_updated_instances(Node *p_root, Node *p_node, HashSet<String> &checked_paths);
 
-	HashMap<StringName, String> _script_class_icon_paths;
-	HashMap<String, StringName> _script_class_file_to_path;
-	HashMap<String, Ref<Texture2D>> _script_icon_cache;
-
-	Ref<Texture2D> _load_script_icon(const String &p_path) const;
+	Ref<Texture2D> _load_icon(const String &p_path) const;
 
 public:
 	Vector<EditorPlugin *> get_handling_sub_editors(Object *p_object);
@@ -165,7 +154,6 @@ public:
 	Dictionary get_scene_editor_states(int p_idx) const;
 	Dictionary get_scene_editor_states_with_selection(int p_idx) const;
 	void set_editor_plugin_states(const Dictionary &p_states);
-	void get_editor_breakpoints(List<String> *p_breakpoints);
 	void clear_editor_states();
 	void save_editor_external_data();
 	void apply_changes_in_editors();
@@ -189,12 +177,6 @@ public:
 	void remove_move_array_element_function(const StringName &p_class);
 	Callable get_move_array_element_function(const StringName &p_class) const;
 
-	void add_custom_type(const String &p_type, const String &p_inherits, const Ref<Script> &p_script, const Ref<Texture2D> &p_icon);
-	Variant instantiate_custom_type(const String &p_type, const String &p_inherits);
-	void remove_custom_type(const String &p_type);
-	const HashMap<String, Vector<CustomType>> &get_custom_types() const { return custom_types; }
-	const CustomType *get_custom_type_by_name(const String &p_name) const;
-	const CustomType *get_custom_type_by_path(const String &p_path) const;
 	bool is_type_recognized(const String &p_type) const;
 
 	void instantiate_object_properties(Object *p_object);
@@ -215,7 +197,6 @@ public:
 	String get_scene_path(int p_idx) const;
 	String get_scene_type(int p_idx) const;
 	void set_scene_path(int p_idx, const String &p_path);
-	Ref<Script> get_scene_root_script(int p_idx) const;
 	uint64_t get_scene_time_opened(int p_idx) const;
 	void set_scene_modified_time(int p_idx, uint64_t p_time);
 	uint64_t get_scene_modified_time(int p_idx) const;
@@ -246,24 +227,7 @@ public:
 	void notify_scene_saved(const String &p_path);
 	void load_editor_plugin_states_from_config(const Ref<ConfigFile> &p_config_file, int p_idx);
 
-	bool script_class_is_parent(const String &p_class, const String &p_inherits);
-	Variant script_class_instance(const String &p_class);
-
-	Ref<Script> script_class_load_script(const String &p_class) const;
-
-	StringName script_class_get_name(const String &p_path) const;
-	void script_class_set_name(const String &p_path, const StringName &p_class);
-
-	String script_class_get_icon_path(const String &p_class, bool *r_valid = nullptr) const;
-	void script_class_set_icon_path(const String &p_class, const String &p_icon_path);
-	void script_class_clear_icon_paths() { _script_class_icon_paths.clear(); }
-	void script_class_save_global_classes();
-	void script_class_load_icon_paths();
-
 	Ref<Texture2D> extension_class_get_icon(const String &p_class) const;
-
-	Ref<Texture2D> get_script_icon(const String &p_script_path);
-	void clear_script_icon_cache();
 
 	EditorData();
 	~EditorData();

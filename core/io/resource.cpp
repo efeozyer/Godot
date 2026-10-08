@@ -307,12 +307,6 @@ Variant Resource::_duplicate_recursive(const Variant &p_variant, const Duplicate
 							DEV_ASSERT(false);
 						}
 					}
-					if (should_duplicate) {
-						Ref<Script> scr = sr;
-						if (scr.is_valid()) {
-							should_duplicate = false;
-						}
-					}
 				}
 			}
 			if (should_duplicate) {
@@ -400,16 +394,8 @@ Ref<Resource> Resource::_duplicate(const DuplicateParams &p_params) const {
 		r->local_scene = p_params.local_scene;
 	}
 
-	// Duplicate script first, so the scripted properties are considered.
-	BEFORE_USER_CODE
-	r->set_script(get_script());
-	AFTER_USER_CODE
-
 	for (const PropertyInfo &E : plist) {
 		if (!(E.usage & PROPERTY_USAGE_STORAGE)) {
-			continue;
-		}
-		if (E.name == "script") {
 			continue;
 		}
 

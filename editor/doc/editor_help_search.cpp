@@ -33,10 +33,10 @@
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/gui/filter_line_edit.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_feature_profile.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -188,8 +188,8 @@ void EditorHelpSearch::_confirmed() {
 		return;
 	}
 
-	// Activate the script editor and emit the signal with the documentation link to display.
-	ScriptEditor::get_singleton()->focus_editor();
+	// Activate the document editor and emit the signal with the documentation link to display.
+	DocumentEditor::get_singleton()->focus_editor();
 
 	emit_signal(SNAME("go_to_help"), item->get_metadata(0));
 

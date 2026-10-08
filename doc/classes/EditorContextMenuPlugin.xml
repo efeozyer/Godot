@@ -94,11 +94,6 @@
 			Context menu of FileSystem dock. The data [Dictionary] contains:
 			[code]&amp;"selected_files": PackedStringArray[/code] - The list of selected files.
 		</constant>
-		<constant name="CONTEXT_SLOT_SCRIPT_EDITOR" value="2" enum="ContextMenuSlot">
-			Context menu of Script editor's script tabs and Shader editor's shader tabs. The data [Dictionary] contains:
-			[code]&amp;"selected_resource": Resource[/code] - The currently selected resource. Can be a [Script], a [Shader], a text file, or [code]null[/code] in case of help pages.
-			[code]&amp;"path": String[/code] - The path of the selected file. If a help page is selected, the path will be the name of the opened class, prefixed with [code]help:[/code].
-		</constant>
 		<constant name="CONTEXT_SLOT_FILESYSTEM_CREATE" value="3" enum="ContextMenuSlot">
 			The "Create..." submenu of FileSystem dock's context menu, or the "New" section of the main context menu when empty space is clicked. The data [Dictionary] contains:
 			[code]&amp;"base_directory": String[/code] - Path to the base directory where a file should be created.
@@ -110,11 +105,6 @@
 				else:
 					add_context_menu_item("Image File...", create_image)
 			[/codeblock]
-		</constant>
-		<constant name="CONTEXT_SLOT_SCRIPT_EDITOR_CODE" value="4" enum="ContextMenuSlot">
-			Context menu of Script editor's code editor. The data [Dictionary] contains:
-			[code]&amp;"code_edit": CodeEdit[/code] - The code editor instance.
-			[code]&amp;"file_path": String[/code] - Path to the currently edited file.
 		</constant>
 		<constant name="CONTEXT_SLOT_SCENE_TABS" value="5" enum="ContextMenuSlot">
 			Context menu of scene tabs. The data [Dictionary] contains:

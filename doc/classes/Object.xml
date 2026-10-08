@@ -689,12 +689,6 @@
 				[b]Note:[/b] In GDScript, all class members are treated as properties. In C# and GDExtension, it may be necessary to explicitly mark class members as Godot properties using decorators or attributes.
 			</description>
 		</method>
-		<method name="get_script" qualifiers="const">
-			<return type="Variant" />
-			<description>
-				Returns the object's [Script] instance, or [code]null[/code] if no script is attached.
-			</description>
-		</method>
 		<method name="get_signal_connection_list" qualifiers="const">
 			<return type="Dictionary[]" />
 			<param index="0" name="signal" type="StringName" />
@@ -971,14 +965,6 @@
 				[b]Note:[/b] Metadata that has a name starting with an underscore ([code]_[/code]) is considered editor-only. Editor-only metadata is not displayed in the Inspector and should not be edited, although it can still be found by this method.
 			</description>
 		</method>
-		<method name="set_script">
-			<return type="void" />
-			<param index="0" name="script" type="Variant" />
-			<description>
-				Attaches [param script] to the object, and instantiates it. As a result, the script's [method _init] is called. A [Script] is used to extend the object's functionality.
-				If a script already exists, its instance is detached, and its property values and state are lost. Built-in property values are still kept.
-			</description>
-		</method>
 		<method name="set_translation_domain">
 			<return type="void" />
 			<param index="0" name="domain" type="StringName" />
@@ -1023,12 +1009,6 @@
 		<signal name="property_list_changed">
 			<description>
 				Emitted when [method notify_property_list_changed] is called.
-			</description>
-		</signal>
-		<signal name="script_changed">
-			<description>
-				Emitted when the object's script is changed.
-				[b]Note:[/b] When this signal is emitted, the new script is not initialized yet. If you need to access the new script, defer connections to this signal with [constant CONNECT_DEFERRED].
 			</description>
 		</signal>
 	</signals>

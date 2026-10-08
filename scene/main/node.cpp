@@ -44,7 +44,6 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, Engine);
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
-#include "core/object/script_language.h"
 #include "core/string/print_string.h"
 #include "scene/animation/tween.h"
 #include "scene/main/instance_placeholder.h"
@@ -2048,16 +2047,6 @@ TypedArray<Node> Node::find_children(const String &p_pattern, const String &p_ty
 		if (p_pattern.is_empty() || cptr[i]->data.name.string().match(p_pattern)) {
 			if (p_type.is_empty() || cptr[i]->is_class(p_type)) {
 				ret.append(cptr[i]);
-			} else if (cptr[i]->get_script_instance()) {
-				Ref<Script> scr = cptr[i]->get_script_instance()->get_script();
-				while (scr.is_valid()) {
-					if ((ScriptServer::is_global_class(p_type) && ScriptServer::get_global_class_path(p_type) == scr->get_path()) || p_type == scr->get_path()) {
-						ret.append(cptr[i]);
-						break;
-					}
-
-					scr = scr->get_base_script();
-				}
 			}
 		}
 
@@ -2966,10 +2955,6 @@ Node *Node::duplicate(int p_flags) const {
 
 	ERR_FAIL_NULL_V_MSG(dupe, nullptr, "Failed to duplicate node.");
 
-	if (p_flags & DUPLICATE_SCRIPTS) {
-		_duplicate_scripts(this, dupe, p_flags);
-	}
-
 	_duplicate_properties(this, this, dupe, p_flags);
 
 	if (p_flags & DUPLICATE_SIGNALS) {
@@ -2986,14 +2971,10 @@ Node *Node::duplicate_from_editor(HashMap<const Node *, Node *> &r_duplimap) con
 }
 
 Node *Node::duplicate_from_editor(HashMap<const Node *, Node *> &r_duplimap, Node *p_scene_root, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resource_remap) const {
-	int flags = DUPLICATE_SIGNALS | DUPLICATE_GROUPS | DUPLICATE_SCRIPTS | DUPLICATE_USE_INSTANTIATION | DUPLICATE_FROM_EDITOR;
+	int flags = DUPLICATE_SIGNALS | DUPLICATE_GROUPS | DUPLICATE_USE_INSTANTIATION | DUPLICATE_FROM_EDITOR;
 	Node *dupe = _duplicate(flags, &r_duplimap);
 
 	ERR_FAIL_NULL_V_MSG(dupe, nullptr, "Failed to duplicate node.");
-
-	if (flags & DUPLICATE_SCRIPTS) {
-		_duplicate_scripts(this, dupe, flags);
-	}
 
 	_duplicate_properties(this, this, dupe, flags);
 
@@ -3085,40 +3066,17 @@ void Node::_emit_editor_state_changed() {
 }
 #endif
 
-void Node::_duplicate_scripts(const Node *p_original, Node *p_copy, int p_flags) const {
-	bool is_valid = false;
-	Variant scr = p_original->get(CoreStringName(script), &is_valid);
-	if (is_valid) {
-		p_copy->set(CoreStringName(script), scr);
-	}
-
-	bool instantiated = (p_flags & DUPLICATE_USE_INSTANTIATION) && is_instance();
-	for (int i = 0; i < p_original->get_child_count(false); i++) {
-		Node *original = p_original->get_child(i, false);
-		// If using instantiation and the child structure changed, getting it by index will result in
-		// fetching values from the wrong nodes. So use the slower (but more accurate) path method.
-		Node *copy = instantiated ? p_copy->get_node(p_original->get_path_to(original)) : p_copy->get_child(i, false);
-		ERR_FAIL_NULL_MSG(copy, "Child node disappeared while duplicating.");
-		_duplicate_scripts(original, copy, p_flags);
-	}
-}
-
 // Duplicate node's properties.
 // This has to be called after nodes have been duplicated since there might be properties
 // of type Node that can be updated properly only if duplicated node tree is complete.
 void Node::_duplicate_properties(const Node *p_root, const Node *p_original, Node *p_copy, int p_flags) const {
 	List<PropertyInfo> props;
 	p_original->get_property_list(&props);
-	const StringName &script_property_name = CoreStringName(script);
 	for (const PropertyInfo &E : props) {
 		if (!(p_flags & DUPLICATE_INTERNAL_STATE) && !(E.usage & PROPERTY_USAGE_STORAGE)) {
 			continue;
 		}
 		const StringName name = E.name;
-
-		if (name == script_property_name) {
-			continue;
-		}
 
 		Variant value = p_original->get(name);
 		// To keep classic behavior, because, in contrast, nowadays a resource would be duplicated.
@@ -3314,7 +3272,7 @@ void Node::_replace_connections_target(Node *p_new_target) {
 	for (const Connection &c : cl) {
 		if (c.flags & CONNECT_PERSIST) {
 			c.signal.get_object()->disconnect(c.signal.get_name(), Callable(this, c.callable.get_method()));
-			bool valid = p_new_target->has_method(c.callable.get_method()) || Ref<Script>(p_new_target->get_script()).is_null() || Ref<Script>(p_new_target->get_script())->has_method(c.callable.get_method());
+			bool valid = p_new_target->has_method(c.callable.get_method());
 			ERR_CONTINUE_MSG(!valid, vformat("Attempt to connect signal '%s.%s' to nonexistent method '%s.%s'.", c.signal.get_object()->get_class(), c.signal.get_name(), c.callable.get_object()->get_class(), c.callable.get_method()));
 			c.signal.get_object()->connect(c.signal.get_name(), Callable(p_new_target, c.callable.get_method()), c.flags);
 		}
@@ -3449,17 +3407,9 @@ static void _print_orphan_nodes_routine(Object *p_obj, void *p_user_data) {
 		path = String(p->get_name()) + "/" + String(p->get_path_to(n));
 	}
 
-	String source;
-	Variant script = n->get_script();
-	if (!script.is_null()) {
-		Resource *obj = Object::cast_to<Resource>(script);
-		source = obj->get_path();
-	}
-
 	List<String> info_strings;
 	info_strings.push_back(path);
 	info_strings.push_back(n->get_class());
-	info_strings.push_back(source);
 
 	_print_orphan_nodes_map[p_obj->get_instance_id()] = info_strings;
 }
@@ -3474,7 +3424,7 @@ void Node::print_orphan_nodes() {
 	ObjectDB::debug_objects(_print_orphan_nodes_routine, nullptr);
 
 	for (const KeyValue<ObjectID, List<String>> &E : _print_orphan_nodes_map) {
-		print_line(itos(E.key) + " - Stray Node: " + E.value.get(0) + " (Type: " + E.value.get(1) + ") (Source:" + E.value.get(2) + ")");
+		print_line(itos(E.key) + " - Stray Node: " + E.value.get(0) + " (Type: " + E.value.get(1) + ")");
 	}
 
 	// Flush it after use.
@@ -4052,7 +4002,6 @@ void Node::_bind_methods() {
 
 	BIND_ENUM_CONSTANT(DUPLICATE_SIGNALS);
 	BIND_ENUM_CONSTANT(DUPLICATE_GROUPS);
-	BIND_ENUM_CONSTANT(DUPLICATE_SCRIPTS);
 	BIND_ENUM_CONSTANT(DUPLICATE_USE_INSTANTIATION);
 	BIND_ENUM_CONSTANT(DUPLICATE_INTERNAL_STATE);
 	BIND_ENUM_CONSTANT(DUPLICATE_DEFAULT);
@@ -4191,16 +4140,6 @@ Node::~Node() {
 // Multithreaded locked version of Object functions.
 
 #ifdef DEBUG_ENABLED
-
-void Node::set_script(const Variant &p_script) {
-	ERR_THREAD_GUARD;
-	Object::set_script(p_script);
-}
-
-Variant Node::get_script() const {
-	ERR_THREAD_GUARD_V(Variant());
-	return Object::get_script();
-}
 
 bool Node::has_meta(const StringName &p_name) const {
 	ERR_THREAD_GUARD_V(false);

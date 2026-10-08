@@ -54,30 +54,6 @@
 #include "scene/gui/view_panner.h"
 #include "scene/main/window.h"
 
-void AnimationNodeBlendTreeEditor::add_custom_type(const String &p_name, const Ref<Script> &p_script) {
-	for (int i = 0; i < add_options.size(); i++) {
-		ERR_FAIL_COND(add_options[i].script == p_script);
-	}
-
-	AddOption ao;
-	ao.name = p_name;
-	ao.script = p_script;
-	add_options.push_back(ao);
-
-	_update_options_menu();
-}
-
-void AnimationNodeBlendTreeEditor::remove_custom_type(const Ref<Script> &p_script) {
-	for (int i = 0; i < add_options.size(); i++) {
-		if (add_options[i].script == p_script) {
-			add_options.remove_at(i);
-			return;
-		}
-	}
-
-	_update_options_menu();
-}
-
 void AnimationNodeBlendTreeEditor::_update_options_menu(bool p_has_input_ports) {
 	add_node->get_popup()->clear();
 	add_node->get_popup()->reset_size();
@@ -415,18 +391,11 @@ void AnimationNodeBlendTreeEditor::_add_node(int p_idx) {
 		anode = EditorSettings::get_singleton()->get_resource_clipboard();
 		ERR_FAIL_COND(anode.is_null());
 		base_name = anode->get_class();
-	} else if (!add_options[p_idx].type.is_empty()) {
+	} else {
+		ERR_FAIL_COND(add_options[p_idx].type.is_empty());
 		AnimationNode *an = Object::cast_to<AnimationNode>(ClassDB::instantiate(add_options[p_idx].type));
 		ERR_FAIL_NULL(an);
 		anode = Ref<AnimationNode>(an);
-		base_name = add_options[p_idx].name;
-	} else {
-		ERR_FAIL_COND(add_options[p_idx].script.is_null());
-		StringName base_type = add_options[p_idx].script->get_instance_base_type();
-		AnimationNode *an = Object::cast_to<AnimationNode>(ClassDB::instantiate(base_type));
-		ERR_FAIL_NULL(an);
-		anode = Ref<AnimationNode>(an);
-		anode->set_script(add_options[p_idx].script);
 		base_name = add_options[p_idx].name;
 	}
 

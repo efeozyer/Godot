@@ -23,18 +23,6 @@
 				Returns [code]true[/code] if the debug session is currently attached to a remote instance.
 			</description>
 		</method>
-		<method name="is_breaked">
-			<return type="bool" />
-			<description>
-				Returns [code]true[/code] if the attached remote instance is currently in the debug loop.
-			</description>
-		</method>
-		<method name="is_debuggable">
-			<return type="bool" />
-			<description>
-				Returns [code]true[/code] if the attached remote instance can be debugged.
-			</description>
-		</method>
 		<method name="remove_session_tab">
 			<return type="void" />
 			<param index="0" name="control" type="Control" />
@@ -50,15 +38,6 @@
 				Sends the given [param message] to the attached remote instance, optionally passing additionally [param data]. See [EngineDebugger] for how to retrieve those messages.
 			</description>
 		</method>
-		<method name="set_breakpoint">
-			<return type="void" />
-			<param index="0" name="path" type="String" />
-			<param index="1" name="line" type="int" />
-			<param index="2" name="enabled" type="bool" />
-			<description>
-				Enables or disables a specific breakpoint based on [param enabled], updating the Editor Breakpoint Panel accordingly.
-			</description>
-		</method>
 		<method name="toggle_profiler">
 			<return type="void" />
 			<param index="0" name="profiler" type="String" />
@@ -70,17 +49,6 @@
 		</method>
 	</methods>
 	<signals>
-		<signal name="breaked">
-			<param index="0" name="can_debug" type="bool" />
-			<description>
-				Emitted when the attached remote instance enters a break state. If [param can_debug] is [code]true[/code], the remote instance will enter the debug loop.
-			</description>
-		</signal>
-		<signal name="continued">
-			<description>
-				Emitted when the attached remote instance exits a break state.
-			</description>
-		</signal>
 		<signal name="started">
 			<description>
 				Emitted when a remote instance is attached to this session (i.e. the session becomes active).

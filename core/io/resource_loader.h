@@ -63,7 +63,6 @@ protected:
 	GDVIRTUAL2RC(bool, _recognize_path, String, StringName)
 	GDVIRTUAL1RC(bool, _handles_type, StringName)
 	GDVIRTUAL1RC(String, _get_resource_type, String)
-	GDVIRTUAL1RC(String, _get_resource_script_class, String)
 	GDVIRTUAL1RC(ResourceUID::ID, _get_resource_uid, String)
 	GDVIRTUAL2RC(Vector<String>, _get_dependencies, String, bool)
 	GDVIRTUAL1RC(Vector<String>, _get_classes_used, String)
@@ -81,7 +80,6 @@ public:
 	virtual bool handles_type(const String &p_type) const;
 	virtual void get_classes_used(const String &p_path, HashSet<StringName> *r_classes);
 	virtual String get_resource_type(const String &p_path) const;
-	virtual String get_resource_script_class(const String &p_path) const;
 	virtual ResourceUID::ID get_resource_uid(const String &p_path) const;
 	virtual bool has_custom_uid_support() const;
 	virtual void get_dependencies(const String &p_path, List<String> *p_dependencies, bool p_add_types = false);
@@ -176,8 +174,6 @@ private:
 
 	static ResourceLoadedCallback _loaded_callback;
 
-	static Ref<ResourceFormatLoader> _find_custom_resource_format_loader(const String &p_path);
-
 	struct ThreadLoadTask {
 		WorkerThreadPool::TaskID task_id = 0; // Used if run on a worker thread from the pool.
 		Thread::ID thread_id = 0; // Used if running on an user thread (e.g., simple non-threaded load).
@@ -264,7 +260,6 @@ public:
 	static void remove_resource_format_loader(Ref<ResourceFormatLoader> p_format_loader);
 	static void get_classes_used(const String &p_path, HashSet<StringName> *r_classes);
 	static String get_resource_type(const String &p_path);
-	static String get_resource_script_class(const String &p_path);
 	static ResourceUID::ID get_resource_uid(const String &p_path);
 	static bool should_create_uid_file(const String &p_path);
 	static void get_dependencies(const String &p_path, List<String> *p_dependencies, bool p_add_types = false);
@@ -306,10 +301,6 @@ public:
 
 	static void set_load_callback(ResourceLoadedCallback p_callback);
 	static ResourceLoaderImport import;
-
-	static bool add_custom_resource_format_loader(const String &p_script_path);
-	static void add_custom_loaders();
-	static void remove_custom_loaders();
 
 	static void set_create_missing_resources_if_class_unavailable(bool p_enable);
 	_FORCE_INLINE_ static bool is_creating_missing_resources_if_class_unavailable_enabled() { return create_missing_resources_if_class_unavailable; }

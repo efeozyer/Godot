@@ -30,9 +30,7 @@
 
 #include "syntax_highlighters.h"
 
-#include "core/config/project_settings.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/resources/shader.h"
 #include "servers/rendering/shader_preprocessor.h"
@@ -56,9 +54,6 @@ Ref<EditorSyntaxHighlighter> EditorSyntaxHighlighter::_create() const {
 		GDVIRTUAL_CALL(_create, syntax_highlighter);
 	} else {
 		syntax_highlighter.instantiate();
-		if (get_script_instance()) {
-			syntax_highlighter->set_script(get_script_instance()->get_script());
-		}
 	}
 	return syntax_highlighter;
 }
@@ -92,99 +87,11 @@ void EditorStandardSyntaxHighlighter::_update_cache() {
 		highlighter->add_keyword_color(type, type_color);
 	}
 
-	/* User types. */
-	const Color usertype_color = EDITOR_GET("text_editor/theme/highlighting/user_type_color");
-	LocalVector<StringName> global_classes;
-	ScriptServer::get_global_class_list(global_classes);
-	for (const StringName &class_name : global_classes) {
-		highlighter->add_keyword_color(class_name, usertype_color);
-	}
-
-	/* Autoloads. */
-	HashMap<StringName, ProjectSettings::AutoloadInfo> autoloads(ProjectSettings::get_singleton()->get_autoload_list());
-	for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &E : autoloads) {
-		const ProjectSettings::AutoloadInfo &info = E.value;
-		if (info.is_singleton) {
-			highlighter->add_keyword_color(info.name, usertype_color);
-		}
-	}
-
-	const ScriptLanguage *scr_lang = script_language;
-	StringName instance_base;
-
-	if (scr_lang == nullptr) {
-		const Ref<Script> scr = _get_edited_resource();
-		if (scr.is_valid()) {
-			scr_lang = scr->get_language();
-			instance_base = scr->get_instance_base_type();
-		}
-	}
-
 	/* Variant types. */
 	const Color basetype_color = EDITOR_GET("text_editor/theme/highlighting/base_type_color");
 	for (int type = 0; type < Variant::Type::VARIANT_MAX; type++) {
 		if (type != Variant::Type::NIL && type != Variant::Type::OBJECT) {
 			highlighter->add_keyword_color(Variant::get_type_name((Variant::Type)type), basetype_color);
-		}
-	}
-
-	if (scr_lang != nullptr) {
-		/* Reserved words. */
-		const Color keyword_color = EDITOR_GET("text_editor/theme/highlighting/keyword_color");
-		const Color control_flow_keyword_color = EDITOR_GET("text_editor/theme/highlighting/control_flow_keyword_color");
-		for (const String &keyword : scr_lang->get_reserved_words()) {
-			if (scr_lang->is_control_flow_keyword(keyword)) {
-				highlighter->add_keyword_color(keyword, control_flow_keyword_color);
-			} else {
-				highlighter->add_keyword_color(keyword, keyword_color);
-			}
-		}
-
-		/* Member types. */
-		const Color member_variable_color = EDITOR_GET("text_editor/theme/highlighting/member_variable_color");
-		if (instance_base != StringName()) {
-			List<PropertyInfo> plist;
-			ClassDB::get_property_list(instance_base, &plist);
-			for (const PropertyInfo &E : plist) {
-				String prop_name = E.name;
-				if (E.usage & PROPERTY_USAGE_CATEGORY || E.usage & PROPERTY_USAGE_GROUP || E.usage & PROPERTY_USAGE_SUBGROUP) {
-					continue;
-				}
-				if (prop_name.contains_char('/')) {
-					continue;
-				}
-				highlighter->add_member_keyword_color(prop_name, member_variable_color);
-			}
-
-			List<String> clist;
-			ClassDB::get_integer_constant_list(instance_base, &clist);
-			for (const String &E : clist) {
-				highlighter->add_member_keyword_color(E, member_variable_color);
-			}
-		}
-
-		/* Comments */
-		const Color comment_color = EDITOR_GET("text_editor/theme/highlighting/comment_color");
-		for (const String &comment : scr_lang->get_comment_delimiters()) {
-			String beg = comment.get_slicec(' ', 0);
-			String end = comment.get_slice_count(" ") > 1 ? comment.get_slicec(' ', 1) : String();
-			highlighter->add_color_region(beg, end, comment_color, end.is_empty());
-		}
-
-		/* Doc comments */
-		const Color doc_comment_color = EDITOR_GET("text_editor/theme/highlighting/doc_comment_color");
-		for (const String &doc_comment : scr_lang->get_doc_comment_delimiters()) {
-			String beg = doc_comment.get_slicec(' ', 0);
-			String end = doc_comment.get_slice_count(" ") > 1 ? doc_comment.get_slicec(' ', 1) : String();
-			highlighter->add_color_region(beg, end, doc_comment_color, end.is_empty());
-		}
-
-		/* Strings */
-		const Color string_color = EDITOR_GET("text_editor/theme/highlighting/string_color");
-		for (const String &string : scr_lang->get_string_delimiters()) {
-			String beg = string.get_slicec(' ', 0);
-			String end = string.get_slice_count(" ") > 1 ? string.get_slicec(' ', 1) : String();
-			highlighter->add_color_region(beg, end, string_color, end.is_empty());
 		}
 	}
 }

@@ -37,6 +37,8 @@
 #include "core/templates/hash_set.h"
 #include "core/templates/list.h"
 
+extern uint8_t script_encryption_key[32];
+
 // Godot's packed file magic header ("GDPC" in ASCII).
 #define PACK_HEADER_MAGIC 0x43504447
 

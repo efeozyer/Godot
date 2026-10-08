@@ -3240,17 +3240,8 @@ bool EditorPropertyNodePath::is_drop_valid(const Dictionary &p_drag_data) const 
 	}
 
 	for (const StringName &E : valid_types) {
-		if (dropped_node->is_class(E) ||
-				EditorNode::get_singleton()->is_object_of_custom_type(dropped_node, E)) {
+		if (dropped_node->is_class(E)) {
 			return true;
-		} else {
-			Ref<Script> dropped_node_script = dropped_node->get_script();
-			while (dropped_node_script.is_valid()) {
-				if (dropped_node_script->get_path() == E) {
-					return true;
-				}
-				dropped_node_script = dropped_node_script->get_base_script();
-			}
 		}
 	}
 
@@ -3498,16 +3489,6 @@ void EditorPropertyResource::_resource_changed(const Ref<Resource> &p_resource) 
 		}
 	}
 
-	// The bool is_script applies only to an object's main script.
-	// Changing the value of Script-type exported variables of the main script should not trigger saving/reloading properties.
-	bool is_script = false;
-	Ref<Script> s = p_resource;
-	if (get_edited_object() && s.is_valid() && get_edited_property() == CoreStringName(script)) {
-		is_script = true;
-		InspectorDock::get_singleton()->store_script_properties(get_edited_object());
-		s->call("set_instance_base_type", get_edited_object()->get_class());
-	}
-
 	// Prevent the creation of invalid ViewportTextures when possible.
 	Ref<ViewportTexture> vpt = p_resource;
 	if (vpt.is_valid()) {
@@ -3538,11 +3519,6 @@ void EditorPropertyResource::_resource_changed(const Ref<Resource> &p_resource) 
 
 	emit_changed(get_edited_property(), p_resource);
 	update_property();
-
-	if (is_script) {
-		// Restore properties if script was changed.
-		InspectorDock::get_singleton()->apply_script_properties(get_edited_object());
-	}
 
 	// Automatically suggest setting up the path for a ViewportTexture.
 	if (vpt.is_valid() && vpt->get_viewport_path_in_scene().is_empty()) {
@@ -3674,11 +3650,7 @@ void EditorPropertyResource::setup(Object *p_object, const String &p_path, const
 		resource_picker = nullptr;
 	}
 
-	if (p_path == "script" && p_base_type == "Script" && Object::cast_to<Node>(p_object)) {
-		EditorScriptPicker *script_picker = memnew(EditorScriptPicker);
-		script_picker->set_script_owner(Object::cast_to<Node>(p_object));
-		resource_picker = script_picker;
-	} else if (p_path == "shader" && p_base_type == "Shader" && Object::cast_to<ShaderMaterial>(p_object)) {
+	if (p_path == "shader" && p_base_type == "Shader" && Object::cast_to<ShaderMaterial>(p_object)) {
 		EditorShaderPicker *shader_picker = memnew(EditorShaderPicker);
 		shader_picker->set_edited_material(Object::cast_to<ShaderMaterial>(p_object));
 		resource_picker = shader_picker;

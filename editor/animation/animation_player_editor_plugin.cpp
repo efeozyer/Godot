@@ -51,6 +51,8 @@
 #include "editor/themes/editor_scale.h"
 #include "editor/themes/editor_theme_manager.h"
 #include "scene/animation/animation_tree.h"
+#include "scene/gui/line_edit.h"
+#include "scene/gui/option_button.h"
 #include "scene/gui/separator.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
@@ -2459,7 +2461,7 @@ void AnimationPlayerEditorPlugin::_update_dummy_player(AnimationMixer *p_mixer) 
 		if (!(E.usage & PROPERTY_USAGE_STORAGE)) {
 			continue;
 		}
-		if (E.name != "script" && E.name != "active" && E.name != "deterministic" && E.name != "root_motion_track") {
+		if (E.name != "active" && E.name != "deterministic" && E.name != "root_motion_track") {
 			dummy_player->set(E.name, p_mixer->get(E.name));
 		}
 	}

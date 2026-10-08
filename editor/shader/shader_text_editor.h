@@ -30,7 +30,7 @@
 
 #pragma once
 
-#include "editor/script/script_editor_base.h"
+#include "editor/document/document_editor_base.h"
 #include "servers/rendering/shader_warnings.h"
 
 class MaterialEditor;
@@ -125,7 +125,7 @@ public:
 class ShaderTextEditor : public CodeEditorBase {
 	GDCLASS(ShaderTextEditor, CodeEditorBase);
 
-	static ScriptEditorBase *create_editor(const Ref<Resource> &p_resource);
+	static DocumentEditorBase *create_editor(const Ref<Resource> &p_resource);
 
 	HashMap<int, TextShaderPreview *> previews;
 	TextShaderPreviewLineLayer *preview_line_layer = nullptr;
@@ -181,7 +181,7 @@ protected:
 		void _update_breakpoint_list() override;
 
 	public:
-		virtual bool handles(ScriptEditorBase *p_seb) override { return Object::cast_to<ShaderTextEditor>(p_seb); }
+		virtual bool handles(DocumentEditorBase *p_seb) override { return Object::cast_to<ShaderTextEditor>(p_seb); }
 
 		EditMenusShTE(DocumentEditorContainer *p_document_editor_container) : EditMenusCEB(p_document_editor_container, "Shader Previews") {}
 	};

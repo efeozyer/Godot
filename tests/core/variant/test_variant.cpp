@@ -2042,7 +2042,7 @@ TEST_CASE("[Variant] Object non-pretty prints with correct newlines") {
 	String o_str;
 	VariantWriter::write_to_string(v1, o_str, false);
 
-	String expected_str = "Object(Object,\"script\":null)\n";
+	String expected_str = "Object(Object,)\n";
 
 	CHECK(o_str == expected_str);
 
@@ -2056,7 +2056,7 @@ TEST_CASE("[Variant] Object pretty prints with correct newlines") {
 	String o_str;
 	VariantWriter::write_to_string(v1, o_str, true);
 
-	String expected_str = "Object(Object,\n\"script\": null\n)";
+	String expected_str = "Object(Object,\n\n)";
 
 	CHECK(o_str == expected_str);
 
@@ -2076,7 +2076,7 @@ TEST_CASE("[Variant] Nested Objects non-pretty print without spacing") {
 	String o_str;
 	VariantWriter::write_to_string(v1, o_str, false);
 
-	String expected_str = "Object(Object,\"script\":null,\"metadata/o2\":Object(Object,\"script\":null,\"metadata/o3\":Object(Object,\"script\":null)\n)\n)\n";
+	String expected_str = "Object(Object,\"metadata/o2\":Object(Object,\"metadata/o3\":Object(Object,)\n)\n)\n";
 
 	CHECK(o_str == expected_str);
 
@@ -2099,11 +2099,9 @@ TEST_CASE("[Variant] Nested Objects pretty print with correct newlines") {
 	VariantWriter::write_to_string(v1, o_str, true);
 
 	String expected_str = "Object(Object,\n"
-						  "\"script\": null,\n"
 						  "\"metadata/o2\": Object(Object,\n"
-						  "\"script\": null,\n"
 						  "\"metadata/o3\": Object(Object,\n"
-						  "\"script\": null\n"
+						  "\n"
 						  ")\n"
 						  ")\n"
 						  ")";
@@ -2121,11 +2119,11 @@ TEST_CASE("[Variant] Dictionary propagates pretty_print flag to nested Objects")
 
 	String o_str;
 	VariantWriter::write_to_string(d, o_str, true);
-	CHECK_EQ(o_str, "{\n1: Object(Object,\n\"script\": null\n)\n}");
+	CHECK_EQ(o_str, "{\n1: Object(Object,\n\n)\n}");
 
 	VariantWriter::write_to_string(d, o_str, false);
 	// non-pretty printed Object has \n and Dictionary also has \n for a double \n\n
-	CHECK_EQ(o_str, "{\n1: Object(Object,\"script\":null)\n\n}");
+	CHECK_EQ(o_str, "{\n1: Object(Object,)\n\n}");
 
 	memdelete(o1);
 }

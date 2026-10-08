@@ -38,7 +38,6 @@
 #include "core/variant/array.h"
 
 class RemoteDebuggerPeer;
-class ScriptDebugger;
 
 class EngineDebugger {
 public:
@@ -89,25 +88,18 @@ private:
 	double physics_time = 0.0;
 	double physics_frame_time = 0.0;
 
-	uint32_t poll_every = 0;
-
 protected:
 	static inline EngineDebugger *singleton = nullptr;
-	static inline ScriptDebugger *script_debugger = nullptr;
 
 	static inline HashMap<StringName, Profiler> profilers;
 	static inline HashMap<StringName, Capture> captures;
 	static inline HashMap<String, CreatePeerFunc> protocols;
 
-	static void (*allow_focus_steal_fn)();
-
 public:
 	_FORCE_INLINE_ static EngineDebugger *get_singleton() { return singleton; }
-	_FORCE_INLINE_ static bool is_active() { return singleton != nullptr && script_debugger != nullptr; }
+	_FORCE_INLINE_ static bool is_active() { return singleton != nullptr; }
 
-	_FORCE_INLINE_ static ScriptDebugger *get_script_debugger() { return script_debugger; }
-
-	static void initialize(const String &p_uri, bool p_skip_breakpoints, bool p_ignore_error_breaks, const Vector<String> &p_breakpoints, void (*p_allow_focus_steal_fn)());
+	static void initialize(const String &p_uri);
 	static void deinitialize();
 	static void register_profiler(const StringName &p_name, const Profiler &p_profiler);
 	static void unregister_profiler(const StringName &p_name);
@@ -125,18 +117,9 @@ public:
 	void profiler_enable(const StringName &p_name, bool p_enabled, const Array &p_opts = Array());
 	Error capture_parse(const StringName &p_name, const String &p_msg, const Array &p_args, bool &r_captured);
 
-	void line_poll() {
-		// The purpose of this is just processing events every now and then when the script might get too busy otherwise bugs like infinite loops can't be caught.
-		if (unlikely(poll_every % 2048) == 0) {
-			poll_events(false);
-		}
-		poll_every++;
-	}
-
 	virtual void poll_events(bool p_is_idle) {}
 	virtual void send_message(const String &p_msg, const Array &p_data) = 0;
 	virtual void send_error(const String &p_func, const String &p_file, int p_line, const String &p_err, const String &p_descr, bool p_editor_notify, ErrorHandlerType p_type) = 0;
-	virtual void debug(bool p_can_continue = true, bool p_is_error_breakpoint = false) = 0;
 
 	virtual ~EngineDebugger();
 };

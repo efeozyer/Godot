@@ -128,12 +128,6 @@
 				Returns the value of the setting identified by [param name] using export preset feature tag overrides instead of current OS features.
 			</description>
 		</method>
-		<method name="get_script_export_mode" qualifiers="const">
-			<return type="int" enum="EditorExportPreset.ScriptExportMode" />
-			<description>
-				Returns the export mode used by GDScript files. [code]0[/code] for "Text", [code]1[/code] for "Binary tokens", and [code]2[/code] for "Compressed binary tokens (smaller files)".
-			</description>
-		</method>
 		<method name="get_version" qualifiers="const">
 			<return type="String" />
 			<param index="0" name="name" type="StringName" />
@@ -194,12 +188,6 @@
 		<constant name="MODE_FILE_KEEP" value="2" enum="FileExportMode">
 		</constant>
 		<constant name="MODE_FILE_REMOVE" value="3" enum="FileExportMode">
-		</constant>
-		<constant name="MODE_SCRIPT_TEXT" value="0" enum="ScriptExportMode">
-		</constant>
-		<constant name="MODE_SCRIPT_BINARY_TOKENS" value="1" enum="ScriptExportMode">
-		</constant>
-		<constant name="MODE_SCRIPT_BINARY_TOKENS_COMPRESSED" value="2" enum="ScriptExportMode">
 		</constant>
 	</constants>
 </class>

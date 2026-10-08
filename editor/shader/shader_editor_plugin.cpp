@@ -34,8 +34,8 @@
 #include "core/variant/variant.h"
 #include "editor/docks/editor_dock.h"
 #include "editor/docks/editor_dock_manager.h"
+#include "editor/document/document_editor_base.h"
 #include "editor/editor_node.h"
-#include "editor/script/script_editor_base.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/shader/editor_shader_language_plugin.h"
@@ -108,7 +108,7 @@ void ShaderEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) {
 }
 
 String ShaderEditorPlugin::get_unsaved_status(const String &p_for_scene) const {
-	const PackedStringArray unsaved_scripts = shader_container->get_unsaved_scripts();
+	const PackedStringArray unsaved_scripts = shader_container->get_unsaved_documents();
 	if (unsaved_scripts.is_empty()) {
 		return String();
 	}
@@ -140,7 +140,7 @@ String ShaderEditorPlugin::get_unsaved_status(const String &p_for_scene) const {
 
 void ShaderEditorPlugin::save_external_data() {
 	if (!EditorNode::get_singleton()->is_exiting()) {
-		shader_container->save_all_scripts();
+		shader_container->save_all_documents();
 	}
 }
 

@@ -236,6 +236,8 @@ public:
 		DepthTest depth_test = DEPTH_TEST_ENABLED;
 
 		int blend_mode = BLEND_MODE_MIX;
+		int blend_src = -1;
+		int blend_dst = -1;
 		int depth_test_disabledi = 0;
 		int depth_test_invertedi = 0;
 		int alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;

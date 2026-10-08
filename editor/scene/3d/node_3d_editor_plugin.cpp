@@ -102,6 +102,7 @@
 #include "scene/gui/color_picker.h"
 #include "scene/gui/flow_container.h"
 #include "scene/gui/menu_button.h"
+#include "scene/gui/option_button.h"
 #include "scene/gui/panel_container.h"
 #include "scene/gui/popup.h"
 #include "scene/gui/rich_text_label.h"

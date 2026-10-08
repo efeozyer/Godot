@@ -193,8 +193,7 @@ ui_accept={
 "key_label": 0,
 "unicode": 0,
 "location": 0,
-"echo": false,
-"script": null
+"echo": false
 )]
 }
 )";

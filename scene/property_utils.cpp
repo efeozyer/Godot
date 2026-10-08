@@ -33,7 +33,6 @@
 #include "core/config/engine.h"
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/templates/local_vector.h"
 #include "scene/resources/packed_scene.h"
 
@@ -77,12 +76,11 @@ bool PropertyUtils::is_property_value_different(const Object *p_object, const Va
 	return a != b;
 }
 
-Variant PropertyUtils::get_property_default_value(const Object *p_object, const StringName &p_property, bool *r_is_valid, const Vector<SceneState::PackState> *p_states_stack_cache, bool p_update_exports, const Node *p_owner, bool *r_is_class_default) {
+Variant PropertyUtils::get_property_default_value(const Object *p_object, const StringName &p_property, bool *r_is_valid, const Vector<SceneState::PackState> *p_states_stack_cache, const Node *p_owner, bool *r_is_class_default) {
 	// This function obeys the way property values are set when an object is instantiated,
 	// which is the following (the latter wins):
 	// 1. Default value from builtin class
-	// 2. Default value from script exported variable (from the topmost script)
-	// 3. Value overrides from the instantiation/inheritance stack
+	// 2. Value overrides from the instantiation/inheritance stack
 
 	if (r_is_class_default) {
 		*r_is_class_default = false;
@@ -90,18 +88,6 @@ Variant PropertyUtils::get_property_default_value(const Object *p_object, const 
 	if (r_is_valid) {
 		*r_is_valid = false;
 	}
-
-	// Handle special case "script" property, where the default value is either null or the custom type script.
-	// Do this only if there's no states stack cache to trace for default values.
-	if (!p_states_stack_cache && p_property == CoreStringName(script) && p_object->has_meta(SceneStringName(_custom_type_script))) {
-		Ref<Script> ct_scr = get_custom_type_script(p_object);
-		if (r_is_valid) {
-			*r_is_valid = true;
-		}
-		return ct_scr;
-	}
-
-	Ref<Script> topmost_script;
 
 	if (const Node *node = Object::cast_to<Node>(p_object)) {
 		// Check inheritance/instantiation ancestors
@@ -137,34 +123,6 @@ Variant PropertyUtils::get_property_default_value(const Object *p_object, const 
 				}
 				return value_in_ancestor;
 			}
-			// Save script for later
-			bool has_script = false;
-			Variant script = ia.state->get_property_value(ia.node, SNAME("script"), has_script, node_deferred);
-			if (has_script) {
-				Ref<Script> scr = script;
-				if (scr.is_valid()) {
-					topmost_script = scr;
-				}
-			}
-		}
-	}
-
-	// Let's see what default is set by the topmost script having a default, if any
-	if (topmost_script.is_null()) {
-		topmost_script = p_object->get_script();
-	}
-	if (topmost_script.is_valid()) {
-		// Should be called in the editor only and not at runtime,
-		// otherwise it can cause problems because of missing instance state support
-		if (p_update_exports && Engine::get_singleton()->is_editor_hint()) {
-			topmost_script->update_exports();
-		}
-		Variant default_value;
-		if (topmost_script->get_property_default_value(p_property, default_value)) {
-			if (r_is_valid) {
-				*r_is_valid = true;
-			}
-			return default_value;
 		}
 	}
 
@@ -283,37 +241,4 @@ Vector<SceneState::PackState> PropertyUtils::get_node_states_stack(const Node *p
 		}
 	}
 	return states_stack_ret;
-}
-
-void PropertyUtils::assign_custom_type_script(Object *p_object, const Ref<Script> &p_script) {
-	ERR_FAIL_NULL(p_object);
-	ERR_FAIL_COND(p_script.is_null());
-
-	const String &path = p_script->get_path();
-	ERR_FAIL_COND(!path.is_resource_file());
-
-	ResourceUID::ID script_uid = ResourceLoader::get_resource_uid(path);
-	if (script_uid != ResourceUID::INVALID_ID) {
-		p_object->set_meta(SceneStringName(_custom_type_script), ResourceUID::get_singleton()->id_to_text(script_uid));
-	}
-}
-
-Ref<Script> PropertyUtils::get_custom_type_script(const Object *p_object) {
-	Variant custom_script = p_object->get_meta(SceneStringName(_custom_type_script));
-#ifndef DISABLE_DEPRECATED
-	if (custom_script.get_type() == Variant::OBJECT) {
-		// Convert old script meta.
-		Ref<Script> script_object(custom_script);
-		assign_custom_type_script(const_cast<Object *>(p_object), script_object);
-		return script_object;
-	}
-#endif
-	ResourceUID::ID id = ResourceUID::get_singleton()->text_to_id(custom_script);
-	if (unlikely(id == ResourceUID::INVALID_ID || !ResourceUID::get_singleton()->has_id(id))) {
-		const_cast<Object *>(p_object)->remove_meta(SceneStringName(_custom_type_script));
-		ERR_FAIL_V_MSG(Ref<Script>(), vformat("Invalid custom type script UID: %s. Removing.", custom_script.operator String()));
-	} else {
-		custom_script = ResourceUID::get_singleton()->get_id_path(id);
-	}
-	return ResourceLoader::load(custom_script);
 }

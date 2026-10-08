@@ -3571,10 +3571,6 @@ String Variant::get_call_error_text(Object *p_base, const StringName &p_method, 
 	String base_text;
 	if (p_base) {
 		base_text = p_base->get_class();
-		Ref<Resource> script = p_base->get_script();
-		if (script.is_valid() && script->get_path().is_resource_file()) {
-			base_text += "(" + script->get_path().get_file() + ")";
-		}
 		base_text += "::";
 	}
 	return "'" + base_text + String(p_method) + "': " + err_text;

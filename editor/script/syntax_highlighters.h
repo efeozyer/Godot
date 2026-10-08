@@ -60,7 +60,6 @@ class EditorStandardSyntaxHighlighter : public EditorSyntaxHighlighter {
 
 private:
 	Ref<CodeHighlighter> highlighter;
-	ScriptLanguage *script_language = nullptr; // See GH-89610.
 
 public:
 	virtual void _update_cache() override;
@@ -69,8 +68,6 @@ public:
 	virtual String _get_name() const override { return TTR("Standard"); }
 
 	virtual Ref<EditorSyntaxHighlighter> _create() const override;
-
-	void _set_script_language(ScriptLanguage *p_script_language) { script_language = p_script_language; }
 
 	EditorStandardSyntaxHighlighter() { highlighter.instantiate(); }
 };
@@ -132,8 +129,7 @@ public:
 
 	// While not explicitly designed for those formats, this highlighter happens
 	// to handle TSCN, TRES, `project.godot` well. We can expose it in case the
-	// user opens one of these using the script editor (which can be done using
-	// the All Files filter).
+	// user opens one of these in a text editor.
 	virtual PackedStringArray _get_supported_languages() const override { return PackedStringArray{ "ini", "cfg", "tscn", "tres", "godot" }; }
 	virtual String _get_name() const override { return TTR("ConfigFile"); }
 

@@ -83,13 +83,6 @@ bool EditorSettings::_set(const StringName &p_name, const Variant &p_value) {
 	bool changed = _set_only(p_name, p_value);
 	if (changed && initialized) {
 		changed_settings.insert(p_name);
-		if (p_name == SNAME("text_editor/external/exec_path")) {
-			const StringName exec_args_name = "text_editor/external/exec_flags";
-			const String exec_args_value = _guess_exec_args_for_extenal_editor(p_value);
-			if (!exec_args_value.is_empty() && _set_only(exec_args_name, exec_args_value)) {
-				changed_settings.insert(exec_args_name);
-			}
-		}
 		emit_signal(SNAME("settings_changed"));
 	}
 	return true;
@@ -585,7 +578,6 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 
 	EDITOR_SETTING(Variant::BOOL, PROPERTY_HINT_NONE, "interface/editor/appearance/show_renderer_selector", false, "")
 
-	_initial_set("docks/scene_tree/derive_script_globals_by_name", true);
 	_initial_set("docks/scene_tree/ask_before_revoking_unique_name", true);
 
 	// Inspector
@@ -605,9 +597,7 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	EDITOR_SETTING(Variant::BOOL, PROPERTY_HINT_NONE, "interface/inspector/horizontal_vector_types_editing", true, "")
 	EDITOR_SETTING(Variant::BOOL, PROPERTY_HINT_NONE, "interface/inspector/open_resources_in_current_inspector", true, "")
 
-	PackedStringArray open_in_new_inspector_defaults;
-	open_in_new_inspector_defaults.push_back("Script"); // Required for the script editor to work.
-	_initial_set("interface/inspector/resources_to_open_in_new_inspector", open_in_new_inspector_defaults);
+	_initial_set("interface/inspector/resources_to_open_in_new_inspector", PackedStringArray());
 
 	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_ENUM, "interface/accessibility/accessibility_support", 0, "Auto (When Screen Reader is Running),Always Active,Disabled")
 	set_restart_if_changed("interface/accessibility/accessibility_support", true);
@@ -661,7 +651,6 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_ENUM, "interface/scene_tabs/display_close_button", 1, "Never,If Tab Active,Always"); // TabBar::CloseButtonDisplayPolicy
 	_initial_set("interface/scene_tabs/show_thumbnail_on_hover", true);
 	EDITOR_SETTING_USAGE(Variant::INT, PROPERTY_HINT_RANGE, "interface/scene_tabs/maximum_width", 350, "0,9999,1", PROPERTY_USAGE_DEFAULT)
-	_initial_set("interface/scene_tabs/show_script_button", false, true);
 	_initial_set("interface/scene_tabs/restore_scenes_on_load", true, true);
 	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "interface/scene_tabs/auto_select_current_scene_file", false, "");
 
@@ -733,7 +722,6 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("docks/filesystem/always_show_folders", true);
 	_initial_set("docks/filesystem/textfile_extensions", "txt,md,cfg,ini,log,json,yml,yaml,toml,xml");
 	_initial_set("docks/filesystem/other_file_extensions", "ico,icns");
-	_initial_set("docks/filesystem/automatically_open_created_scripts", true);
 	_initial_set("docks/filesystem/ask_before_moving_files", true);
 
 	// Property editor
@@ -834,12 +822,6 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("text_editor/behavior/general/empty_selection_clipboard", true);
 
 	PackedStringArray extensions;
-	if (ClassDB::class_exists("GDScript")) {
-		extensions.push_back("gd");
-	}
-	if (ClassDB::class_exists("CSharpScript")) {
-		extensions.push_back("cs");
-	}
 	extensions.push_back("gdshader");
 	_initial_set("text_editor/behavior/general/find_in_file_extensions", extensions);
 
@@ -849,8 +831,6 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("text_editor/behavior/navigation/smooth_scrolling", true, true);
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_RANGE, "text_editor/behavior/navigation/v_scroll_speed", 80, "1,10000,1")
 	_initial_set("text_editor/behavior/navigation/drag_and_drop_selection", true, true);
-	_initial_set("text_editor/behavior/navigation/stay_in_script_editor_on_node_selected", true, true);
-	_initial_set("text_editor/behavior/navigation/open_script_when_connecting_signal_to_existing_method", true, true);
 	_initial_set("text_editor/behavior/navigation/use_default_word_separators", true); // Includes ´`~$^=+|<> General punctuation and CJK punctuation.
 	_initial_set("text_editor/behavior/navigation/use_custom_word_separators", false);
 	_initial_set("text_editor/behavior/navigation/custom_word_separators", ""); // Custom word separators.
@@ -868,17 +848,11 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("text_editor/behavior/files/restore_scripts_on_load", true);
 	_initial_set("text_editor/behavior/files/convert_indent_on_save", true);
 	_initial_set("text_editor/behavior/files/auto_reload_scripts_on_external_change", true);
-	_initial_set("text_editor/behavior/files/auto_reload_and_parse_scripts_on_save", true);
-	_initial_set("text_editor/behavior/files/open_dominant_script_on_scene_change", false, true);
-	_initial_set("text_editor/behavior/files/drop_preload_resources_as_uid", true, true);
-
-	// Behavior: Diagnostics
-	_initial_set("text_editor/behavior/diagnostics/enable_tooltips", true, true);
 
 	// Behavior: Documentation
 	_initial_set("text_editor/behavior/documentation/enable_tooltips", true, true);
 
-	// Script list
+	// Document list
 	_initial_set("text_editor/script_list/show_members_overview", true, true);
 	_initial_set("text_editor/script_list/sort_members_outline_alphabetically", false, true);
 	_initial_set("text_editor/script_list/script_temperature_enabled", true);
@@ -887,8 +861,6 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("text_editor/script_list/group_help_pages", true);
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_ENUM, "text_editor/script_list/sort_scripts_by", 0, "None:2,Name:0,Path:1");
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_ENUM, "text_editor/script_list/list_script_names_as", 0, "Name,Parent Directory And Name,Full Path");
-	EDITOR_SETTING(Variant::STRING, PROPERTY_HINT_GLOBAL_FILE, "text_editor/external/exec_path", "", "");
-	EDITOR_SETTING(Variant::STRING, PROPERTY_HINT_PLACEHOLDER_TEXT, "text_editor/external/exec_flags", "{file}", "Call flags with placeholders: {project}, {file}, {col}, {line}.");
 
 	// Completion
 	EDITOR_SETTING(Variant::FLOAT, PROPERTY_HINT_RANGE, "text_editor/completion/idle_parse_delay", 1.5, "0.1,10,0.01")
@@ -897,23 +869,13 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("text_editor/completion/code_complete_enabled", true, true);
 	EDITOR_SETTING(Variant::FLOAT, PROPERTY_HINT_RANGE, "text_editor/completion/code_complete_delay", 0.3, "0.01,5,0.01,or_greater")
 	_initial_set("text_editor/completion/put_callhint_tooltip_below_current_line", true);
-	_initial_set("text_editor/completion/complete_file_paths", true);
-	_initial_set("text_editor/completion/add_type_hints", true, true);
-	_initial_set("text_editor/completion/add_string_name_literals", false, true);
-	_initial_set("text_editor/completion/add_node_path_literals", false, true);
-	_initial_set("text_editor/completion/use_single_quotes", false, true);
 	_initial_set("text_editor/completion/colorize_suggestions", true);
-
-	// External editor (ScriptEditorPlugin)
-	_initial_set("text_editor/external/use_external_editor", false, true);
-	_initial_set("text_editor/external/exec_path", "");
 
 	// Help
 	_initial_set("text_editor/help/show_help_index", true);
 	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "text_editor/help/help_font_size", 16, "8,48,1")
 	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "text_editor/help/help_source_font_size", 15, "8,48,1")
 	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "text_editor/help/help_title_font_size", 23, "8,64,1")
-	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_ENUM, "text_editor/help/class_reference_examples", 0, "GDScript,C#,GDScript and C#")
 	_initial_set("text_editor/help/sort_functions_alphabetically", true);
 	_initial_set("text_editor/help/show_property_setters_and_getters", false);
 
@@ -1179,18 +1141,9 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("network/debug/remote_host", "127.0.0.1"); // Hints provided in setup_network
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_RANGE, "network/debug/remote_port", 6007, "1,65535,1")
 
-	/* GDScript Language Server */
-	_initial_set("network/language_server/remote_host", "127.0.0.1"); // Hints provided in setup_network
-	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "network/language_server/remote_port", 6005, "1,65535,1");
-	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "network/language_server/enable_smart_resolve", true, String());
-	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "network/language_server/show_native_symbols_in_editor", false, String());
-	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "network/language_server/use_thread", false, String());
-	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_NONE, "network/language_server/poll_limit_usec", 100000, "");
-
 	/* Debugger/profiler */
 
 	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "debugger/auto_switch_to_remote_scene_tree", false, "")
-	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "debugger/auto_switch_to_stack_trace", true, "")
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_RANGE, "debugger/max_node_selection", 20, "1,100,1")
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_RANGE, "debugger/profiler_frame_history_size", 3600, "60,10000,1")
 	EDITOR_SETTING(Variant::INT, PROPERTY_HINT_RANGE, "debugger/profiler_frame_max_functions", 64, "16,512,1")
@@ -1274,36 +1227,6 @@ void EditorSettings::_load_default_visual_shader_editor_theme() {
 	_initial_set("editors/visual_editors/category_colors/particle_color", Color(0.12, 0.358, 0.8));
 }
 
-String EditorSettings::_guess_exec_args_for_extenal_editor(const String &p_path) {
-	Ref<RegEx> regex = RegEx::create_from_string(R"((?:jetbrains\s*)?rider(?:\s*(eap|\d{4}\.\d+|\d{4}\.\d+\s*dev)?)?|visual\s*studio\s*code|subl(ime\s*text)?|sublime_text|zed(it(or)?)?|(g)?vim|emacs|atom|geany|kate|code|(vs)?codium)");
-	Ref<RegExMatch> editor_match = regex->search(p_path.to_lower().get_file().get_basename());
-
-	if (editor_match.is_null()) {
-		return String();
-	}
-
-	const String editor = editor_match->get_string(0).to_lower();
-	String new_exec_flags = "{file}";
-
-	if (editor.begins_with("rider")) {
-		new_exec_flags = "{project} --line {line} {file}";
-	} else if (editor == "subl" || editor == "sublime text" || editor == "sublime_text" || editor == "zed" || editor == "zedit" || editor == "zeditor") {
-		new_exec_flags = "{project} {file}:{line}:{col}";
-	} else if (editor == "vim" || editor == "gvim") {
-		new_exec_flags = "\"+call cursor({line}, {col})\" {file}";
-	} else if (editor == "emacs") {
-		new_exec_flags = "emacs +{line}:{col} {file}";
-	} else if (editor == "atom") {
-		new_exec_flags = "{file}:{line}";
-	} else if (editor == "geany" || editor == "kate") {
-		new_exec_flags = "{file} --line {line} --column {col}";
-	} else if (editor == "code" || editor == "visual studio code" || editor == "codium" || editor == "vscodium") {
-		new_exec_flags = "{project} --goto {file}:{line}:{col}";
-	}
-
-	return new_exec_flags;
-}
-
 const String EditorSettings::_get_project_metadata_path() const {
 	return EditorPaths::get_singleton()->get_project_settings_dir().path_join("project_metadata.cfg");
 }
@@ -1365,13 +1288,9 @@ void EditorSettings::_handle_setting_compatibility() {
 	_rename_setting("interface/editor/update_continuously", "interface/editor/display/update_continuously");
 	_rename_setting("interface/editor/collapse_main_menu", "interface/editor/appearance/collapse_main_menu");
 	_rename_setting("asset_library/use_threads", "asset_store/use_threads");
-	_rename_setting("interface/editors/derive_script_globals_by_name", "docks/scene_tree/derive_script_globals_by_name");
 
 	// Handle renamed shortcuts.
 	_rename_shortcut("editor/editor_assetlib", "editor/editor_asset_store");
-	_rename_shortcut("script_editor/window_move_up", "script_editor/move_document_up");
-	_rename_shortcut("script_editor/window_move_down", "script_editor/move_document_down");
-	_rename_shortcut("script_editor/window_sort", "script_editor/sort_documents");
 	_rename_shortcut("script_text_editor/replace_in_files", "editor/replace_in_files");
 }
 
@@ -1568,10 +1487,8 @@ void EditorSettings::setup_network() {
 
 	// Add hints with valid IP addresses to remote_host property.
 	add_property_hint(PropertyInfo(Variant::STRING, "network/debug/remote_host", PROPERTY_HINT_ENUM, hint));
-	add_property_hint(PropertyInfo(Variant::STRING, "network/language_server/remote_host", PROPERTY_HINT_ENUM, hint));
 	// Fix potentially invalid remote_host due to network change.
 	set("network/debug/remote_host", selected);
-	set("network/language_server/remote_host", selected);
 }
 
 void EditorSettings::save() {
@@ -1908,7 +1825,7 @@ void EditorSettings::load_favorites_and_recent_dirs() {
 
 		for (String &E : secs) {
 			PackedStringArray properties = PackedStringArray(cf->get_value(E, "properties"));
-			if (EditorNode::get_editor_data().is_type_recognized(E) || ResourceLoader::exists(E, "Script")) {
+			if (EditorNode::get_editor_data().is_type_recognized(E)) {
 				for (const String &property : properties) {
 					if (!favorite_properties[E].has(property)) {
 						favorite_properties[E].push_back(property);
@@ -1974,13 +1891,6 @@ HashMap<StringName, Color> EditorSettings::get_godot2_text_editor_theme() {
 	colors["text_editor/theme/highlighting/folded_code_region_color"] = Color(0.68, 0.46, 0.77, 0.2);
 	colors["text_editor/theme/highlighting/search_result_color"] = Color(0.05, 0.25, 0.05, 1);
 	colors["text_editor/theme/highlighting/search_result_border_color"] = Color(0.41, 0.61, 0.91, 0.38);
-	colors["text_editor/theme/highlighting/gdscript/function_definition_color"] = Color(0.4, 0.9, 1.0);
-
-	colors["text_editor/theme/highlighting/gdscript/global_function_color"] = Color(0.64, 0.64, 0.96);
-	colors["text_editor/theme/highlighting/gdscript/node_path_color"] = Color(0.72, 0.77, 0.49);
-	colors["text_editor/theme/highlighting/gdscript/node_reference_color"] = Color(0.39, 0.76, 0.35);
-	colors["text_editor/theme/highlighting/gdscript/annotation_color"] = Color(1.0, 0.7, 0.45);
-	colors["text_editor/theme/highlighting/gdscript/string_name_color"] = Color(1.0, 0.76, 0.65);
 	colors["text_editor/theme/highlighting/comment_markers/critical_color"] = Color(0.77, 0.35, 0.35);
 	colors["text_editor/theme/highlighting/comment_markers/warning_color"] = Color(0.72, 0.61, 0.48);
 	colors["text_editor/theme/highlighting/comment_markers/notice_color"] = Color(0.56, 0.67, 0.51);
@@ -2018,27 +1928,6 @@ void EditorSettings::update_text_editor_themes_list() {
 		themes += "," + String(",").join(custom_themes);
 	}
 	add_property_hint(PropertyInfo(Variant::STRING, "text_editor/theme/color_theme", PROPERTY_HINT_ENUM, themes));
-}
-
-Vector<String> EditorSettings::get_script_templates(const String &p_extension, const String &p_custom_path) {
-	Vector<String> templates;
-	String template_dir = EditorPaths::get_singleton()->get_script_templates_dir();
-	if (!p_custom_path.is_empty()) {
-		template_dir = p_custom_path;
-	}
-	Ref<DirAccess> d = DirAccess::open(template_dir);
-	if (d.is_valid()) {
-		d->list_dir_begin();
-		String file = d->get_next();
-		while (!file.is_empty()) {
-			if (file.get_extension() == p_extension) {
-				templates.push_back(file.get_basename());
-			}
-			file = d->get_next();
-		}
-		d->list_dir_end();
-	}
-	return templates;
 }
 
 String EditorSettings::get_editor_layouts_config() const {

@@ -72,7 +72,7 @@ int get_packet_len(uint32_t p_node_target, int p_packet_len) {
 	}
 }
 
-void SceneRPCInterface::_parse_rpc_config(const Variant &p_config, bool p_for_node, RPCConfigCache &r_cache) {
+void SceneRPCInterface::_parse_rpc_config(const Variant &p_config, RPCConfigCache &r_cache) {
 	if (p_config.get_type() == Variant::NIL) {
 		return;
 	}
@@ -86,17 +86,13 @@ void SceneRPCInterface::_parse_rpc_config(const Variant &p_config, bool p_for_no
 		ERR_CONTINUE(config[name].get_type() != Variant::DICTIONARY);
 		ERR_CONTINUE(!config[name].operator Dictionary().has("rpc_mode"));
 		Dictionary dict = config[name];
-		// Default values should match GDScript `@rpc` annotation registration and `rpc_annotation()`.
 		RPCConfig cfg;
 		cfg.name = name;
 		cfg.rpc_mode = ((MultiplayerAPI::RPCMode)dict.get("rpc_mode", MultiplayerAPI::RPC_MODE_AUTHORITY).operator int());
 		cfg.transfer_mode = ((MultiplayerPeer::TransferMode)dict.get("transfer_mode", MultiplayerPeer::TRANSFER_MODE_RELIABLE).operator int());
 		cfg.call_local = dict.get("call_local", false).operator bool();
 		cfg.channel = dict.get("channel", 0).operator int();
-		uint16_t id = ((uint16_t)i);
-		if (p_for_node) {
-			id |= (1 << 15);
-		}
+		uint16_t id = ((uint16_t)i) | (1 << 15);
 		r_cache.configs[id] = cfg;
 		r_cache.ids[name] = id;
 	}
@@ -108,10 +104,7 @@ const SceneRPCInterface::RPCConfigCache &SceneRPCInterface::_get_node_config(con
 		return rpc_cache[oid];
 	}
 	RPCConfigCache cache;
-	_parse_rpc_config(p_node->get_node_rpc_config(), true, cache);
-	if (p_node->get_script_instance()) {
-		_parse_rpc_config(p_node->get_script_instance()->get_rpc_config(), false, cache);
-	}
+	_parse_rpc_config(p_node->get_node_rpc_config(), cache);
 	rpc_cache[oid] = cache;
 	return rpc_cache[oid];
 }
@@ -479,21 +472,16 @@ Error SceneRPCInterface::rpcp(Object *p_obj, int p_peer_id, const StringName &p_
 
 	int caller_id = multiplayer->get_unique_id();
 	bool call_local_native = false;
-	bool call_local_script = false;
 	const RPCConfigCache &config_cache = _get_node_config(node);
 	uint16_t rpc_id = config_cache.ids.has(p_method) ? config_cache.ids[p_method] : UINT16_MAX;
 	ERR_FAIL_COND_V_MSG(rpc_id == UINT16_MAX, ERR_INVALID_PARAMETER,
-			vformat("Unable to get the RPC configuration for the function \"%s\" at path: \"%s\". This happens when the method is missing or not marked for RPCs in the local script.", p_method, node->get_path()));
+			vformat("Unable to get the RPC configuration for the function \"%s\" at path: \"%s\". This happens when the method is missing or not marked for RPCs.", p_method, node->get_path()));
 	const RPCConfig &config = config_cache.configs[rpc_id];
 
 	ERR_FAIL_COND_V_MSG(p_peer_id == caller_id && !config.call_local, ERR_INVALID_PARAMETER, "RPC '" + p_method + "' on yourself is not allowed by selected mode.");
 
 	if (p_peer_id == 0 || p_peer_id == caller_id || (p_peer_id < 0 && p_peer_id != -caller_id)) {
-		if (rpc_id & (1 << 15)) {
-			call_local_native = config.call_local;
-		} else {
-			call_local_script = config.call_local;
-		}
+		call_local_native = config.call_local;
 	}
 
 	if (p_peer_id != caller_id) {
@@ -510,22 +498,6 @@ Error SceneRPCInterface::rpcp(Object *p_obj, int p_peer_id, const StringName &p_
 		if (ce.error != Callable::CallError::CALL_OK) {
 			String error = Variant::get_call_error_text(node, p_method, p_arg, p_argcount, ce);
 			error = "rpc() aborted in local call:  - " + error + ".";
-			ERR_PRINT(error);
-			return FAILED;
-		}
-	}
-
-	if (call_local_script) {
-		Callable::CallError ce;
-		ce.error = Callable::CallError::CALL_OK;
-
-		multiplayer->set_remote_sender_override(multiplayer->get_unique_id());
-		node->get_script_instance()->callp(p_method, p_arg, p_argcount, ce);
-		multiplayer->set_remote_sender_override(0);
-
-		if (ce.error != Callable::CallError::CALL_OK) {
-			String error = Variant::get_call_error_text(node, p_method, p_arg, p_argcount, ce);
-			error = "rpc() aborted in script local call:  - " + error + ".";
 			ERR_PRINT(error);
 			return FAILED;
 		}

@@ -314,8 +314,6 @@ void EditorQuickOpenDialog::shortcut_input(const Ref<InputEvent> &p_event) {
 			new_base_types.push_back("Resource");
 		} else if (settings->is_shortcut("editor/quick_open_scene", p_event)) {
 			new_base_types.push_back("PackedScene");
-		} else if (settings->is_shortcut("editor/quick_open_script", p_event)) {
-			new_base_types.push_back("Script");
 		}
 	}
 
@@ -670,17 +668,11 @@ void QuickOpenResultContainer::_find_uids_in_folder(EditorFileSystemDirectory *p
 		}
 
 		const StringName engine_type = p_directory->get_file_type(i);
-		const StringName script_type = p_directory->get_file_resource_script_class(i);
-
-		const bool is_engine_type = script_type == StringName();
-		const StringName &actual_type = is_engine_type ? engine_type : script_type;
 
 		for (const StringName &parent_type : base_types) {
-			bool is_valid = ClassDB::is_parent_class(engine_type, parent_type) || (!is_engine_type && EditorNode::get_editor_data().script_class_is_parent(script_type, parent_type));
-
-			if (is_valid) {
+			if (ClassDB::is_parent_class(engine_type, parent_type)) {
 				uids.push_back(uid);
-				filetypes.insert(uid, actual_type);
+				filetypes.insert(uid, engine_type);
 				break; // Stop testing base types as soon as we get a match.
 			}
 		}

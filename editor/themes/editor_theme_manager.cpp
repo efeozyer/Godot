@@ -544,22 +544,10 @@ void EditorThemeManager::_populate_text_editor_styles(const Ref<EditorTheme> &p_
 			colors["text_editor/theme/highlighting/error_underline_color"] = Color(1.0, 0.0, 0.0);
 
 			if (p_config.dark_icon_and_font) {
-				colors["text_editor/theme/highlighting/gdscript/function_definition_color"] = Color(0.4, 0.9, 1.0);
-				colors["text_editor/theme/highlighting/gdscript/global_function_color"] = Color(0.64, 0.64, 0.96);
-				colors["text_editor/theme/highlighting/gdscript/node_path_color"] = Color(0.72, 0.77, 0.49);
-				colors["text_editor/theme/highlighting/gdscript/node_reference_color"] = Color(0.39, 0.76, 0.35);
-				colors["text_editor/theme/highlighting/gdscript/annotation_color"] = Color(1.0, 0.7, 0.45);
-				colors["text_editor/theme/highlighting/gdscript/string_name_color"] = Color(1.0, 0.76, 0.65);
 				colors["text_editor/theme/highlighting/comment_markers/critical_color"] = Color(0.77, 0.35, 0.35);
 				colors["text_editor/theme/highlighting/comment_markers/warning_color"] = Color(0.72, 0.61, 0.48);
 				colors["text_editor/theme/highlighting/comment_markers/notice_color"] = Color(0.56, 0.67, 0.51);
 			} else {
-				colors["text_editor/theme/highlighting/gdscript/function_definition_color"] = Color(0, 0.6, 0.6);
-				colors["text_editor/theme/highlighting/gdscript/global_function_color"] = Color(0.36, 0.18, 0.72);
-				colors["text_editor/theme/highlighting/gdscript/node_path_color"] = Color(0.18, 0.55, 0);
-				colors["text_editor/theme/highlighting/gdscript/node_reference_color"] = Color(0.0, 0.5, 0);
-				colors["text_editor/theme/highlighting/gdscript/annotation_color"] = Color(0.8, 0.37, 0);
-				colors["text_editor/theme/highlighting/gdscript/string_name_color"] = Color(0.8, 0.56, 0.45);
 				colors["text_editor/theme/highlighting/comment_markers/critical_color"] = Color(0.8, 0.14, 0.14);
 				colors["text_editor/theme/highlighting/comment_markers/warning_color"] = Color(0.75, 0.39, 0.03);
 				colors["text_editor/theme/highlighting/comment_markers/notice_color"] = Color(0.24, 0.54, 0.09);

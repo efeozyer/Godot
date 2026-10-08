@@ -90,13 +90,6 @@ void EditorSceneTabs::_scene_tab_changed(int p_tab) {
 	emit_signal("tab_changed", p_tab);
 }
 
-void EditorSceneTabs::_scene_tab_script_edited(int p_tab) {
-	Ref<Script> scr = EditorNode::get_editor_data().get_scene_root_script(p_tab);
-	if (scr.is_valid()) {
-		InspectorDock::get_singleton()->edit_resource(scr);
-	}
-}
-
 void EditorSceneTabs::_scene_tab_closed(int p_tab) {
 	emit_signal("tab_closed", p_tab);
 }
@@ -299,7 +292,6 @@ void EditorSceneTabs::update_scene_tabs() {
 }
 
 void EditorSceneTabs::_update_tab_titles() {
-	bool show_rb = EDITOR_GET("interface/scene_tabs/show_script_button");
 	const String main_scene_path = ResourceUID::ensure_path(GLOBAL_GET("application/run/main_scene"));
 
 	// Get all scene names, which may be ambiguous.
@@ -311,7 +303,6 @@ void EditorSceneTabs::_update_tab_titles() {
 	}
 	EditorNode::disambiguate_filenames(full_path_names, disambiguated_scene_names);
 
-	Ref<Texture2D> script_icon = get_editor_theme_icon(SNAME("Script"));
 	for (int i = 0; i < EditorNode::get_editor_data().get_edited_scene_count(); i++) {
 		Node *type_node = EditorNode::get_editor_data().get_edited_scene_root(i);
 		Ref<Texture2D> icon;
@@ -340,12 +331,6 @@ void EditorSceneTabs::_update_tab_titles() {
 			int global_menu_index = scene_tabs->get_tab_metadata(i);
 			NativeMenu::get_singleton()->set_item_text(dock_rid, global_menu_index, EditorNode::get_editor_data().get_scene_title(i) + (unsaved ? "(*)" : ""));
 			NativeMenu::get_singleton()->set_item_tag(dock_rid, global_menu_index, i);
-		}
-
-		if (show_rb && EditorNode::get_editor_data().get_scene_root_script(i).is_valid()) {
-			scene_tabs->set_tab_button_icon(i, script_icon);
-		} else {
-			scene_tabs->set_tab_button_icon(i, nullptr);
 		}
 	}
 
@@ -496,7 +481,6 @@ EditorSceneTabs::EditorSceneTabs() {
 	tabbar_container->add_child(scene_tabs);
 
 	scene_tabs->connect("tab_changed", callable_mp(this, &EditorSceneTabs::_scene_tab_changed));
-	scene_tabs->connect("tab_button_pressed", callable_mp(this, &EditorSceneTabs::_scene_tab_script_edited));
 	scene_tabs->connect("tab_close_pressed", callable_mp(this, &EditorSceneTabs::_scene_tab_closed));
 	scene_tabs->connect("tab_hovered", callable_mp(this, &EditorSceneTabs::_scene_tab_hovered));
 	scene_tabs->connect(SceneStringName(mouse_exited), callable_mp(this, &EditorSceneTabs::_scene_tab_exit));

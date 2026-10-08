@@ -26,11 +26,6 @@ allprojects {
     }
 }
 
-configurations {
-    // Initializes a placeholder for the monoImplementation dependency configuration.
-    monoImplementation {}
-}
-
 dependencies {
     // Android instrumented test dependencies
     androidTestImplementation "androidx.test.ext:junit:$versions.junitVersion"
@@ -93,12 +88,6 @@ dependencies {
     String addonsDirectory = getAddonsDirectory()
     if (addonsDirectory != null && !addonsDirectory.isBlank()) {
         implementation fileTree(dir: "$addonsDirectory", include: ['*.jar', '*.aar'])
-    }
-
-    // .NET dependencies
-    String jar = '../../../../modules/mono/thirdparty/libSystem.Security.Cryptography.Native.Android.jar'
-    if (file(jar).exists()) {
-        monoImplementation files(jar)
     }
 }
 
@@ -243,13 +232,10 @@ android {
     flavorDimensions 'edition'
 
     productFlavors {
-        // Product flavor for the standard (no .net support) builds.
+        // Product flavor for the standard builds.
         standard {
             getIsDefault().set(true)
         }
-
-        // Product flavor for the Mono (.net) builds.
-        mono {}
 
         // Product flavor used for running instrumented tests.
         instrumented {
@@ -266,8 +252,7 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            String filenameSuffix = variant.flavorName == "mono" ? variant.name : variant.buildType.name
-            output.outputFileName = "android_${filenameSuffix}.apk"
+            output.outputFileName = "android_${variant.buildType.name}.apk"
         }
     }
 }
@@ -297,8 +282,7 @@ task copyAndRenameBinary(type: Copy) {
             sourceFilename = "${project.name}-${filenameSuffix}.aab"
             sourceFilepath = "$buildDir/outputs/bundle/${exportEdition}${exportBuildTypeCapitalized}/$sourceFilename"
         } else {
-            String filenameSuffix = exportEdition == "mono" ? "${exportEdition}${exportBuildTypeCapitalized}" : exportBuildType
-            sourceFilename = "android_${filenameSuffix}.apk"
+            sourceFilename = "android_${exportBuildType}.apk"
             sourceFilepath = "$buildDir/outputs/apk/$exportEdition/$exportBuildType/$sourceFilename"
         }
     }

@@ -43,6 +43,7 @@
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/2d/node_2d.h"
+#include "scene/gui/option_button.h"
 #include "scene/resources/packed_scene.h"
 
 #include "modules/modules_enabled.gen.h" // For TileMap.

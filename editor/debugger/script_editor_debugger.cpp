@@ -42,7 +42,6 @@
 #include "core/variant/typed_dictionary.h"
 #include "core/version.h"
 #include "editor/debugger/editor_debugger_plugin.h"
-#include "editor/debugger/editor_expression_evaluator.h"
 #include "editor/debugger/editor_performance_profiler.h"
 #include "editor/debugger/editor_profiler.h"
 #include "editor/debugger/editor_visual_profiler.h"
@@ -84,80 +83,6 @@ void ScriptEditorDebugger::_put_msg(const String &p_message, const Array &p_data
 		Error err = peer->put_message(msg);
 		ERR_FAIL_COND_MSG(err != OK, vformat("Failed to send message %d", err));
 	}
-}
-
-void ScriptEditorDebugger::debug_copy() {
-	String msg = reason->get_text();
-	if (msg.is_empty()) {
-		return;
-	}
-	DisplayServer::get_singleton()->clipboard_set(msg);
-}
-
-void ScriptEditorDebugger::debug_skip_breakpoints() {
-	skip_breakpoints_value = !skip_breakpoints_value;
-	if (skip_breakpoints_value) {
-		skip_breakpoints->set_button_icon(get_editor_theme_icon(SNAME("DebugSkipBreakpointsOn")));
-	} else {
-		skip_breakpoints->set_button_icon(get_editor_theme_icon(SNAME("DebugSkipBreakpointsOff")));
-	}
-
-	Array msg = { skip_breakpoints_value };
-	_put_msg("set_skip_breakpoints", msg, debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
-}
-
-void ScriptEditorDebugger::debug_ignore_error_breaks() {
-	ignore_error_breaks_value = !ignore_error_breaks_value;
-	if (ignore_error_breaks_value) {
-		ignore_error_breaks->set_button_icon(get_theme_icon(SNAME("NotificationDisabled"), SNAME("EditorIcons")));
-	} else {
-		ignore_error_breaks->set_button_icon(get_theme_icon(SNAME("Notification"), SNAME("EditorIcons")));
-	}
-
-	Array msg = { ignore_error_breaks_value };
-	_put_msg("set_ignore_error_breaks", msg);
-}
-
-void ScriptEditorDebugger::debug_out() {
-	ERR_FAIL_COND(!is_breaked());
-
-	_put_msg("out", Array(), debugging_thread_id);
-	_clear_execution();
-}
-
-void ScriptEditorDebugger::debug_next() {
-	ERR_FAIL_COND(!is_breaked());
-
-	_put_msg("next", Array(), debugging_thread_id);
-	_clear_execution();
-}
-
-void ScriptEditorDebugger::debug_step() {
-	ERR_FAIL_COND(!is_breaked());
-
-	_put_msg("step", Array(), debugging_thread_id);
-	_clear_execution();
-}
-
-void ScriptEditorDebugger::debug_break() {
-	ERR_FAIL_COND(is_breaked());
-
-	_put_msg("break", Array());
-	_mute_audio_on_break(true);
-}
-
-void ScriptEditorDebugger::debug_continue() {
-	ERR_FAIL_COND(!is_breaked());
-
-	// Allow focus stealing only if we actually run this client for security.
-	if (remote_pid && EditorNode::get_singleton()->has_child_process(remote_pid)) {
-		DisplayServer::get_singleton()->enable_for_stealing_focus(remote_pid);
-	}
-
-	_clear_execution();
-	_put_msg("continue", Array(), debugging_thread_id);
-	_put_msg("servers:foreground", Array());
-	_mute_audio_on_break(false);
 }
 
 void ScriptEditorDebugger::update_tabs() {
@@ -277,11 +202,6 @@ const SceneDebuggerTree *ScriptEditorDebugger::get_remote_tree() {
 	return scene_tree;
 }
 
-void ScriptEditorDebugger::request_remote_evaluate(const String &p_expression, int p_stack_frame) {
-	Array msg = { p_expression, p_stack_frame };
-	_put_msg("evaluate", msg);
-}
-
 void ScriptEditorDebugger::update_remote_object(ObjectID p_obj_id, const String &p_prop, const Variant &p_value, const String &p_field) {
 	Array msg = { p_obj_id, p_prop };
 
@@ -350,94 +270,6 @@ Size2 ScriptEditorDebugger::get_minimum_size() const {
 	Size2 ms = MarginContainer::get_minimum_size();
 	ms.y = MAX(ms.y, 250 * EDSCALE);
 	return ms;
-}
-
-void ScriptEditorDebugger::_thread_debug_enter(uint64_t p_thread_id) {
-	ERR_FAIL_COND(!threads_debugged.has(p_thread_id));
-	ThreadDebugged &td = threads_debugged[p_thread_id];
-	_set_reason_text(td.error, MESSAGE_ERROR);
-	emit_signal(SNAME("breaked"), true, td.can_debug, td.error, td.has_stackdump);
-	_mute_audio_on_break(true);
-	if (!td.error.is_empty() && EDITOR_GET("debugger/auto_switch_to_stack_trace")) {
-		tabs->set_current_tab(0);
-	}
-	inspector->clear_cache(); // Take a chance to force remote objects update.
-	_put_msg("get_stack_dump", Array(), p_thread_id);
-}
-
-void ScriptEditorDebugger::_select_thread(int p_index) {
-	debugging_thread_id = threads->get_item_metadata(threads->get_selected());
-	_thread_debug_enter(debugging_thread_id);
-}
-
-void ScriptEditorDebugger::_msg_debug_enter(uint64_t p_thread_id, const Array &p_data) {
-	ERR_FAIL_COND(p_data.size() != 4);
-
-	const Thread::ID caller_id = p_data[3];
-
-	ThreadDebugged td;
-	td.name = (caller_id == Thread::get_main_id()) ? TTR("Main Thread") : itos(caller_id);
-	td.error = p_data[1];
-	td.can_debug = p_data[0];
-	td.has_stackdump = p_data[2];
-	td.thread_id = p_thread_id;
-	static uint32_t order_inc = 0;
-	td.debug_order = order_inc++;
-
-	threads_debugged.insert(p_thread_id, td);
-
-	if (threads_debugged.size() == 1) {
-		// First thread that requests debug
-		debugging_thread_id = p_thread_id;
-		_thread_debug_enter(p_thread_id);
-		can_request_idle_draw = true;
-		if (is_move_to_foreground()) {
-			DisplayServer::get_singleton()->window_move_to_foreground();
-		}
-		profiler->set_enabled(false, false);
-		visual_profiler->set_enabled(false);
-	}
-	_update_buttons_state();
-}
-
-void ScriptEditorDebugger::_msg_debug_exit(uint64_t p_thread_id, const Array &p_data) {
-	threads_debugged.erase(p_thread_id);
-	if (p_thread_id == debugging_thread_id) {
-		_clear_execution();
-		if (threads_debugged.is_empty()) {
-			debugging_thread_id = Thread::UNASSIGNED_ID;
-		} else {
-			// Find next thread to debug.
-			uint32_t min_order = 0xFFFFFFFF;
-			uint64_t next_thread = Thread::UNASSIGNED_ID;
-			for (KeyValue<uint64_t, ThreadDebugged> T : threads_debugged) {
-				if (T.value.debug_order < min_order) {
-					min_order = T.value.debug_order;
-					next_thread = T.key;
-				}
-			}
-
-			debugging_thread_id = next_thread;
-		}
-
-		if (debugging_thread_id == Thread::UNASSIGNED_ID) {
-			// Nothing else to debug.
-			profiler->set_enabled(true, false);
-			profiler->disable_seeking();
-
-			visual_profiler->set_enabled(true);
-
-			_set_reason_text(TTRC("Execution resumed."), MESSAGE_SUCCESS);
-			emit_signal(SNAME("breaked"), false, false, "", false);
-			_mute_audio_on_break(false);
-
-			_update_buttons_state();
-		} else {
-			_thread_debug_enter(debugging_thread_id);
-		}
-	} else {
-		_update_buttons_state();
-	}
 }
 
 void ScriptEditorDebugger::_msg_set_pid(uint64_t p_thread_id, const Array &p_data) {
@@ -520,52 +352,6 @@ void ScriptEditorDebugger::_msg_servers_memory_usage(uint64_t p_thread_id, const
 
 	vmem_total->set_tooltip_text(TTR("Bytes:") + " " + itos(total));
 	vmem_total->set_text(String::humanize_size(total));
-}
-
-void ScriptEditorDebugger::_msg_servers_drawn(uint64_t p_thread_id, const Array &p_data) {
-	can_request_idle_draw = true;
-}
-
-void ScriptEditorDebugger::_msg_stack_dump(uint64_t p_thread_id, const Array &p_data) {
-	DebuggerMarshalls::ScriptStackDump stack;
-	stack.deserialize(p_data);
-
-	stack_dump->clear();
-	inspector->clear_stack_variables();
-	TreeItem *r = stack_dump->create_item();
-
-	Array stack_dump_info;
-
-	int i = 0;
-	for (List<ScriptLanguage::StackInfo>::Iterator itr = stack.frames.begin(); itr != stack.frames.end(); ++itr, ++i) {
-		TreeItem *s = stack_dump->create_item(r);
-		Dictionary d;
-		d["frame"] = i;
-		d["file"] = itr->file;
-		d["function"] = itr->func;
-		d["line"] = itr->line;
-		stack_dump_info.push_back(d);
-		s->set_metadata(0, d);
-
-		String line = itos(i) + " - " + String(d["file"]) + ":" + itos(d["line"]) + " - at function: " + String(d["function"]);
-		s->set_text(0, line);
-
-		if (i == 0) {
-			s->select(0);
-		}
-	}
-	emit_signal(SNAME("stack_dump"), stack_dump_info);
-}
-
-void ScriptEditorDebugger::_msg_stack_frame_vars(uint64_t p_thread_id, const Array &p_data) {
-	inspector->clear_stack_variables();
-	ERR_FAIL_COND(p_data.size() != 1);
-	emit_signal(SNAME("stack_frame_vars"), p_data[0]);
-}
-
-void ScriptEditorDebugger::_msg_stack_frame_var(uint64_t p_thread_id, const Array &p_data) {
-	inspector->add_stack_variable(p_data);
-	emit_signal(SNAME("stack_frame_var"), p_data);
 }
 
 void ScriptEditorDebugger::_msg_output(uint64_t p_thread_id, const Array &p_data) {
@@ -652,9 +438,6 @@ void ScriptEditorDebugger::_msg_error(uint64_t p_thread_id, const Array &p_data)
 	// Rest of the error data.
 	bool source_is_project_file = oe.source_file.begins_with("res://");
 
-	// Metadata to highlight error line in scripts.
-	Array source_meta = { oe.source_file, oe.source_line };
-
 	// Create error tree to display above error or warning details.
 	TreeItem *r = error_tree->get_root();
 	if (!r) {
@@ -683,14 +466,7 @@ void ScriptEditorDebugger::_msg_error(uint64_t p_thread_id, const Array &p_data)
 	error->set_custom_color(1, color);
 
 	String error_title;
-	if (!oe.source_func.is_empty() && source_is_project_file) {
-		// If source function is inside the project file.
-		error_title += oe.source_func + ": ";
-	} else if (oe.callstack.size() > 0) {
-		// Otherwise, if available, use the script's stack in the error title.
-		error_title = _format_frame_text(&oe.callstack[0]) + ": ";
-	} else if (!oe.source_func.is_empty()) {
-		// Otherwise try to use the C++ source function.
+	if (!oe.source_func.is_empty()) {
 		error_title += oe.source_func + ": ";
 	}
 	// If we have a (custom) error message, use it as title, and add a C++ Error
@@ -701,28 +477,13 @@ void ScriptEditorDebugger::_msg_error(uint64_t p_thread_id, const Array &p_data)
 	error->set_autowrap_trim_flags(1, 0);
 	tooltip += " " + error_title + "\n";
 
-	// Find the language of the error's source file.
-	String source_language_name = "C++"; // Default value is the old hard-coded one.
-	const String source_file_extension = oe.source_file.get_extension();
-	for (int i = 0; i < ScriptServer::get_language_count(); ++i) {
-		ScriptLanguage *script_language = ScriptServer::get_language(i);
-		if (source_file_extension == script_language->get_extension()) {
-			source_language_name = script_language->get_name();
-			break;
-		}
-	}
-
 	if (!oe.error_descr.is_empty()) {
 		// Add item for C++ error condition.
 		TreeItem *cpp_cond = error_tree->create_item(error);
-		// TRANSLATORS: %s is the name of a language, e.g. C++.
-		cpp_cond->set_text(0, "<" + vformat(TTR("%s Error"), source_language_name) + ">");
+		cpp_cond->set_text(0, "<" + TTR("C++ Error") + ">");
 		cpp_cond->set_text(1, oe.error);
 		cpp_cond->set_text_alignment(0, HORIZONTAL_ALIGNMENT_LEFT);
-		tooltip += vformat(TTR("%s Error:"), source_language_name) + " " + oe.error + "\n";
-		if (source_is_project_file) {
-			cpp_cond->set_metadata(0, source_meta);
-		}
+		tooltip += TTR("C++ Error:") + " " + oe.error + "\n";
 	}
 	Vector<uint8_t> v;
 	v.resize(100);
@@ -737,42 +498,10 @@ void ScriptEditorDebugger::_msg_error(uint64_t p_thread_id, const Array &p_data)
 	}
 
 	TreeItem *cpp_source = error_tree->create_item(error);
-	// TRANSLATORS: %s is the name of a language, e.g. C++.
-	cpp_source->set_text(0, "<" + vformat(TTR("%s Source"), source_language_name) + ">");
+	cpp_source->set_text(0, "<" + TTR("C++ Source") + ">");
 	cpp_source->set_text(1, source_txt);
 	cpp_source->set_text_alignment(0, HORIZONTAL_ALIGNMENT_LEFT);
-	tooltip += vformat(TTR("%s Source:"), source_language_name) + " " + source_txt + "\n";
-
-	// Set metadata to highlight error line in scripts.
-	if (source_is_project_file) {
-		error->set_metadata(0, source_meta);
-		cpp_source->set_metadata(0, source_meta);
-	}
-
-	// Format stack trace.
-	// stack_items_count is the number of elements to parse, with 3 items per frame
-	// of the stack trace (script, method, line).
-	const ScriptLanguage::StackInfo *infos = oe.callstack.ptr();
-	for (unsigned int i = 0; i < (unsigned int)oe.callstack.size(); i++) {
-		TreeItem *stack_trace = error_tree->create_item(error);
-
-		Array meta = { infos[i].file, infos[i].line };
-		stack_trace->set_metadata(0, meta);
-
-		if (i == 0) {
-			stack_trace->set_text(0, "<" + TTR("Stack Trace") + ">");
-			stack_trace->set_text_alignment(0, HORIZONTAL_ALIGNMENT_LEFT);
-			if (!source_is_project_file) {
-				// Only override metadata if the source is not inside the project.
-				error->set_metadata(0, meta);
-			}
-			tooltip += TTR("Stack Trace:") + "\n";
-		}
-
-		String frame_txt = _format_frame_text(&infos[i]);
-		tooltip += frame_txt + "\n";
-		stack_trace->set_text(1, frame_txt);
-	}
+	tooltip += TTR("C++ Source:") + " " + source_txt + "\n";
 
 	error->set_tooltip_text(0, tooltip);
 	error->set_tooltip_text(1, tooltip);
@@ -788,13 +517,6 @@ void ScriptEditorDebugger::_msg_error(uint64_t p_thread_id, const Array &p_data)
 	} else {
 		error_count++;
 	}
-}
-
-void ScriptEditorDebugger::_msg_servers_function_signature(uint64_t p_thread_id, const Array &p_data) {
-	// Cache a profiler signature.
-	ServersDebugger::ScriptFunctionSignature sig;
-	sig.deserialize(p_data);
-	profiler_signature[sig.id] = sig.name;
 }
 
 void ScriptEditorDebugger::_msg_servers_profile_common(const Array &p_data, const bool p_final) {
@@ -816,25 +538,21 @@ void ScriptEditorDebugger::_msg_servers_profile_common(const Array &p_data, cons
 
 		EditorProfiler::Metric::Category::Item item;
 		item.calls = 1;
-		item.line = 0;
 
 		item.name = "Physics Time";
 		item.total = metric.physics_time;
-		item.self = item.total;
 		item.signature = "physics_time";
 
 		frame_time.items.push_back(item);
 
 		item.name = "Process Time";
 		item.total = metric.process_time;
-		item.self = item.total;
 		item.signature = "process_time";
 
 		frame_time.items.push_back(item);
 
 		item.name = "Physics Frame Time";
 		item.total = metric.physics_frame_time;
-		item.self = item.total;
 		item.signature = "physics_frame_time";
 
 		frame_time.items.push_back(item);
@@ -853,10 +571,8 @@ void ScriptEditorDebugger::_msg_servers_profile_common(const Array &p_data, cons
 		for (List<ServersDebugger::ServerFunctionInfo>::ConstIterator itr = srv.functions.begin(); itr != srv.functions.end(); ++itr, ++j) {
 			EditorProfiler::Metric::Category::Item item;
 			item.calls = 1;
-			item.line = 0;
 			item.name = itr->name;
-			item.self = itr->time;
-			item.total = item.self;
+			item.total = itr->time;
 			item.signature = "categ::" + name + "::" + item.name;
 			item.name = EditorPropertyNameProcessor::get_singleton()->process_name(item.name, EditorPropertyNameProcessor::STYLE_CAPITALIZED);
 			c.total_time += item.total;
@@ -864,47 +580,6 @@ void ScriptEditorDebugger::_msg_servers_profile_common(const Array &p_data, cons
 		}
 		metric.categories.push_back(c);
 	}
-
-	EditorProfiler::Metric::Category funcs;
-	funcs.total_time = frame.script_time;
-	funcs.items.resize(frame.script_functions.size());
-	funcs.name = "Script Functions";
-	funcs.signature = "script_functions";
-	for (int i = 0; i < frame.script_functions.size(); i++) {
-		int signature = frame.script_functions[i].sig_id;
-		int calls = frame.script_functions[i].call_count;
-		float total = frame.script_functions[i].total_time;
-		float self = frame.script_functions[i].self_time;
-		float internal = frame.script_functions[i].internal_time;
-
-		EditorProfiler::Metric::Category::Item item;
-		if (profiler_signature.has(signature)) {
-			item.signature = profiler_signature[signature];
-
-			String name = profiler_signature[signature];
-			Vector<String> strings = name.split("::");
-			if (strings.size() == 3) {
-				item.name = strings[2];
-				item.script = strings[0];
-				item.line = strings[1].to_int();
-			} else if (strings.size() == 4) { //Built-in scripts have an :: in their name
-				item.name = strings[3];
-				item.script = strings[0] + "::" + strings[1];
-				item.line = strings[2].to_int();
-			}
-
-		} else {
-			item.name = "SigErr " + itos(signature);
-		}
-
-		item.calls = calls;
-		item.self = self;
-		item.total = total;
-		item.internal = internal;
-		funcs.items.write[i] = item;
-	}
-
-	metric.categories.push_back(funcs);
 
 	profiler->add_frame_metric(metric, p_final);
 }
@@ -981,10 +656,6 @@ void ScriptEditorDebugger::_msg_filesystem_update_file(uint64_t p_thread_id, con
 	}
 }
 
-void ScriptEditorDebugger::_msg_evaluation_return(uint64_t p_thread_id, const Array &p_data) {
-	expression_evaluator->add_value(p_data);
-}
-
 void ScriptEditorDebugger::_msg_window_title(uint64_t p_thread_id, const Array &p_data) {
 	ERR_FAIL_COND(p_data.size() != 1);
 	emit_signal(SNAME("remote_window_title_changed"), p_data[0]);
@@ -1021,8 +692,6 @@ void ScriptEditorDebugger::_parse_message(const String &p_msg, uint64_t p_thread
 HashMap<String, ScriptEditorDebugger::ParseMessageFunc> ScriptEditorDebugger::parse_message_handlers;
 
 void ScriptEditorDebugger::_init_parse_message_handlers() {
-	parse_message_handlers["debug_enter"] = &ScriptEditorDebugger::_msg_debug_enter;
-	parse_message_handlers["debug_exit"] = &ScriptEditorDebugger::_msg_debug_exit;
 	parse_message_handlers["set_pid"] = &ScriptEditorDebugger::_msg_set_pid;
 	parse_message_handlers["scene:click_ctrl"] = &ScriptEditorDebugger::_msg_scene_click_ctrl;
 	parse_message_handlers["scene:scene_tree"] = &ScriptEditorDebugger::_msg_scene_scene_tree;
@@ -1032,16 +701,11 @@ void ScriptEditorDebugger::_init_parse_message_handlers() {
 #endif // DISABLE_DEPRECATED
 	parse_message_handlers["scene:debug_mute_audio"] = &ScriptEditorDebugger::_msg_scene_debug_mute_audio;
 	parse_message_handlers["servers:memory_usage"] = &ScriptEditorDebugger::_msg_servers_memory_usage;
-	parse_message_handlers["servers:drawn"] = &ScriptEditorDebugger::_msg_servers_drawn;
-	parse_message_handlers["stack_dump"] = &ScriptEditorDebugger::_msg_stack_dump;
-	parse_message_handlers["stack_frame_vars"] = &ScriptEditorDebugger::_msg_stack_frame_vars;
-	parse_message_handlers["stack_frame_var"] = &ScriptEditorDebugger::_msg_stack_frame_var;
 	parse_message_handlers["output"] = &ScriptEditorDebugger::_msg_output;
 	parse_message_handlers["performance:profile_frame"] = &ScriptEditorDebugger::_msg_performance_profile_frame;
 	parse_message_handlers["visual:hardware_info"] = &ScriptEditorDebugger::_msg_visual_hardware_info;
 	parse_message_handlers["visual:profile_frame"] = &ScriptEditorDebugger::_msg_visual_profile_frame;
 	parse_message_handlers["error"] = &ScriptEditorDebugger::_msg_error;
-	parse_message_handlers["servers:function_signature"] = &ScriptEditorDebugger::_msg_servers_function_signature;
 	parse_message_handlers["servers:profile_frame"] = &ScriptEditorDebugger::_msg_servers_profile_frame;
 	parse_message_handlers["servers:profile_total"] = &ScriptEditorDebugger::_msg_servers_profile_total;
 	parse_message_handlers["request_quit"] = &ScriptEditorDebugger::_msg_request_quit;
@@ -1051,99 +715,24 @@ void ScriptEditorDebugger::_init_parse_message_handlers() {
 	parse_message_handlers["remote_undo_redo_action"] = &ScriptEditorDebugger::_msg_remote_undo_redo_action;
 	parse_message_handlers["performance:profile_names"] = &ScriptEditorDebugger::_msg_performance_profile_names;
 	parse_message_handlers["filesystem:update_file"] = &ScriptEditorDebugger::_msg_filesystem_update_file;
-	parse_message_handlers["evaluation_return"] = &ScriptEditorDebugger::_msg_evaluation_return;
 	parse_message_handlers["window:title"] = &ScriptEditorDebugger::_msg_window_title;
 	parse_message_handlers["editor_shortcut_pressed"] = &ScriptEditorDebugger::_msg_editor_shortcut_pressed;
 }
 
-void ScriptEditorDebugger::_set_reason_text(const String &p_reason, MessageType p_type) {
-	switch (p_type) {
-		case MESSAGE_ERROR:
-			reason->add_theme_color_override(SNAME("default_color"), get_theme_color(SNAME("error_color"), EditorStringName(Editor)));
-			break;
-		case MESSAGE_WARNING:
-			reason->add_theme_color_override(SNAME("default_color"), get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
-			break;
-		default:
-			reason->add_theme_color_override(SNAME("default_color"), get_theme_color(SNAME("success_color"), EditorStringName(Editor)));
-			break;
-	}
-
-	reason->set_text(p_reason);
-
-	_update_reason_content_height();
-
-	const PackedInt32Array boundaries = TS->string_get_word_breaks(p_reason, "", 80);
-	PackedStringArray lines;
-	for (int i = 0; i < boundaries.size(); i += 2) {
-		const int start = boundaries[i];
-		const int end = boundaries[i + 1];
-		lines.append(p_reason.substr(start, end - start));
-	}
-
-	reason->set_tooltip_text(String("\n").join(lines));
-}
-
-void ScriptEditorDebugger::_update_reason_content_height() {
-	float margin_height = 0;
-	const Ref<StyleBox> style = reason->get_theme_stylebox(CoreStringName(normal));
-	if (style.is_valid()) {
-		margin_height += style->get_content_margin(SIDE_TOP) + style->get_content_margin(SIDE_BOTTOM);
-	}
-
-	const float content_height = margin_height + reason->get_content_height();
-
-	float content_max_height = margin_height;
-	for (int i = 0; i < 3; i++) {
-		if (i >= reason->get_line_count()) {
-			break;
-		}
-		content_max_height += reason->get_line_height(i);
-	}
-
-	reason->set_custom_minimum_size(Size2(0, CLAMP(content_height, 0, content_max_height)));
-}
-
 void ScriptEditorDebugger::_notification(int p_what) {
 	switch (p_what) {
-		case NOTIFICATION_POSTINITIALIZE: {
-			connect("started", callable_mp(expression_evaluator, &EditorExpressionEvaluator::on_start));
-		} break;
-
 		case NOTIFICATION_TRANSLATION_CHANGED: {
 			if (is_ready()) {
-				for (TreeItem *file_item = breakpoints_tree->get_root()->get_first_child(); file_item; file_item = file_item->get_next()) {
-					for (TreeItem *breakpoint_item = file_item->get_first_child(); breakpoint_item; breakpoint_item = breakpoint_item->get_next()) {
-						int line = breakpoint_item->get_meta("line");
-						breakpoint_item->set_text(0, vformat(TTR("Line %d"), line));
-					}
-				}
 				update_tabs();
 			}
 		} break;
 
 		case NOTIFICATION_THEME_CHANGED: {
-			skip_breakpoints->set_button_icon(get_editor_theme_icon(skip_breakpoints_value ? SNAME("DebugSkipBreakpointsOn") : SNAME("DebugSkipBreakpointsOff")));
-			ignore_error_breaks->set_button_icon(get_editor_theme_icon(ignore_error_breaks_value ? SNAME("NotificationDisabled") : SNAME("Notification")));
-			ignore_error_breaks->add_theme_color_override("icon_normal_color", get_theme_color(SNAME("error_color"), SNAME("Editor")));
-			ignore_error_breaks->add_theme_color_override("icon_hover_color", get_theme_color(SNAME("error_color"), SNAME("Editor")));
-			ignore_error_breaks->add_theme_color_override("icon_pressed_color", get_theme_color(SNAME("error_color"), SNAME("Editor")));
-			ignore_error_breaks->add_theme_color_override("icon_focus_color", get_theme_color(SNAME("error_color"), SNAME("Editor")));
-			copy->set_button_icon(get_editor_theme_icon(SNAME("ActionCopy")));
-			step->set_button_icon(get_editor_theme_icon(SNAME("DebugStep")));
-			next->set_button_icon(get_editor_theme_icon(SNAME("DebugNext")));
-			out->set_button_icon(get_editor_theme_icon(SNAME("DebugOut")));
-			dobreak->set_button_icon(get_editor_theme_icon(SNAME("Pause")));
-			docontinue->set_button_icon(get_editor_theme_icon(SNAME("DebugContinue")));
 			vmem_notice_icon->set_texture(get_editor_theme_icon(SNAME("NodeInfo")));
 			vmem_refresh->set_button_icon(get_editor_theme_icon(SNAME("Reload")));
 			vmem_export->set_button_icon(get_editor_theme_icon(SNAME("Save")));
 			vmem_item_menu->set_item_icon(VMEM_MENU_SHOW_IN_FILESYSTEM, get_editor_theme_icon(SNAME("ShowInFileSystem")));
 			vmem_item_menu->set_item_icon(VMEM_MENU_SHOW_IN_EXPLORER, get_editor_theme_icon(SNAME("Filesystem")));
-			search->set_right_icon(get_editor_theme_icon(SNAME("Search")));
-
-			reason->add_theme_color_override(SNAME("default_color"), get_theme_color(SNAME("error_color"), EditorStringName(Editor)));
-			reason->add_theme_style_override(SNAME("normal"), get_theme_stylebox(SNAME("normal"), SNAME("Label"))); // Empty stylebox.
 
 			const Ref<Font> source_font = get_theme_font(SNAME("output_source"), EditorStringName(EditorFonts));
 			if (source_font.is_valid()) {
@@ -1208,11 +797,6 @@ void ScriptEditorDebugger::_notification(int p_what) {
 						_put_msg("scene:transform_camera_3d", msg);
 					}
 				}
-
-				if (is_breaked() && can_request_idle_draw) {
-					_put_msg("servers:draw", Array());
-					can_request_idle_draw = false;
-				}
 			}
 
 			const uint64_t until = OS::get_singleton()->get_ticks_msec() + 20;
@@ -1238,46 +822,6 @@ void ScriptEditorDebugger::_notification(int p_what) {
 	}
 }
 
-void ScriptEditorDebugger::_clear_execution() {
-	TreeItem *ti = stack_dump->get_selected();
-	if (!ti) {
-		return;
-	}
-
-	Dictionary d = ti->get_metadata(0);
-
-	stack_script = ResourceLoader::load(d["file"]);
-	emit_signal(SNAME("clear_execution"), stack_script);
-	stack_script.unref();
-	stack_dump->clear();
-	inspector->clear_stack_variables();
-}
-
-void ScriptEditorDebugger::_set_breakpoint(const String &p_file, const int &p_line, const bool &p_enabled) {
-	Ref<Script> scr = ResourceLoader::load(p_file);
-	emit_signal(SNAME("set_breakpoint"), scr, p_line - 1, p_enabled);
-	scr.unref();
-}
-
-void ScriptEditorDebugger::_clear_breakpoints() {
-	emit_signal(SNAME("clear_breakpoints"));
-}
-
-void ScriptEditorDebugger::_breakpoint_tree_clicked() {
-	TreeItem *selected = breakpoints_tree->get_selected();
-	if (selected->has_meta("line")) {
-		emit_signal(SNAME("breakpoint_selected"), selected->get_parent()->get_text(0), int(selected->get_meta("line")));
-	}
-}
-
-String ScriptEditorDebugger::_format_frame_text(const ScriptLanguage::StackInfo *info) {
-	String text = info->file.get_file() + ":" + itos(info->line) + " @ " + info->func;
-	if (!text.ends_with(")")) {
-		text += "()";
-	}
-	return text;
-}
-
 void ScriptEditorDebugger::start(Ref<RemoteDebuggerPeer> p_peer) {
 	_clear_errors_list();
 	stop();
@@ -1293,7 +837,6 @@ void ScriptEditorDebugger::start(Ref<RemoteDebuggerPeer> p_peer) {
 	set_process(true);
 	camera_override = CameraOverride::OVERRIDE_NONE;
 
-	_set_reason_text(TTRC("Debug session started."), MESSAGE_SUCCESS);
 	_update_buttons_state();
 
 	Array quit_keys = DebuggerMarshalls::serialize_key_shortcut(ED_GET_SHORTCUT("editor/stop_running_project"));
@@ -1312,65 +855,28 @@ void ScriptEditorDebugger::_update_buttons_state() {
 	const bool active = is_session_active();
 	const bool has_editor_tree = active && editor_remote_tree && editor_remote_tree->get_selected();
 	vmem_refresh->set_disabled(!active);
-	step->set_disabled(!active || !is_breaked() || !is_debuggable());
-	next->set_disabled(!active || !is_breaked() || !is_debuggable());
-	out->set_disabled(!active || !is_breaked() || !is_debuggable());
-	copy->set_disabled(!active || !is_breaked());
-	docontinue->set_disabled(!active || !is_breaked());
-	dobreak->set_disabled(!active || is_breaked());
 	le_clear->set_disabled(!active);
 	le_set->set_disabled(!has_editor_tree);
-
-	thread_list_updating = true;
-	LocalVector<ThreadDebugged *> threadss;
-	for (KeyValue<uint64_t, ThreadDebugged> &I : threads_debugged) {
-		threadss.push_back(&I.value);
-	}
-	threads->set_disabled(threadss.is_empty());
-
-	threadss.sort_custom<ThreadSort>();
-	threads->clear();
-	int32_t selected_index = -1;
-	for (uint32_t i = 0; i < threadss.size(); i++) {
-		if (debugging_thread_id == threadss[i]->thread_id) {
-			selected_index = i;
-		}
-		threads->add_item(threadss[i]->name);
-		threads->set_item_metadata(threads->get_item_count() - 1, threadss[i]->thread_id);
-	}
-	if (selected_index != -1) {
-		threads->select(selected_index);
-	}
-
-	thread_list_updating = false;
 }
 
 void ScriptEditorDebugger::_stop_and_notify() {
 	stop();
 	emit_signal(SNAME("stopped"));
-	_set_reason_text(TTRC("Debug session closed."), MESSAGE_WARNING);
 }
 
 void ScriptEditorDebugger::stop() {
 	set_process(false);
-	threads_debugged.clear();
-	debugging_thread_id = Thread::UNASSIGNED_ID;
 	remote_pid = 0;
-	_clear_execution();
 
 	inspector->clear_cache();
 
 	if (peer.is_valid()) {
 		peer->close();
 		peer.unref();
-		reason->set_text("");
-		reason->set_tooltip_text("");
-		reason->set_custom_minimum_size(Size2(0, 0));
 	}
 
 	node_path_cache.clear();
 	res_path_cache.clear();
-	profiler_signature.clear();
 
 	profiler->set_enabled(false, false);
 	profiler->set_profiling(false);
@@ -1378,9 +884,6 @@ void ScriptEditorDebugger::stop() {
 	visual_profiler->set_enabled(false);
 	visual_profiler->set_profiling(false);
 
-	audio_muted_on_break = false;
-
-	inspector->edit(nullptr);
 	_update_buttons_state();
 }
 
@@ -1390,37 +893,11 @@ void ScriptEditorDebugger::_profiler_activate(bool p_enable, int p_type) {
 		case PROFILER_VISUAL:
 			_put_msg("profiler:visual", msg_data);
 			break;
-		case PROFILER_SCRIPTS_SERVERS:
-			if (p_enable) {
-				// Clear old script signatures. (should we move all this into the profiler?)
-				profiler_signature.clear();
-				// Add max funcs options to request.
-				int max_funcs = EDITOR_GET("debugger/profiler_frame_max_functions");
-				bool include_native = EDITOR_GET("debugger/profile_native_calls");
-				Array opts = { CLAMP(max_funcs, 16, 512), include_native };
-				msg_data.push_back(opts);
-			}
+		case PROFILER_SERVERS:
 			_put_msg("profiler:servers", msg_data);
 			break;
 		default:
 			ERR_FAIL_MSG("Invalid profiler type");
-	}
-}
-
-void ScriptEditorDebugger::_profiler_seeked() {
-	if (is_breaked()) {
-		return;
-	}
-	debug_break();
-}
-
-void ScriptEditorDebugger::_stack_dump_frame_selected() {
-	emit_signal(SNAME("stack_frame_selected"));
-
-	int frame = get_stack_script_frame();
-
-	if (!request_stack_dump(frame)) {
-		inspector->edit(nullptr);
 	}
 }
 
@@ -1429,13 +906,6 @@ void ScriptEditorDebugger::_export_csv() {
 	file_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
 	file_dialog_purpose = SAVE_MONITORS_CSV;
 	file_dialog->popup_file_dialog();
-}
-
-String ScriptEditorDebugger::get_var_value(const String &p_var) const {
-	if (!is_breaked()) {
-		return String();
-	}
-	return inspector->get_stack_variable(p_var);
 }
 
 void ScriptEditorDebugger::_resources_reimported(const PackedStringArray &p_resources) {
@@ -1565,49 +1035,6 @@ void ScriptEditorDebugger::_property_changed(Object *p_base, const StringName &p
 	}
 }
 
-bool ScriptEditorDebugger::is_move_to_foreground() const {
-	return move_to_foreground;
-}
-
-void ScriptEditorDebugger::set_move_to_foreground(const bool &p_move_to_foreground) {
-	move_to_foreground = p_move_to_foreground;
-}
-
-String ScriptEditorDebugger::get_stack_script_file() const {
-	TreeItem *ti = stack_dump->get_selected();
-	if (!ti) {
-		return "";
-	}
-	Dictionary d = ti->get_metadata(0);
-	return d["file"];
-}
-
-int ScriptEditorDebugger::get_stack_script_line() const {
-	TreeItem *ti = stack_dump->get_selected();
-	if (!ti) {
-		return -1;
-	}
-	Dictionary d = ti->get_metadata(0);
-	return d["line"];
-}
-
-int ScriptEditorDebugger::get_stack_script_frame() const {
-	TreeItem *ti = stack_dump->get_selected();
-	if (!ti) {
-		return -1;
-	}
-	Dictionary d = ti->get_metadata(0);
-	return d["frame"];
-}
-
-bool ScriptEditorDebugger::request_stack_dump(const int &p_frame) {
-	ERR_FAIL_COND_V(!is_session_active() || p_frame < 0, false);
-
-	Array msg = { p_frame };
-	_put_msg("get_stack_frame_vars", msg, debugging_thread_id);
-	return true;
-}
-
 void ScriptEditorDebugger::set_live_debugging(bool p_enable) {
 	live_debug = p_enable;
 }
@@ -1710,25 +1137,10 @@ bool ScriptEditorDebugger::get_debug_mute_audio() const {
 	return debug_mute_audio;
 }
 
-void ScriptEditorDebugger::_send_debug_mute_audio_msg(bool p_mute) {
+void ScriptEditorDebugger::set_debug_mute_audio(bool p_mute) {
 	Array msg = { p_mute };
 	_put_msg("scene:debug_mute_audio", msg);
-}
-
-void ScriptEditorDebugger::set_debug_mute_audio(bool p_mute) {
-	// Send the message if we want to mute the audio or if it isn't muted already due to a break.
-	if (p_mute || !audio_muted_on_break) {
-		_send_debug_mute_audio_msg(p_mute);
-	}
 	debug_mute_audio = p_mute;
-}
-
-void ScriptEditorDebugger::_mute_audio_on_break(bool p_mute) {
-	// Send the message if we want to mute the audio on a break or if it isn't muted already.
-	if (p_mute || !debug_mute_audio) {
-		_send_debug_mute_audio_msg(p_mute);
-	}
-	audio_muted_on_break = p_mute;
 }
 
 void ScriptEditorDebugger::set_debug_collisions(bool p_enable) {
@@ -1750,66 +1162,6 @@ void ScriptEditorDebugger::set_camera_override(CameraOverride p_override) {
 	camera_override = p_override;
 }
 
-void ScriptEditorDebugger::set_breakpoint(const String &p_path, int p_line, bool p_enabled) {
-	Array msg = { p_path, p_line, p_enabled };
-	_put_msg("breakpoint", msg, debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
-
-	TreeItem *path_item = breakpoints_tree->search_item_text(p_path);
-	if (path_item == nullptr) {
-		if (!p_enabled) {
-			return;
-		}
-		path_item = breakpoints_tree->create_item();
-		path_item->set_text(0, p_path);
-	}
-
-	int idx = 0;
-	TreeItem *breakpoint_item;
-	for (breakpoint_item = path_item->get_first_child(); breakpoint_item; breakpoint_item = breakpoint_item->get_next()) {
-		if ((int)breakpoint_item->get_meta("line") < p_line) {
-			idx++;
-			continue;
-		}
-
-		if ((int)breakpoint_item->get_meta("line") == p_line) {
-			break;
-		}
-	}
-
-	if (breakpoint_item == nullptr) {
-		if (!p_enabled) {
-			return;
-		}
-		breakpoint_item = breakpoints_tree->create_item(path_item, idx);
-		breakpoint_item->set_meta("line", p_line);
-		breakpoint_item->set_text(0, vformat(TTR("Line %d"), p_line));
-		return;
-	}
-
-	if (!p_enabled) {
-		path_item->remove_child(breakpoint_item);
-		if (path_item->get_first_child() == nullptr) {
-			breakpoints_tree->get_root()->remove_child(path_item);
-		}
-	}
-}
-
-void ScriptEditorDebugger::reload_all_scripts() {
-	_put_msg("reload_all_scripts", Array(), debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
-}
-
-void ScriptEditorDebugger::reload_scripts(const Vector<String> &p_script_paths) {
-	_put_msg("reload_scripts", Variant(p_script_paths).operator Array(), debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
-}
-
-bool ScriptEditorDebugger::is_skip_breakpoints() const {
-	return skip_breakpoints_value;
-}
-
-bool ScriptEditorDebugger::is_ignore_error_breaks() const {
-	return ignore_error_breaks_value;
-}
-
 void ScriptEditorDebugger::_error_activated() {
 	TreeItem *selected = error_tree->get_selected();
 
@@ -1821,21 +1173,6 @@ void ScriptEditorDebugger::_error_activated() {
 	if (ci) {
 		selected->set_collapsed(!selected->is_collapsed());
 	}
-}
-
-void ScriptEditorDebugger::_error_selected() {
-	TreeItem *selected = error_tree->get_selected();
-
-	if (!selected) {
-		return;
-	}
-
-	Array meta = selected->get_metadata(0);
-	if (meta.is_empty()) {
-		return;
-	}
-
-	emit_signal(SNAME("error_selected"), String(meta[0]), int(meta[1]));
 }
 
 void ScriptEditorDebugger::_expand_errors_list() {
@@ -1927,28 +1264,6 @@ void ScriptEditorDebugger::_clear_errors_list() {
 	clear_button->set_disabled(true);
 }
 
-void ScriptEditorDebugger::_breakpoints_item_rmb_selected(const Vector2 &p_pos, MouseButton p_button) {
-	if (p_button != MouseButton::RIGHT) {
-		return;
-	}
-
-	breakpoints_menu->clear();
-	breakpoints_menu->set_size(Size2(1, 1));
-
-	const TreeItem *selected = breakpoints_tree->get_selected();
-	String file = selected->get_text(0);
-	if (selected->has_meta("line")) {
-		breakpoints_menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTRC("Delete Breakpoint"), ACTION_DELETE_BREAKPOINT);
-		file = selected->get_parent()->get_text(0);
-	}
-	breakpoints_menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTR("Delete All Breakpoints in:") + " " + file, ACTION_DELETE_BREAKPOINTS_IN_FILE);
-	breakpoints_menu->set_item_auto_translate_mode(-1, AUTO_TRANSLATE_MODE_DISABLED);
-	breakpoints_menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTRC("Delete All Breakpoints"), ACTION_DELETE_ALL_BREAKPOINTS);
-
-	breakpoints_menu->set_position(get_screen_position() + get_local_mouse_position());
-	breakpoints_menu->popup();
-}
-
 // Right click on specific file(s) or folder(s).
 void ScriptEditorDebugger::_error_tree_item_rmb_selected(const Vector2 &p_pos, MouseButton p_button) {
 	if (p_button != MouseButton::RIGHT) {
@@ -2032,29 +1347,6 @@ void ScriptEditorDebugger::_item_menu_id_pressed(int p_option) {
 			OS::get_singleton()->shell_open(vformat("https://github.com/godotengine/godot/blob/%s/%s#L%d",
 					git_ref, file, line_number));
 		} break;
-		case ACTION_DELETE_BREAKPOINT: {
-			const TreeItem *selected = breakpoints_tree->get_selected();
-			_set_breakpoint(selected->get_parent()->get_text(0), selected->get_meta("line"), false);
-		} break;
-		case ACTION_DELETE_BREAKPOINTS_IN_FILE: {
-			TreeItem *file_item = breakpoints_tree->get_selected();
-			if (file_item->has_meta("line")) {
-				file_item = file_item->get_parent();
-			}
-
-			// Store first else we will be removing as we loop.
-			List<int> lines;
-			for (TreeItem *breakpoint_item = file_item->get_first_child(); breakpoint_item; breakpoint_item = breakpoint_item->get_next()) {
-				lines.push_back(breakpoint_item->get_meta("line"));
-			}
-
-			for (const int &line : lines) {
-				_set_breakpoint(file_item->get_text(0), line, false);
-			}
-		} break;
-		case ACTION_DELETE_ALL_BREAKPOINTS: {
-			_clear_breakpoints();
-		} break;
 	}
 }
 
@@ -2078,12 +1370,6 @@ void ScriptEditorDebugger::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("started"));
 	ADD_SIGNAL(MethodInfo("stopped"));
 	ADD_SIGNAL(MethodInfo("stop_requested"));
-	ADD_SIGNAL(MethodInfo("stack_frame_selected", PropertyInfo(Variant::INT, "frame")));
-	ADD_SIGNAL(MethodInfo("error_selected", PropertyInfo(Variant::INT, "error")));
-	ADD_SIGNAL(MethodInfo("breakpoint_selected", PropertyInfo("script"), PropertyInfo(Variant::INT, "line")));
-	ADD_SIGNAL(MethodInfo("set_execution", PropertyInfo("script"), PropertyInfo(Variant::INT, "line")));
-	ADD_SIGNAL(MethodInfo("clear_execution", PropertyInfo("script")));
-	ADD_SIGNAL(MethodInfo("breaked", PropertyInfo(Variant::BOOL, "reallydid"), PropertyInfo(Variant::BOOL, "can_debug"), PropertyInfo(Variant::STRING, "reason"), PropertyInfo(Variant::BOOL, "has_stackdump")));
 	ADD_SIGNAL(MethodInfo("remote_objects_requested", PropertyInfo(Variant::ARRAY, "ids")));
 	ADD_SIGNAL(MethodInfo("remote_objects_updated", PropertyInfo(Variant::OBJECT, "remote_objects")));
 	ADD_SIGNAL(MethodInfo("remote_object_property_updated", PropertyInfo(Variant::INT, "id"), PropertyInfo(Variant::STRING, "property")));
@@ -2092,12 +1378,7 @@ void ScriptEditorDebugger::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("remote_tree_select_requested", PropertyInfo(Variant::ARRAY, "ids")));
 	ADD_SIGNAL(MethodInfo("remote_tree_clear_selection_requested"));
 	ADD_SIGNAL(MethodInfo("output", PropertyInfo(Variant::STRING, "msg"), PropertyInfo(Variant::INT, "level")));
-	ADD_SIGNAL(MethodInfo("stack_dump", PropertyInfo(Variant::ARRAY, "stack_dump")));
-	ADD_SIGNAL(MethodInfo("stack_frame_vars", PropertyInfo(Variant::INT, "num_vars")));
-	ADD_SIGNAL(MethodInfo("stack_frame_var", PropertyInfo(Variant::ARRAY, "data")));
 	ADD_SIGNAL(MethodInfo("debug_data", PropertyInfo(Variant::STRING, "msg"), PropertyInfo(Variant::ARRAY, "data")));
-	ADD_SIGNAL(MethodInfo("set_breakpoint", PropertyInfo("script"), PropertyInfo(Variant::INT, "line"), PropertyInfo(Variant::BOOL, "enabled")));
-	ADD_SIGNAL(MethodInfo("clear_breakpoints"));
 	ADD_SIGNAL(MethodInfo("errors_cleared"));
 }
 
@@ -2150,164 +1431,10 @@ ScriptEditorDebugger::ScriptEditorDebugger() {
 	InspectorDock::get_inspector_singleton()->connect("object_id_selected", callable_mp(this, &ScriptEditorDebugger::_remote_object_selected));
 	EditorFileSystem::get_singleton()->connect("resources_reimported", callable_mp(this, &ScriptEditorDebugger::_resources_reimported));
 
-	{ // Debugger.
-		VBoxContainer *vbc = memnew(VBoxContainer);
-		vbc->set_name(TTRC("Stack Trace"));
-		Control *dbg = vbc;
-
-		HBoxContainer *hbc = memnew(HBoxContainer);
-		vbc->add_child(hbc);
-
-		reason = memnew(RichTextLabel);
-		reason->set_focus_mode(FOCUS_ACCESSIBILITY);
-		reason->set_selection_enabled(true);
-		reason->set_context_menu_enabled(true);
-		reason->set_h_size_flags(SIZE_EXPAND_FILL);
-		reason->set_v_size_flags(SIZE_SHRINK_CENTER);
-		reason->connect(SceneStringName(resized), callable_mp(this, &ScriptEditorDebugger::_update_reason_content_height), CONNECT_DEFERRED);
-		hbc->add_child(reason);
-
-		HBoxContainer *buttons = memnew(HBoxContainer);
-		buttons->set_v_size_flags(SIZE_SHRINK_END);
-		hbc->add_child(buttons);
-
-		buttons->add_child(memnew(VSeparator));
-
-		skip_breakpoints = memnew(Button);
-		skip_breakpoints->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(skip_breakpoints);
-		skip_breakpoints->set_tooltip_text(TTRC("Skip Breakpoints"));
-		skip_breakpoints->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_skip_breakpoints));
-
-		ignore_error_breaks = memnew(Button);
-		ignore_error_breaks->set_theme_type_variation(SceneStringName(FlatButton));
-		ignore_error_breaks->set_tooltip_text(TTRC("Ignore Error Breaks"));
-		buttons->add_child(ignore_error_breaks);
-		ignore_error_breaks->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_ignore_error_breaks));
-
-		buttons->add_child(memnew(VSeparator));
-
-		copy = memnew(Button);
-		copy->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(copy);
-		copy->set_tooltip_text(TTRC("Copy Error"));
-		copy->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_copy));
-
-		buttons->add_child(memnew(VSeparator));
-
-		step = memnew(Button);
-		step->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(step);
-		step->set_tooltip_text(TTRC("Step Into"));
-		step->set_shortcut(ED_GET_SHORTCUT("debugger/step_into"));
-		step->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_step));
-
-		next = memnew(Button);
-		next->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(next);
-		next->set_tooltip_text(TTRC("Step Over"));
-		next->set_shortcut(ED_GET_SHORTCUT("debugger/step_over"));
-		next->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_next));
-
-		out = memnew(Button);
-		out->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(out);
-		out->set_tooltip_text(TTRC("Step Out"));
-		out->set_shortcut(ED_GET_SHORTCUT("debugger/step_out"));
-		out->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_out));
-
-		buttons->add_child(memnew(VSeparator));
-
-		dobreak = memnew(Button);
-		dobreak->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(dobreak);
-		dobreak->set_tooltip_text(TTRC("Break"));
-		dobreak->set_shortcut(ED_GET_SHORTCUT("debugger/break"));
-		dobreak->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_break));
-
-		docontinue = memnew(Button);
-		docontinue->set_theme_type_variation(SceneStringName(FlatButton));
-		buttons->add_child(docontinue);
-		docontinue->set_tooltip_text(TTRC("Continue"));
-		docontinue->set_shortcut(ED_GET_SHORTCUT("debugger/continue"));
-		docontinue->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_continue));
-
-		HSplitContainer *sc = memnew(HSplitContainer);
-		sc->set_v_size_flags(SIZE_EXPAND_FILL);
-		vbc->add_child(sc);
-
-		VBoxContainer *stack_vb = memnew(VBoxContainer);
-		stack_vb->set_h_size_flags(SIZE_EXPAND_FILL);
-		sc->add_child(stack_vb);
-		HBoxContainer *thread_hb = memnew(HBoxContainer);
-		stack_vb->add_child(thread_hb);
-		thread_hb->add_child(memnew(Label(TTRC("Thread:"))));
-		threads = memnew(OptionButton);
-		thread_hb->add_child(threads);
-		threads->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
-		threads->set_h_size_flags(SIZE_EXPAND_FILL);
-		threads->connect(SceneStringName(item_selected), callable_mp(this, &ScriptEditorDebugger::_select_thread));
-
-		stack_dump = memnew(Tree);
-		stack_dump->set_custom_minimum_size(Size2(150, 0) * EDSCALE);
-		stack_dump->set_allow_reselect(true);
-		stack_dump->set_columns(1);
-		stack_dump->set_column_titles_visible(true);
-		stack_dump->set_column_title(0, TTRC("Stack Frames"));
-		stack_dump->set_hide_root(true);
-		stack_dump->set_v_size_flags(SIZE_EXPAND_FILL);
-		stack_dump->set_theme_type_variation("TreeSecondary");
-		stack_dump->connect("cell_selected", callable_mp(this, &ScriptEditorDebugger::_stack_dump_frame_selected));
-		stack_vb->add_child(stack_dump);
-
-		VBoxContainer *inspector_vbox = memnew(VBoxContainer);
-		inspector_vbox->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
-		inspector_vbox->set_h_size_flags(SIZE_EXPAND_FILL);
-		sc->add_child(inspector_vbox);
-
-		HBoxContainer *tools_hb = memnew(HBoxContainer);
-		inspector_vbox->add_child(tools_hb);
-
-		search = memnew(LineEdit);
-		search->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		search->set_placeholder(TTRC("Filter Stack Variables"));
-		search->set_accessibility_name(TTRC("Filter Stack Variables"));
-		search->set_clear_button_enabled(true);
-		tools_hb->add_child(search);
-
-		inspector = memnew(EditorDebuggerInspector);
-		inspector->set_h_size_flags(SIZE_EXPAND_FILL);
-		inspector->set_v_size_flags(SIZE_EXPAND_FILL);
-		inspector->set_property_name_style(EditorPropertyNameProcessor::STYLE_RAW);
-		inspector->set_read_only(true);
-		inspector->connect("object_selected", callable_mp(this, &ScriptEditorDebugger::_remote_object_selected));
-		inspector->connect("objects_edited", callable_mp(this, &ScriptEditorDebugger::_remote_objects_edited));
-		inspector->connect("object_property_updated", callable_mp(this, &ScriptEditorDebugger::_remote_object_property_updated));
-		inspector->connect("canvas_item_objects_changed", callable_mp(this, &ScriptEditorDebugger::change_canvas_item_objects));
-		inspector->register_text_enter(search);
-		inspector->set_use_filter(true);
-		inspector_vbox->add_child(inspector);
-
-		breakpoints_tree = memnew(Tree);
-		breakpoints_tree->set_custom_minimum_size(Size2(100, 0) * EDSCALE);
-		breakpoints_tree->set_h_size_flags(SIZE_EXPAND_FILL);
-		breakpoints_tree->set_column_titles_visible(true);
-		breakpoints_tree->set_column_title(0, TTRC("Breakpoints"));
-		breakpoints_tree->set_allow_reselect(true);
-		breakpoints_tree->set_allow_rmb_select(true);
-		breakpoints_tree->set_hide_root(true);
-		breakpoints_tree->set_theme_type_variation("TreeSecondary");
-		breakpoints_tree->connect("item_mouse_selected", callable_mp(this, &ScriptEditorDebugger::_breakpoints_item_rmb_selected));
-		breakpoints_tree->connect("item_activated", callable_mp(this, &ScriptEditorDebugger::_breakpoint_tree_clicked));
-		breakpoints_tree->create_item();
-
-		sc->add_child(breakpoints_tree);
-		tabs->add_child(dbg);
-
-		breakpoints_menu = memnew(PopupMenu);
-		breakpoints_menu->connect(SceneStringName(id_pressed), callable_mp(this, &ScriptEditorDebugger::_item_menu_id_pressed));
-		breakpoints_tree->add_child(breakpoints_menu);
-	}
+	inspector = memnew(EditorDebuggerInspector);
+	inspector->connect("objects_edited", callable_mp(this, &ScriptEditorDebugger::_remote_objects_edited));
+	inspector->connect("object_property_updated", callable_mp(this, &ScriptEditorDebugger::_remote_object_property_updated));
+	inspector->connect("canvas_item_objects_changed", callable_mp(this, &ScriptEditorDebugger::change_canvas_item_objects));
 
 	{ // Errors.
 		errors_tab = memnew(VBoxContainer);
@@ -2355,7 +1482,6 @@ ScriptEditorDebugger::ScriptEditorDebugger() {
 		error_tree->set_allow_rmb_select(true);
 		error_tree->set_allow_reselect(true);
 		error_tree->set_theme_type_variation("TreeSecondary");
-		error_tree->connect(SceneStringName(item_selected), callable_mp(this, &ScriptEditorDebugger::_error_selected));
 		error_tree->connect("item_activated", callable_mp(this, &ScriptEditorDebugger::_error_activated));
 		error_tree->connect("item_mouse_selected", callable_mp(this, &ScriptEditorDebugger::_error_tree_item_rmb_selected));
 		errors_tab->add_child(error_tree);
@@ -2373,19 +1499,11 @@ ScriptEditorDebugger::ScriptEditorDebugger() {
 		add_child(file_dialog);
 	}
 
-	{ // Expression evaluator
-		expression_evaluator = memnew(EditorExpressionEvaluator);
-		expression_evaluator->set_name(TTRC("Evaluator"));
-		expression_evaluator->set_editor_debugger(this);
-		tabs->add_child(expression_evaluator);
-	}
-
 	{ //profiler
 		profiler = memnew(EditorProfiler);
 		profiler->set_name(TTRC("Profiler"));
 		tabs->add_child(profiler);
-		profiler->connect("enable_profiling", callable_mp(this, &ScriptEditorDebugger::_profiler_activate).bind(PROFILER_SCRIPTS_SERVERS));
-		profiler->connect("break_request", callable_mp(this, &ScriptEditorDebugger::_profiler_seeked));
+		profiler->connect("enable_profiling", callable_mp(this, &ScriptEditorDebugger::_profiler_activate).bind(PROFILER_SERVERS));
 	}
 
 	{ //frame profiler
@@ -2542,5 +1660,6 @@ ScriptEditorDebugger::~ScriptEditorDebugger() {
 		peer->close();
 		peer.unref();
 	}
+	memdelete(inspector);
 	memdelete(scene_tree);
 }

@@ -159,7 +159,6 @@ void Shader::get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_gr
 	bool generate_doc = Engine::get_singleton()->is_editor_hint() && !get_path().is_empty();
 	if (generate_doc) {
 		class_doc.name = get_path().trim_prefix("res://").quote();
-		class_doc.is_script_doc = true;
 		class_doc.inherits = "Shader";
 	}
 #endif

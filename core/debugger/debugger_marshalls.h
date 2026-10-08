@@ -31,27 +31,8 @@
 #pragma once
 
 #include "core/input/shortcut.h"
-#include "core/object/script_language.h"
 
 struct DebuggerMarshalls {
-	struct ScriptStackVariable {
-		String name;
-		Variant value;
-		int type = -1;
-		int var_type = -1;
-		String type_hint;
-
-		Array serialize(int p_max_size = 1 << 20); // 1 MiB default.
-		bool deserialize(const Array &p_arr);
-	};
-
-	struct ScriptStackDump {
-		List<ScriptLanguage::StackInfo> frames;
-
-		Array serialize();
-		bool deserialize(const Array &p_arr);
-	};
-
 	struct OutputError {
 		int hr = -1;
 		int min = -1;
@@ -63,7 +44,6 @@ struct DebuggerMarshalls {
 		String error;
 		String error_descr;
 		bool warning = false;
-		Vector<ScriptLanguage::StackInfo> callstack;
 
 		Array serialize();
 		bool deserialize(const Array &p_arr);

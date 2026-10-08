@@ -58,8 +58,6 @@ protected:
 	};
 
 	int next_request_id = 0;
-	bool awaiting_debug_break = false;
-	bool requested_break_for_snapshot = false;
 
 	Tree *snapshot_list = nullptr;
 	Button *take_snapshot = nullptr;
@@ -75,7 +73,6 @@ protected:
 
 	void _request_object_snapshot();
 	void _begin_object_snapshot();
-	void _on_debug_breaked(bool p_reallydid, bool p_can_debug, const String &p_reason, bool p_has_stackdump);
 	void _show_selected_snapshot();
 	void _on_snapshot_deselected();
 	Ref<DirAccess> _get_and_create_snapshot_storage_dir();

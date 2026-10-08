@@ -237,6 +237,8 @@ ShaderTypes::ShaderTypes() {
 	// spatial render modes
 	{
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("blend"), "mix", "add", "sub", "mul", "premul_alpha" });
+		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("blend_src"), "zero", "one", "src_color", "inv_src_color", "src_alpha", "inv_src_alpha" });
+		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("blend_dst"), "zero", "one", "src_color", "inv_src_color", "src_alpha", "inv_src_alpha" });
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("depth_draw"), "opaque", "always", "never" });
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("depth_prepass_alpha") });
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("depth_test"), { "default", "disabled", "inverted" } });

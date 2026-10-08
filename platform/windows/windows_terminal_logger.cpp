@@ -32,7 +32,6 @@
 
 #ifdef WINDOWS_ENABLED
 
-#include "core/object/script_backtrace.h"
 #include "core/os/os.h"
 
 #include <windows.h>
@@ -74,14 +73,14 @@ void WindowsTerminalLogger::logv(const char *p_format, va_list p_list, bool p_er
 #endif
 }
 
-void WindowsTerminalLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void WindowsTerminalLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
 	if (!should_log(true)) {
 		return;
 	}
 
 	HANDLE hCon = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (OS::get_singleton()->get_stdout_type() != OS::STD_HANDLE_CONSOLE || !hCon || hCon == INVALID_HANDLE_VALUE) {
-		StdLogger::log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, p_type, p_script_backtraces);
+		StdLogger::log_error(p_function, p_file, p_line, p_code, p_rationale, p_editor_notify, p_type);
 	} else {
 		CONSOLE_SCREEN_BUFFER_INFO sbi; //original
 		GetConsoleScreenBufferInfo(hCon, &sbi);
@@ -123,12 +122,6 @@ void WindowsTerminalLogger::log_error(const char *p_function, const char *p_file
 			logf_error("%sat: (%s:%i)\n", error_type_indent(p_type), p_file, p_line);
 		} else {
 			logf_error("%sat: %s (%s:%i)\n", error_type_indent(p_type), p_function, p_file, p_line);
-		}
-
-		for (const Ref<ScriptBacktrace> &backtrace : p_script_backtraces) {
-			if (!backtrace->is_empty()) {
-				logf_error("%s\n", backtrace->format(strlen(error_type_indent(p_type))).utf8().get_data());
-			}
 		}
 
 		SetConsoleTextAttribute(hCon, sbi.wAttributes);

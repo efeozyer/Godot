@@ -137,7 +137,6 @@ public:
 	const StringName shader_overrides_group = "_shader_overrides_group_";
 	const StringName shader_overrides_group_active = "_shader_overrides_group_active_";
 
-	const StringName _custom_type_script = "_custom_type_script";
 
 	const StringName pressed = "pressed";
 	const StringName id_pressed = "id_pressed";

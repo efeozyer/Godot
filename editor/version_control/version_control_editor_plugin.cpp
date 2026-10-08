@@ -40,18 +40,19 @@
 #include "editor/docks/editor_dock.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/filesystem_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/gui/editor_bottom_panel.h"
 #include "editor/gui/editor_file_dialog.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/flow_container.h"
 #include "scene/gui/line_edit.h"
+#include "scene/gui/option_button.h"
 #include "scene/gui/separator.h"
 
 #define CHECK_PLUGIN_INITIALIZED() \
@@ -357,7 +358,7 @@ void VersionControlEditorPlugin::_branch_item_selected(int p_index) {
 	EditorVCSInterface::get_singleton()->checkout_branch(branch_name);
 
 	EditorFileSystem::get_singleton()->scan_changes();
-	ScriptEditor::get_singleton()->reload_scripts();
+	DocumentEditor::get_singleton()->reload_documents();
 
 	_refresh_branch_list();
 	_refresh_commit_list();
@@ -611,9 +612,6 @@ void VersionControlEditorPlugin::_cell_button_pressed(Object *p_item, int p_colu
 		file_path = "res://" + file_path;
 		if (ResourceLoader::get_resource_type(file_path) == "PackedScene") {
 			EditorNode::get_singleton()->open_scene(file_path);
-		} else if (file_path.ends_with(".gd")) {
-			EditorNode::get_singleton()->load_resource(file_path);
-			ScriptEditor::get_singleton()->reload_scripts();
 		} else {
 			FileSystemDock::get_singleton()->navigate_to_path(file_path);
 		}

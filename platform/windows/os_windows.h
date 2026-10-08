@@ -253,7 +253,6 @@ public:
 
 	virtual void disable_crash_handler() override;
 	virtual bool is_disable_crash_handler() const override;
-	virtual void initialize_debugging() override;
 
 	virtual Error move_to_trash(const String &p_path) override;
 

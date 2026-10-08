@@ -417,7 +417,7 @@ void LocalizationEditor::_template_generate_open() {
 }
 
 void LocalizationEditor::_template_generate_quick_open() {
-	template_source_quick_open_dialog->popup_dialog({ "PackedScene", "Script" }, callable_mp(this, &LocalizationEditor::_template_source_add_one));
+	template_source_quick_open_dialog->popup_dialog({ "PackedScene" }, callable_mp(this, &LocalizationEditor::_template_source_add_one));
 }
 
 void LocalizationEditor::_template_generate_command() {

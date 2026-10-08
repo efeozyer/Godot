@@ -32,7 +32,7 @@
 
 #include "core/io/resource.h"
 #include "core/object/object.h"
-#include "core/object/script_language.h"
+#include "core/variant/typed_array.h"
 
 class Control;
 class CreateDialog;
@@ -53,7 +53,6 @@ class Mesh;
 class Node;
 class PropertySelector;
 class SceneTreeDialog;
-class ScriptEditor;
 class SubViewport;
 class Texture2D;
 class Theme;
@@ -115,9 +114,6 @@ public:
 	Vector<Ref<Texture2D>> make_mesh_previews(const Vector<Ref<Mesh>> &p_meshes, Vector<Transform3D> *p_transforms, int p_preview_size);
 	void make_scene_preview(const String &p_path, Node *p_scene, int p_preview_size);
 
-	void set_plugin_enabled(const String &p_plugin, bool p_enabled);
-	bool is_plugin_enabled(const String &p_plugin) const;
-
 	// Editor GUI.
 
 	Ref<Theme> get_editor_theme() const;
@@ -126,7 +122,6 @@ public:
 #ifndef DISABLE_DEPRECATED
 	VBoxContainer *get_editor_main_screen() const;
 #endif
-	ScriptEditor *get_script_editor() const;
 	SubViewport *get_editor_viewport_2d() const;
 	SubViewport *get_editor_viewport_3d(int p_idx = 0) const;
 
@@ -179,7 +174,6 @@ public:
 
 	void edit_resource(const Ref<Resource> &p_resource);
 	void edit_node(Node *p_node);
-	void edit_script(const Ref<Script> &p_script, int p_line = -1, int p_col = 0, bool p_grab_focus = true);
 	void open_scene_from_path(const String &scene_path, bool p_set_inherited = false);
 	void reload_scene_from_path(const String &scene_path);
 

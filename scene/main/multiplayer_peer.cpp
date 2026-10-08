@@ -133,20 +133,6 @@ Error MultiplayerPeerExtension::get_packet(const uint8_t **r_buffer, int &r_buff
 	if (GDVIRTUAL_CALL(_get_packet, r_buffer, &r_buffer_size, err)) {
 		return err;
 	}
-	if (GDVIRTUAL_IS_OVERRIDDEN(_get_packet_script)) {
-		if (!GDVIRTUAL_CALL(_get_packet_script, script_buffer)) {
-			return FAILED;
-		}
-
-		if (script_buffer.is_empty()) {
-			return Error::ERR_UNAVAILABLE;
-		}
-
-		*r_buffer = script_buffer.ptr();
-		r_buffer_size = script_buffer.size();
-
-		return Error::OK;
-	}
 	WARN_PRINT_ONCE("MultiplayerPeerExtension::_get_packet_native is unimplemented!");
 	return FAILED;
 }
@@ -155,16 +141,6 @@ Error MultiplayerPeerExtension::put_packet(const uint8_t *p_buffer, int p_buffer
 	ERR_FAIL_COND_V(p_buffer_size < 0, ERR_INVALID_PARAMETER);
 	Error err;
 	if (GDVIRTUAL_CALL(_put_packet, p_buffer, p_buffer_size, err)) {
-		return err;
-	}
-	if (GDVIRTUAL_IS_OVERRIDDEN(_put_packet_script)) {
-		PackedByteArray a;
-		a.resize(p_buffer_size);
-		memcpy(a.ptrw(), p_buffer, p_buffer_size);
-
-		if (!GDVIRTUAL_CALL(_put_packet_script, a, err)) {
-			return FAILED;
-		}
 		return err;
 	}
 	WARN_PRINT_ONCE("MultiplayerPeerExtension::_put_packet_native is unimplemented!");
@@ -199,9 +175,6 @@ void MultiplayerPeerExtension::_bind_methods() {
 	GDVIRTUAL_BIND(_put_packet, "buffer", "buffer_size");
 	GDVIRTUAL_BIND(_get_available_packet_count);
 	GDVIRTUAL_BIND(_get_max_packet_size);
-
-	GDVIRTUAL_BIND(_get_packet_script)
-	GDVIRTUAL_BIND(_put_packet_script, "buffer");
 
 	GDVIRTUAL_BIND(_get_packet_channel);
 	GDVIRTUAL_BIND(_get_packet_mode);

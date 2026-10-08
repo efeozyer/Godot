@@ -85,7 +85,6 @@ private:
 	int low_processor_usage_mode_sleep_usec = 10000;
 	bool _delta_smoothing_enabled = false;
 	bool _verbose_stdout = false;
-	bool _debug_stdout = false;
 	String _local_clipboard;
 	// Assume success by default, all failure cases need to set EXIT_FAILURE explicitly.
 	int _exit_code = EXIT_SUCCESS;
@@ -166,7 +165,7 @@ public:
 	virtual Vector<String> get_video_adapter_driver_info() const = 0;
 	virtual bool get_user_prefers_integrated_gpu() const { return false; }
 
-	void print_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify = false, Logger::ErrorType p_type = Logger::ERR_ERROR, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces = {});
+	void print_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify = false, Logger::ErrorType p_type = Logger::ERR_ERROR);
 	void print(const char *p_format, ...) _PRINTF_FORMAT_ATTRIBUTE_2_3;
 	void print_rich(const char *p_format, ...) _PRINTF_FORMAT_ATTRIBUTE_2_3;
 	void printerr(const char *p_format, ...) _PRINTF_FORMAT_ATTRIBUTE_2_3;
@@ -284,7 +283,6 @@ public:
 	virtual bool is_userfs_persistent() const { return true; }
 
 	bool is_stdout_verbose() const;
-	bool is_stdout_debug_enabled() const;
 
 	bool is_stdout_enabled() const;
 	bool is_stderr_enabled() const;
@@ -299,7 +297,6 @@ public:
 
 	virtual void disable_crash_handler() {}
 	virtual bool is_disable_crash_handler() const { return false; }
-	virtual void initialize_debugging() {}
 
 	virtual uint64_t get_static_memory_usage() const;
 	virtual uint64_t get_static_memory_peak_usage() const;

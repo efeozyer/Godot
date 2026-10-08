@@ -35,7 +35,6 @@
 #include "core/io/dir_access.h"
 #include "core/io/missing_resource.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
 
@@ -1024,11 +1023,7 @@ Error ResourceLoaderText::rename_dependencies(Ref<FileAccess> p_f, const String 
 				if (is_scene) {
 					fw->store_line("[gd_scene format=" + itos(format_version) + uid_text + "]\n");
 				} else {
-					String script_res_text;
-					if (!script_class.is_empty()) {
-						script_res_text = "script_class=\"" + script_class + "\" ";
-					}
-					fw->store_line("[gd_resource type=\"" + res_type + "\" " + script_res_text + "format=" + itos(format_version) + uid_text + "]\n");
+					fw->store_line("[gd_resource type=\"" + res_type + "\" format=" + itos(format_version) + uid_text + "]\n");
 				}
 			}
 
@@ -1157,10 +1152,6 @@ void ResourceLoaderText::open(Ref<FileAccess> p_f, bool p_skip_first_tag) {
 			ERR_PRINT(_get_error_string());
 			error = ERR_PARSE_ERROR;
 			return;
-		}
-
-		if (tag.fields.has("script_class")) {
-			script_class = tag.fields["script_class"];
 		}
 
 		res_type = tag.fields["type"];
@@ -1292,40 +1283,6 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 	}
 
 	return OK;
-}
-
-String ResourceLoaderText::recognize_script_class(Ref<FileAccess> p_f) {
-	error = OK;
-
-	lines = 1;
-	f = p_f;
-
-	stream.f = f;
-
-	ignore_resource_parsing = true;
-
-	VariantParser::Tag tag;
-	Error err = VariantParser::parse_tag(&stream, lines, error_text, tag);
-
-	ERR_FAIL_COND_V_MSG(err, "", _get_error_string());
-
-	if (tag.fields.has("format")) {
-		int fmt = tag.fields["format"];
-		if (fmt > FORMAT_VERSION) {
-			error_text = "Saved with newer format version";
-			ERR_FAIL_V_MSG("", _get_error_string());
-		}
-	}
-
-	if (tag.name != "gd_resource") {
-		return "";
-	}
-
-	if (tag.fields.has("script_class")) {
-		return tag.fields["script_class"];
-	}
-
-	return "";
 }
 
 String ResourceLoaderText::recognize(Ref<FileAccess> p_f) {
@@ -1504,24 +1461,6 @@ String ResourceFormatLoaderText::get_resource_type(const String &p_path) const {
 	return ClassDB::get_compatibility_remapped_class(r);
 }
 
-String ResourceFormatLoaderText::get_resource_script_class(const String &p_path) const {
-	if (!p_path.has_extension("tres")) {
-		return String();
-	}
-
-	// ...for anything else must test...
-
-	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ);
-	if (f.is_null()) {
-		return ""; //could not read
-	}
-
-	ResourceLoaderText loader;
-	loader.local_path = ProjectSettings::get_singleton()->localize_path(p_path);
-	loader.res_path = loader.local_path;
-	return loader.recognize_script_class(f);
-}
-
 ResourceUID::ID ResourceFormatLoaderText::get_resource_uid(const String &p_path) const {
 	const String ext = p_path.get_extension().to_lower();
 	if (ext != "tscn" && ext != "tres") {
@@ -1678,7 +1617,6 @@ void ResourceFormatSaverTextInstance::_find_resources(const Variant &p_variant, 
 		} break;
 		case Variant::ARRAY: {
 			Array varray = p_variant;
-			_find_resources(varray.get_typed_script());
 			for (const Variant &var : varray) {
 				_find_resources(var);
 			}
@@ -1686,8 +1624,6 @@ void ResourceFormatSaverTextInstance::_find_resources(const Variant &p_variant, 
 		} break;
 		case Variant::DICTIONARY: {
 			Dictionary d = p_variant;
-			_find_resources(d.get_typed_key_script());
-			_find_resources(d.get_typed_value_script());
 			for (const KeyValue<Variant, Variant> &kv : d) {
 				// Of course keys should also be cached, after all we can't prevent users from using resources as keys, right?
 				// See also ResourceFormatSaverBinaryInstance::_find_resources (when p_variant is of type Variant::DICTIONARY)
@@ -1910,10 +1846,6 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 		String title = packed_scene.is_valid() ? "[gd_scene " : "[gd_resource ";
 		if (packed_scene.is_null()) {
 			title += "type=\"" + _resource_get_class(p_resource) + "\" ";
-			Ref<Script> script = p_resource->get_script();
-			if (script.is_valid() && script->get_global_name()) {
-				title += "script_class=\"" + String(script->get_global_name()) + "\" ";
-			}
 		}
 
 		title += "format=" + itos(use_compat ? ResourceLoaderText::FORMAT_VERSION_COMPAT : ResourceLoaderText::FORMAT_VERSION) + "";
@@ -2095,8 +2027,7 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 					}
 				}
 
-				bool is_script = name == CoreStringName(script);
-				Variant default_value = is_script ? Variant() : PropertyUtils::get_property_default_value(res.ptr(), name);
+				Variant default_value = PropertyUtils::get_property_default_value(res.ptr(), name);
 
 				if (default_value.get_type() != Variant::NIL && bool(Variant::evaluate(Variant::OP_EQUAL, value, default_value))) {
 					continue;
@@ -2160,12 +2091,7 @@ Error ResourceLoaderText::set_uid(Ref<FileAccess> p_f, ResourceUID::ID p_uid) {
 	if (is_scene) {
 		fw->store_string("[gd_scene format=" + itos(format_version) + " uid=\"" + ResourceUID::get_singleton()->id_to_text(p_uid) + "\"]");
 	} else {
-		String script_res_text;
-		if (!script_class.is_empty()) {
-			script_res_text = "script_class=\"" + script_class + "\" ";
-		}
-
-		fw->store_string("[gd_resource type=\"" + res_type + "\" " + script_res_text + "format=" + itos(format_version) + " uid=\"" + ResourceUID::get_singleton()->id_to_text(p_uid) + "\"]");
+		fw->store_string("[gd_resource type=\"" + res_type + "\" format=" + itos(format_version) + " uid=\"" + ResourceUID::get_singleton()->id_to_text(p_uid) + "\"]");
 	}
 
 	uint8_t c = f->get_8();

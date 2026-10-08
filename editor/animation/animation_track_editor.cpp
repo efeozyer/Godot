@@ -48,7 +48,7 @@
 #include "editor/gui/editor_validation_panel.h"
 #include "editor/inspector/multi_node_edit.h"
 #include "editor/scene/scene_tree_editor.h"
-#include "editor/script/script_editor_plugin.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/mesh_instance_3d.h"
@@ -75,7 +75,6 @@ constexpr double SECOND_DECIMAL = 0.0001;
 void AnimationTrackKeyEdit::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_update_obj"), &AnimationTrackKeyEdit::_update_obj);
 	ClassDB::bind_method(D_METHOD("_key_ofs_changed"), &AnimationTrackKeyEdit::_key_ofs_changed);
-	ClassDB::bind_method(D_METHOD("_hide_script_from_inspector"), &AnimationTrackKeyEdit::_hide_script_from_inspector);
 	ClassDB::bind_method(D_METHOD("_hide_metadata_from_inspector"), &AnimationTrackKeyEdit::_hide_metadata_from_inspector);
 	ClassDB::bind_method(D_METHOD("get_root_path"), &AnimationTrackKeyEdit::get_root_path);
 	ClassDB::bind_method(D_METHOD("_dont_undo_redo"), &AnimationTrackKeyEdit::_dont_undo_redo);
@@ -691,7 +690,6 @@ void AnimationTrackKeyEdit::set_use_fps(bool p_enable) {
 void AnimationMultiTrackKeyEdit::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_update_obj"), &AnimationMultiTrackKeyEdit::_update_obj);
 	ClassDB::bind_method(D_METHOD("_key_ofs_changed"), &AnimationMultiTrackKeyEdit::_key_ofs_changed);
-	ClassDB::bind_method(D_METHOD("_hide_script_from_inspector"), &AnimationMultiTrackKeyEdit::_hide_script_from_inspector);
 	ClassDB::bind_method(D_METHOD("_hide_metadata_from_inspector"), &AnimationMultiTrackKeyEdit::_hide_metadata_from_inspector);
 	ClassDB::bind_method(D_METHOD("get_root_path"), &AnimationMultiTrackKeyEdit::get_root_path);
 	ClassDB::bind_method(D_METHOD("_dont_undo_redo"), &AnimationMultiTrackKeyEdit::_dont_undo_redo);
@@ -3490,29 +3488,12 @@ bool AnimationTrackEdit::_lookup_key(int p_key_idx) const {
 		Node *target = root->get_node_or_null(animation->track_get_path(track));
 		if (target) {
 			StringName method = animation->method_track_get_name(track, p_key_idx);
-			// First, check every script in the inheritance chain.
-			bool found_in_script = false;
-			Ref<Script> target_script_ref = target->get_script();
-			Script *target_script = target_script_ref.ptr();
-			while (target_script) {
-				if (target_script->has_method(method)) {
-					found_in_script = true;
-					// Tell ScriptEditor to show the method's line.
-					ScriptEditor::get_singleton()->script_goto_method(target_script, animation->method_track_get_name(track, p_key_idx));
-					break;
-				}
-				target_script = target_script->get_base_script().ptr();
-			}
-
-			if (!found_in_script) {
-				// Not found in script, so it must be a native method.
-				if (ClassDB::has_method(target->get_class_name(), method)) {
-					// Show help page instead.
-					ScriptEditor::get_singleton()->goto_help(vformat("class_method:%s:%s", target->get_class_name(), method));
-				} else {
-					// Still not found, which means the target doesn't have this method. Warn the user.
-					WARN_PRINT_ED(vformat(TTR("Failed to lookup method: \"%s\""), method));
-				}
+			if (ClassDB::has_method(target->get_class_name(), method)) {
+				// Show the help page of the method.
+				DocumentEditor::get_singleton()->goto_help(vformat("class_method:%s:%s", target->get_class_name(), method));
+			} else {
+				// Not found, which means the target doesn't have this method. Warn the user.
+				WARN_PRINT_ED(vformat(TTR("Failed to lookup method: \"%s\""), method));
 			}
 			return true;
 		}
@@ -3812,23 +3793,14 @@ AnimationTrackEdit::AnimationTrackEdit() {
 //////////////////////////////////////
 
 AnimationTrackEdit *AnimationTrackEditPlugin::create_value_track_edit(Object *p_object, Variant::Type p_type, const String &p_property, PropertyHint p_hint, const String &p_hint_string, int p_usage) {
-	if (get_script_instance()) {
-		return Object::cast_to<AnimationTrackEdit>(get_script_instance()->call("create_value_track_edit", p_object, p_type, p_property, p_hint, p_hint_string, p_usage));
-	}
 	return nullptr;
 }
 
 AnimationTrackEdit *AnimationTrackEditPlugin::create_audio_track_edit() {
-	if (get_script_instance()) {
-		return Object::cast_to<AnimationTrackEdit>(get_script_instance()->call("create_audio_track_edit").operator Object *());
-	}
 	return nullptr;
 }
 
 AnimationTrackEdit *AnimationTrackEditPlugin::create_animation_track_edit(Object *p_object) {
-	if (get_script_instance()) {
-		return Object::cast_to<AnimationTrackEdit>(get_script_instance()->call("create_animation_track_edit", p_object).operator Object *());
-	}
 	return nullptr;
 }
 
@@ -9899,7 +9871,6 @@ float AnimationMarkerKeyEdit::get_time() const {
 }
 
 void AnimationMarkerKeyEdit::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("_hide_script_from_inspector"), &AnimationMarkerKeyEdit::_hide_script_from_inspector);
 	ClassDB::bind_method(D_METHOD("_hide_metadata_from_inspector"), &AnimationMarkerKeyEdit::_hide_metadata_from_inspector);
 	ClassDB::bind_method(D_METHOD("_dont_undo_redo"), &AnimationMarkerKeyEdit::_dont_undo_redo);
 	ClassDB::bind_method(D_METHOD("_is_read_only"), &AnimationMarkerKeyEdit::_is_read_only);
@@ -9954,7 +9925,6 @@ void AnimationMarkerKeyEdit::_get_property_list(List<PropertyInfo> *p_list) cons
 }
 
 void AnimationMultiMarkerKeyEdit::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("_hide_script_from_inspector"), &AnimationMultiMarkerKeyEdit::_hide_script_from_inspector);
 	ClassDB::bind_method(D_METHOD("_hide_metadata_from_inspector"), &AnimationMultiMarkerKeyEdit::_hide_metadata_from_inspector);
 	ClassDB::bind_method(D_METHOD("_dont_undo_redo"), &AnimationMultiMarkerKeyEdit::_dont_undo_redo);
 	ClassDB::bind_method(D_METHOD("_is_read_only"), &AnimationMultiMarkerKeyEdit::_is_read_only);

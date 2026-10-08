@@ -721,6 +721,50 @@ RD::PipelineColorBlendState::Attachment MaterialStorage::ShaderData::blend_mode_
 	return attachment;
 }
 
+const char *MaterialStorage::ShaderData::custom_blend_factor_names[CUSTOM_BLEND_FACTOR_COUNT] = {
+	"zero",
+	"one",
+	"src_color",
+	"inv_src_color",
+	"src_alpha",
+	"inv_src_alpha",
+};
+
+void MaterialStorage::ShaderData::custom_blend_factors_apply(int p_src, int p_dst, RD::PipelineColorBlendState::Attachment &r_attachment) {
+	if (p_src < 0 && p_dst < 0) {
+		return;
+	}
+
+	static const RD::BlendFactor color_factors[CUSTOM_BLEND_FACTOR_COUNT] = {
+		RD::BLEND_FACTOR_ZERO,
+		RD::BLEND_FACTOR_ONE,
+		RD::BLEND_FACTOR_SRC_COLOR,
+		RD::BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+		RD::BLEND_FACTOR_SRC_ALPHA,
+		RD::BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+	};
+	static const RD::BlendFactor alpha_factors[CUSTOM_BLEND_FACTOR_COUNT] = {
+		RD::BLEND_FACTOR_ZERO,
+		RD::BLEND_FACTOR_ONE,
+		RD::BLEND_FACTOR_SRC_ALPHA,
+		RD::BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+		RD::BLEND_FACTOR_SRC_ALPHA,
+		RD::BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+	};
+
+	// A factor left unset keeps the regular alpha blending value.
+	const int src = p_src < 0 ? 4 : MIN(p_src, CUSTOM_BLEND_FACTOR_COUNT - 1);
+	const int dst = p_dst < 0 ? 5 : MIN(p_dst, CUSTOM_BLEND_FACTOR_COUNT - 1);
+
+	r_attachment.enable_blend = true;
+	r_attachment.color_blend_op = RD::BLEND_OP_ADD;
+	r_attachment.alpha_blend_op = RD::BLEND_OP_ADD;
+	r_attachment.src_color_blend_factor = color_factors[src];
+	r_attachment.dst_color_blend_factor = color_factors[dst];
+	r_attachment.src_alpha_blend_factor = alpha_factors[src];
+	r_attachment.dst_alpha_blend_factor = alpha_factors[dst];
+}
+
 bool MaterialStorage::ShaderData::blend_mode_uses_blend_alpha(BlendMode p_mode) {
 	switch (p_mode) {
 		case BLEND_MODE_MIX:

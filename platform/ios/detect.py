@@ -71,7 +71,7 @@ def get_flags():
         "target": "template_debug",
         "use_volk": False,
         "metal": True,
-        "supported": ["metal", "mono"],
+        "supported": ["metal"],
         "builtin_pcre2_with_jit": False,
     }
 

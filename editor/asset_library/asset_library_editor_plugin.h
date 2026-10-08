@@ -384,7 +384,6 @@ class EditorAssetLibrary : public EditorDock {
 	void _select_author(const String &p_author);
 	void _select_asset(const String &p_id);
 
-	void _manage_plugins();
 
 	void _search(int p_page = 1);
 	void _api_request(const String &p_request, RequestType p_request_type, bool p_is_parallel = false);

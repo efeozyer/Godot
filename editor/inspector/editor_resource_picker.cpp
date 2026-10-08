@@ -46,7 +46,6 @@
 #include "editor/inspector/editor_inspector.h"
 #include "editor/inspector/editor_resource_preview.h"
 #include "editor/plugins/editor_resource_conversion_plugin.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/button.h"
@@ -134,7 +133,7 @@ void EditorResourcePicker::_update_resource() {
 		bool is_internal = EditorNode::get_singleton()->is_resource_internal_to_scene(edited_resource);
 		int num_of_copies = EditorNode::get_singleton()->get_resource_count(edited_resource);
 		make_unique_button->set_button_icon(get_editor_theme_icon(SNAME("Instance")));
-		make_unique_button->set_visible(num_of_copies > 1 || (!is_internal && !Object::cast_to<Script>(edited_resource.ptr())));
+		make_unique_button->set_visible(num_of_copies > 1 || !is_internal);
 		make_unique_button->set_disabled((!unique_enable && !unique_recursive_enabled) || !editable);
 
 		String tooltip;
@@ -142,16 +141,6 @@ void EditorResourcePicker::_update_resource() {
 		String resource_name = "resource";
 		if (edited_resource.is_valid()) {
 			resource_name = edited_resource->get_class();
-
-			if (edited_resource->has_meta(SceneStringName(_custom_type_script))) {
-				const Ref<Script> custom_script = PropertyUtils::get_custom_type_script(edited_resource.ptr());
-				if (custom_script.is_valid()) {
-					const String global_name = custom_script->get_global_name();
-					if (!global_name.is_empty()) {
-						resource_name = global_name;
-					}
-				}
-			}
 		}
 
 		if (num_of_copies > 1) {
@@ -189,12 +178,6 @@ void EditorResourcePicker::_update_resource_preview(const String &p_path, const 
 	}
 
 	if (preview_rect) {
-		Ref<Script> scr = edited_resource;
-		if (scr.is_valid()) {
-			assign_button->set_text(scr->get_path().get_file());
-			return;
-		}
-
 		if (p_preview.is_valid()) {
 			int thumbnail_size = (int)EDITOR_GET("filesystem/file_dialog/thumbnail_size") * EDSCALE;
 			if (assign_button->get_button_icon().is_valid()) {
@@ -243,20 +226,11 @@ void EditorResourcePicker::_file_selected(const String &p_path) {
 		bool any_type_matches = false;
 
 		String res_type = loaded_resource->get_class();
-		Ref<Script> res_script = loaded_resource->get_script();
-		bool is_global_class = false;
-		if (res_script.is_valid()) {
-			String script_type = EditorNode::get_editor_data().script_class_get_name(res_script->get_path());
-			if (!script_type.is_empty()) {
-				is_global_class = true;
-				res_type = script_type;
-			}
-		}
 
 		for (int i = 0; i < base_type.get_slice_count(","); i++) {
 			String base = base_type.get_slicec(',', i);
 
-			any_type_matches = is_global_class ? EditorNode::get_editor_data().script_class_is_parent(res_type, base) : loaded_resource->is_class(base);
+			any_type_matches = loaded_resource->is_class(base);
 
 			if (any_type_matches) {
 				break;
@@ -329,10 +303,8 @@ void EditorResourcePicker::_update_menu_items() {
 		}
 
 		if (is_editable()) {
-			if (!_is_custom_type_script()) {
-				edit_menu->add_icon_item(get_editor_theme_icon(SNAME("Clear")), TTR("Clear"), OBJ_MENU_CLEAR);
-				edit_menu->set_item_disabled(-1, force_allow_unique);
-			}
+			edit_menu->add_icon_item(get_editor_theme_icon(SNAME("Clear")), TTR("Clear"), OBJ_MENU_CLEAR);
+			edit_menu->set_item_disabled(-1, force_allow_unique);
 			bool unique_enabled = _is_uniqueness_enabled();
 			edit_menu->add_icon_item(get_editor_theme_icon(SNAME("Duplicate")), TTR("Make Unique"), OBJ_MENU_MAKE_UNIQUE);
 			edit_menu->set_item_disabled(-1, !unique_enabled);
@@ -389,7 +361,7 @@ void EditorResourcePicker::_update_menu_items() {
 			for (int i = 0; i < base_type.get_slice_count(","); i++) {
 				String base = base_type.get_slicec(',', i);
 
-				paste_valid = ClassDB::is_parent_class(res_type, base) || EditorNode::get_editor_data().script_class_is_parent(res_type, base);
+				paste_valid = ClassDB::is_parent_class(res_type, base);
 
 				if (paste_valid) {
 					break;
@@ -443,9 +415,6 @@ void EditorResourcePicker::_edit_menu_cbk(int p_which) {
 					base = "";
 				}
 				ResourceLoader::get_recognized_extensions_for_type(base, &extensions);
-				if (ScriptServer::is_global_class(base)) {
-					ResourceLoader::get_recognized_extensions_for_type(ScriptServer::get_global_class_native_base(base), &extensions);
-				}
 			}
 
 			HashSet<String> valid_extensions;
@@ -620,17 +589,7 @@ void EditorResourcePicker::_edit_menu_cbk(int p_which) {
 			ERR_FAIL_COND(inheritors_array.is_empty());
 
 			String intype = inheritors_array[p_which - TYPE_BASE_ID];
-			Variant obj;
-
-			if (ScriptServer::is_global_class(intype)) {
-				obj = EditorNode::get_editor_data().script_class_instance(intype);
-			} else {
-				obj = ClassDB::instantiate(intype);
-			}
-
-			if (!obj) {
-				obj = EditorNode::get_editor_data().instantiate_custom_type(intype, "Resource");
-			}
+			Variant obj = ClassDB::instantiate(intype);
 
 			Ref<Resource> resp(obj);
 			ERR_BREAK(resp.is_null());
@@ -674,11 +633,6 @@ void EditorResourcePicker::set_create_options(Object *p_menu_node) {
 
 			if (ClassDB::class_exists(t)) {
 				if (!ClassDB::can_instantiate(t)) {
-					continue;
-				}
-			} else if (ScriptServer::is_global_class(t)) {
-				Ref<Script> scr = ResourceLoader::load(ScriptServer::get_global_class_path(t));
-				if (!scr.is_valid() || !scr->is_script_valid() || scr->is_abstract()) {
 					continue;
 				}
 			} else {
@@ -792,29 +746,13 @@ String EditorResourcePicker::_get_resource_type(const Ref<Resource> &p_resource)
 	if (p_resource.is_null()) {
 		return String();
 	}
-	String res_type = p_resource->get_class();
-
-	Ref<Script> res_script = p_resource->get_script();
-	if (res_script.is_null()) {
-		return res_type;
-	}
-
-	String script_type = EditorNode::get_editor_data().script_class_get_name(res_script->get_path());
-	if (!script_type.is_empty()) {
-		res_type = script_type;
-	}
-	return res_type;
+	return p_resource->get_class();
 }
 
 static bool _should_hide_type(const StringName &p_type) {
 	if (ClassDB::class_exists(p_type) && ClassDB::is_virtual(p_type)) {
 		return true;
 	}
-	if (ScriptServer::is_global_class(p_type)) {
-		Ref<Script> scr = ResourceLoader::load(ScriptServer::get_global_class_path(p_type));
-		return scr.is_null() || !scr->is_script_valid() || scr->is_abstract();
-	}
-
 	if (p_type == SNAME("MissingResource")) {
 		return true;
 	}
@@ -829,8 +767,6 @@ static void _add_allowed_type(const StringName &p_type, List<StringName> *p_vect
 	}
 
 	if (ClassDB::class_exists(p_type)) {
-		// Engine class.
-
 		if (!_should_hide_type(p_type)) {
 			p_vector->push_back(p_type);
 		}
@@ -840,15 +776,6 @@ static void _add_allowed_type(const StringName &p_type, List<StringName> *p_vect
 		for (const StringName &S : inheriters) {
 			_add_allowed_type(S, p_vector);
 		}
-	} else {
-		// Script class.
-		p_vector->push_back(p_type);
-	}
-
-	List<StringName> inheriters;
-	ScriptServer::get_inheriters_list(p_type, &inheriters);
-	for (const StringName &S : inheriters) {
-		_add_allowed_type(S, p_vector);
 	}
 }
 
@@ -913,42 +840,13 @@ bool EditorResourcePicker::_is_drop_valid(const Dictionary &p_drag_data) const {
 
 	String res_type = _get_resource_type(res);
 
-	if (_is_type_valid(res_type, allowed_types)) {
-		return true;
-	}
-
-	if (res->get_script()) {
-		StringName custom_class = EditorNode::get_singleton()->get_object_custom_type_name(res->get_script());
-		if (_is_type_valid(custom_class, allowed_types)) {
-			return true;
-		}
-	}
-	return false;
+	return _is_type_valid(res_type, allowed_types);
 }
 
 bool EditorResourcePicker::_is_type_valid(const String &p_type_name, const HashSet<StringName> &p_allowed_types) const {
 	for (const StringName &E : p_allowed_types) {
 		String at = E;
-		if (p_type_name == at || ClassDB::is_parent_class(p_type_name, at) || EditorNode::get_editor_data().script_class_is_parent(p_type_name, at)) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool EditorResourcePicker::_is_custom_type_script() const {
-	EditorProperty *editor_property = Object::cast_to<EditorProperty>(get_parent());
-	if (!editor_property) {
-		return false;
-	}
-
-	// Check if the property being edited is 'script'.
-	if (editor_property->get_edited_property() == CoreStringName(script)) {
-		// If there's currently a valid script assigned and the owning Node/Resource also has a custom type script assigned, then
-		// the currently assigned script is either the custom type script itself or an extension of it.
-		Ref<Script> resource_as_script = edited_resource;
-		if (resource_as_script.is_valid() && resource_owner && resource_owner->has_meta(SceneStringName(_custom_type_script))) {
+		if (p_type_name == at || ClassDB::is_parent_class(p_type_name, at)) {
 			return true;
 		}
 	}
@@ -964,12 +862,7 @@ Ref<Resource> EditorResourcePicker::_get_dropped_resource(const Variant &p_data)
 	}
 
 	Ref<Resource> res;
-	if (type == "script_list_element") {
-		ScriptEditorBase *se = Object::cast_to<ScriptEditorBase>(drag_data["script_list_element"]);
-		if (se) {
-			return se->get_edited_resource();
-		}
-	} else if (type == "shader_list_element") {
+	if (type == "shader_list_element") {
 		return ResourceCache::get_ref(drag_data["file_path"]);
 	} else if (type == "resource") {
 		return drag_data["resource"];
@@ -1161,16 +1054,8 @@ void EditorResourcePicker::set_base_type(const String &p_base_type) {
 		_ensure_allowed_types();
 		HashSet<StringName> allowed_types(allowed_types_with_convert);
 
-		StringName custom_class;
-		bool is_custom = false;
-		if (edited_resource->get_script()) {
-			custom_class = EditorNode::get_singleton()->get_object_custom_type_name(edited_resource->get_script());
-			is_custom = _is_type_valid(custom_class, allowed_types);
-		}
-
-		if (!is_custom && !_is_type_valid(edited_resource->get_class(), allowed_types)) {
-			String class_str = (custom_class == StringName() ? edited_resource->get_class() : vformat("%s (%s)", custom_class, edited_resource->get_class()));
-			WARN_PRINT(vformat("Value mismatch between the new base type of this EditorResourcePicker, '%s', and the type of the value it already has, '%s'.", base_type, class_str));
+		if (!_is_type_valid(edited_resource->get_class(), allowed_types)) {
+			WARN_PRINT(vformat("Value mismatch between the new base type of this EditorResourcePicker, '%s', and the type of the value it already has, '%s'.", base_type, edited_resource->get_class()));
 		}
 	}
 }
@@ -1214,14 +1099,7 @@ bool EditorResourcePicker::is_resource_allowed(const Ref<Resource> &p_resource) 
 		_ensure_allowed_types();
 		HashSet<StringName> allowed_types(allowed_types_with_convert);
 
-		StringName custom_class;
-		bool is_custom = false;
-		if (p_resource->get_script()) {
-			custom_class = EditorNode::get_singleton()->get_object_custom_type_name(p_resource->get_script());
-			is_custom = _is_type_valid(custom_class, allowed_types);
-		}
-
-		if (!is_custom && !_is_type_valid(p_resource->get_class(), allowed_types)) {
+		if (!_is_type_valid(p_resource->get_class(), allowed_types)) {
 			return false;
 		}
 	}
@@ -1230,12 +1108,7 @@ bool EditorResourcePicker::is_resource_allowed(const Ref<Resource> &p_resource) 
 
 void EditorResourcePicker::set_edited_resource(Ref<Resource> p_resource) {
 	if (!is_resource_allowed(p_resource)) {
-		StringName custom_class;
-		if (p_resource->get_script()) {
-			custom_class = EditorNode::get_singleton()->get_object_custom_type_name(p_resource->get_script());
-		}
-		const String class_str = (custom_class.is_empty() ? p_resource->get_class() : vformat("%s (%s)", custom_class, p_resource->get_class()));
-		ERR_FAIL_MSG(vformat("Failed to set a resource of the type '%s' because this EditorResourcePicker only accepts '%s' and its derivatives.", class_str, base_type));
+		ERR_FAIL_MSG(vformat("Failed to set a resource of the type '%s' because this EditorResourcePicker only accepts '%s' and its derivatives.", p_resource->get_class(), base_type));
 	}
 	set_edited_resource_no_check(p_resource);
 }
@@ -1561,62 +1434,6 @@ EditorResourcePicker::EditorResourcePicker(bool p_hide_assign_button_controls) {
 	edit_button->connect(SceneStringName(gui_input), callable_mp(this, &EditorResourcePicker::_button_input));
 
 	add_theme_constant_override("separation", 0);
-}
-
-// EditorScriptPicker
-
-void EditorScriptPicker::set_create_options(Object *p_menu_node) {
-	PopupMenu *menu_node = Object::cast_to<PopupMenu>(p_menu_node);
-	if (!menu_node) {
-		return;
-	}
-
-	if (!(script_owner && script_owner->has_meta(SceneStringName(_custom_type_script)))) {
-		menu_node->add_icon_item(get_editor_theme_icon(SNAME("ScriptCreate")), TTR("New Script..."), OBJ_MENU_NEW_SCRIPT);
-	}
-
-	if (script_owner) {
-		Ref<Script> scr = script_owner->get_script();
-		if (scr.is_valid()) {
-			menu_node->add_icon_item(get_editor_theme_icon(SNAME("ScriptExtend")), TTR("Extend Script..."), OBJ_MENU_EXTEND_SCRIPT);
-		}
-	}
-	menu_node->add_separator();
-}
-
-bool EditorScriptPicker::handle_menu_selected(int p_which) {
-	switch (p_which) {
-		case OBJ_MENU_NEW_SCRIPT: {
-			if (script_owner) {
-				SceneTreeDock::get_singleton()->open_script_dialog(script_owner, false);
-			}
-			return true;
-		}
-
-		case OBJ_MENU_EXTEND_SCRIPT: {
-			if (script_owner) {
-				SceneTreeDock::get_singleton()->open_script_dialog(script_owner, true);
-			}
-			return true;
-		}
-	}
-
-	return false;
-}
-
-void EditorScriptPicker::set_script_owner(Node *p_owner) {
-	script_owner = p_owner;
-}
-
-Node *EditorScriptPicker::get_script_owner() const {
-	return script_owner;
-}
-
-void EditorScriptPicker::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("set_script_owner", "owner_node"), &EditorScriptPicker::set_script_owner);
-	ClassDB::bind_method(D_METHOD("get_script_owner"), &EditorScriptPicker::get_script_owner);
-
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "script_owner", PROPERTY_HINT_RESOURCE_TYPE, Node::get_class_static(), PROPERTY_USAGE_NONE), "set_script_owner", "get_script_owner");
 }
 
 // EditorShaderPicker

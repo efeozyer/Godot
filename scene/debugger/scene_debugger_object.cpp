@@ -34,7 +34,6 @@
 
 #include "core/debugger/debugger_marshalls.h"
 #include "core/io/marshalls.h"
-#include "core/object/script_language.h"
 #include "scene/main/node.h"
 
 SceneDebuggerObject::SceneDebuggerObject(Object *p_obj) {
@@ -44,14 +43,6 @@ SceneDebuggerObject::SceneDebuggerObject(Object *p_obj) {
 
 	id = p_obj->get_instance_id();
 	class_name = p_obj->get_class();
-
-	if (ScriptInstance *si = p_obj->get_script_instance()) {
-		// Read script instance constants and variables.
-		if (si->get_script() != nullptr) {
-			Script *s = si->get_script();
-			_parse_script_properties(s, si);
-		}
-	}
 
 	if (Node *node = Object::cast_to<Node>(p_obj)) {
 		{
@@ -73,9 +64,6 @@ SceneDebuggerObject::SceneDebuggerObject(Object *p_obj) {
 			PropertyInfo pi(Variant::STRING, String("Node/path"));
 			properties.push_back(SceneDebuggerProperty(pi, "[Orphan]"));
 		}
-	} else if (Script *s = Object::cast_to<Script>(p_obj)) {
-		// Add script constants (no instance).
-		_parse_script_properties(s, nullptr);
 	}
 
 	// Add base object properties.
@@ -94,98 +82,6 @@ SceneDebuggerObject::SceneDebuggerObject(Object *p_obj) {
 	}
 }
 
-void SceneDebuggerObject::_parse_script_properties(Script *p_script, ScriptInstance *p_instance) {
-	typedef HashMap<const Script *, HashSet<StringName>> ScriptMemberMap;
-	typedef HashMap<const Script *, HashMap<StringName, Variant>> ScriptConstantsMap;
-
-	ScriptMemberMap members;
-	if (p_instance) {
-		members[p_script] = HashSet<StringName>();
-		p_script->get_members(&(members[p_script]));
-	}
-
-	ScriptConstantsMap constants;
-	constants[p_script] = HashMap<StringName, Variant>();
-	p_script->get_constants(&(constants[p_script]));
-
-	Ref<Script> base = p_script->get_base_script();
-	while (base.is_valid()) {
-		if (p_instance) {
-			members[base.ptr()] = HashSet<StringName>();
-			base->get_members(&(members[base.ptr()]));
-		}
-
-		constants[base.ptr()] = HashMap<StringName, Variant>();
-		base->get_constants(&(constants[base.ptr()]));
-
-		base = base->get_base_script();
-	}
-
-	HashSet<String> exported_members;
-	HashMap<String, PropertyInfo> non_exported_members;
-
-	if (p_instance) {
-		List<PropertyInfo> pinfo;
-		p_instance->get_property_list(&pinfo);
-		for (const PropertyInfo &E : pinfo) {
-			if (E.usage & (PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_CATEGORY)) {
-				exported_members.insert(E.name);
-			} else {
-				PropertyInfo pi = E;
-				pi.usage |= PROPERTY_USAGE_EDITOR;
-				non_exported_members.insert(E.name, pi);
-			}
-		}
-	}
-
-	// Members
-	for (KeyValue<const Script *, HashSet<StringName>> sm : members) {
-		for (const StringName &E : sm.value) {
-			if (exported_members.has(E)) {
-				continue; // Exported variables already show up in the inspector.
-			}
-			if (String(E).begins_with("@")) {
-				continue; // Skip groups.
-			}
-
-			Variant m;
-			if (p_instance->get(E, m)) {
-				const String script_path = sm.key == p_script ? "" : sm.key->get_path().get_file() + "/";
-				if (!m.is_null() && m.get_type() == Variant::OBJECT) {
-					PropertyInfo pi(m.get_type(), "Members/" + script_path + E, PROPERTY_HINT_OBJECT_ID, DebuggerMarshalls::parse_type_from_variant(m));
-					properties.push_back(SceneDebuggerProperty(pi, m));
-				} else {
-					PropertyInfo pi;
-					const PropertyInfo *pi_ptr = non_exported_members.getptr(E);
-					if (pi_ptr == nullptr) {
-						pi.type = m.get_type();
-					} else {
-						pi = *pi_ptr;
-					}
-					pi.name = "Members/" + script_path + E;
-
-					properties.push_back(SceneDebuggerProperty(pi, m));
-				}
-			}
-		}
-	}
-	// Constants
-	for (KeyValue<const Script *, HashMap<StringName, Variant>> &sc : constants) {
-		for (const KeyValue<StringName, Variant> &E : sc.value) {
-			const String script_path = sc.key == p_script ? "" : sc.key->get_path().get_file() + "/";
-			if (!E.value.is_null() && E.value.get_type() == Variant::OBJECT) {
-				PropertyInfo pi(E.value.get_type(), "Constants/" + E.key, PROPERTY_HINT_OBJECT_ID, DebuggerMarshalls::parse_type_from_variant(E.value), PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY);
-				properties.push_back(SceneDebuggerProperty(pi, E.value));
-			} else {
-				PropertyInfo pi(E.value.get_type(), "Constants/" + script_path + E.key);
-				pi.usage |= PROPERTY_USAGE_READ_ONLY;
-
-				properties.push_back(SceneDebuggerProperty(pi, E.value));
-			}
-		}
-	}
-}
-
 void SceneDebuggerObject::serialize(Array &r_arr, int p_max_size) {
 	Array send_props;
 	for (SceneDebuggerProperty &property : properties) {
@@ -200,18 +96,6 @@ void SceneDebuggerObject::serialize(Array &r_arr, int p_max_size) {
 
 		if (res.is_valid()) {
 			hint_string = res->get_class();
-			// Check the script to see if there's a custom class name.
-			ScriptInstance *si = res->get_script_instance();
-			if (si) {
-				Ref<Script> script = si->get_script();
-				while (script.is_valid()) {
-					if (!script->get_global_name().is_empty()) {
-						hint_string = script->get_global_name();
-						break;
-					}
-					script = script->get_base_script();
-				}
-			}
 		}
 
 		if (res.is_valid() && !res->get_path().is_empty()) {
@@ -325,20 +209,7 @@ SceneDebuggerTree::SceneDebuggerTree(Node *p_root) {
 			}
 		}
 
-		String class_name;
-		ScriptInstance *script_instance = n->get_script_instance();
-		if (script_instance) {
-			Ref<Script> script = script_instance->get_script();
-			if (script.is_valid()) {
-				class_name = script->get_global_name();
-
-				if (class_name.is_empty()) {
-					// If there is no class_name in this script we just take the script path.
-					class_name = script->get_path();
-				}
-			}
-		}
-		nodes.push_back(RemoteNode(count, n->get_name(), class_name.is_empty() ? n->get_class() : class_name, n->get_instance_id(), n->get_scene_file_path(), view_flags));
+		nodes.push_back(RemoteNode(count, n->get_name(), n->get_class(), n->get_instance_id(), n->get_scene_file_path(), view_flags));
 	}
 }
 

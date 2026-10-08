@@ -77,7 +77,7 @@ private:
 public:
 	static void interpolate_transform_2d(const Transform2D &p_prev, const Transform2D &p_curr, Transform2D &r_result, real_t p_fraction);
 
-	// Generic functions, use when you don't know what method should be used, e.g. from GDScript.
+	// Generic functions, use when you don't know what method should be used.
 	// These will be slower.
 	static void interpolate_transform_3d(const Transform3D &p_prev, const Transform3D &p_curr, Transform3D &r_result, real_t p_fraction);
 	static void interpolate_basis(const Basis &p_prev, const Basis &p_curr, Basis &r_result, real_t p_fraction);

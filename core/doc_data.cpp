@@ -36,9 +36,9 @@
 String DocData::get_default_value_string(const Variant &p_value) {
 	const Variant::Type type = p_value.get_type();
 	if (type == Variant::ARRAY) {
-		return Variant(Array(p_value, 0, StringName(), Variant())).get_construct_string().replace_char('\n', ' ');
+		return Variant(Array(p_value, 0, StringName())).get_construct_string().replace_char('\n', ' ');
 	} else if (type == Variant::DICTIONARY) {
-		return Variant(Dictionary(p_value, 0, StringName(), Variant(), 0, StringName(), Variant())).get_construct_string().replace_char('\n', ' ');
+		return Variant(Dictionary(p_value, 0, StringName(), 0, StringName())).get_construct_string().replace_char('\n', ' ');
 	} else if (type == Variant::INT) {
 		return itos(p_value);
 	} else if (type == Variant::FLOAT) {

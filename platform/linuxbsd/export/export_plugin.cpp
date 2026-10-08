@@ -178,8 +178,7 @@ bool EditorExportPlatformLinuxBSD::get_export_option_visibility(const EditorExpo
 	if (!ssh && p_option != "ssh_remote_deploy/enabled" && p_option.begins_with("ssh_remote_deploy/")) {
 		return false;
 	}
-	if (p_option == "dotnet/embed_build_outputs" ||
-			p_option == "custom_template/debug" ||
+	if (p_option == "custom_template/debug" ||
 			p_option == "custom_template/release") {
 		return advanced_options_enabled;
 	}

@@ -145,8 +145,8 @@ void InstancePlaceholder::set_value_on_instance(InstancePlaceholder *p_placehold
 	} else {
 		// We are dealing with an Array.
 		// Let's check if the subtype of the array matches first.
-		// This is needed because the set method of ScriptInstance checks for type,
-		// but the ClassDB set method doesn't! So we cannot reliably know what actually happens.
+		// This is needed because the ClassDB set method doesn't check for type!
+		// So we cannot reliably know what actually happens.
 		Array current_array = current;
 		Array placeholder_array = p_set.value;
 		if (current_array.is_same_typed(placeholder_array)) {

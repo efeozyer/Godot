@@ -35,7 +35,9 @@
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
+#include "scene/3d/camera_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
+#include "scene/main/viewport.h"
 #include "scene/resources/curve_texture.h"
 #include "scene/resources/gradient_texture.h"
 #include "scene/resources/mesh.h"
@@ -74,7 +76,7 @@ void GPUParticles3D::set_emitting(bool p_emitting) {
 	}
 
 	emitting = p_emitting;
-	RS::get_singleton()->particles_set_emitting(particles, p_emitting);
+	RS::get_singleton()->particles_set_emitting(particles, p_emitting && burst_amount == 0);
 }
 
 void GPUParticles3D::set_amount(int p_amount) {
@@ -444,7 +446,8 @@ void GPUParticles3D::restart(bool p_keep_seed) {
 		set_seed(Math::rand());
 	}
 	RenderingServer::get_singleton()->particles_restart(particles);
-	RenderingServer::get_singleton()->particles_set_emitting(particles, true);
+	RenderingServer::get_singleton()->particles_set_emitting(particles, burst_amount == 0);
+	burst_time = burst_interval;
 
 	emitting = true;
 	active = true;
@@ -541,6 +544,9 @@ void GPUParticles3D::_notification(int p_what) {
 				previous_velocity = velocity;
 			}
 			previous_position = get_global_position();
+
+			_update_lod();
+			_process_burst(get_process_delta_time());
 
 			if (one_shot) {
 				time += get_process_delta_time();
@@ -773,7 +779,82 @@ void GPUParticles3D::convert_from_particles(Node *p_particles) {
 
 void GPUParticles3D::set_amount_ratio(float p_ratio) {
 	amount_ratio = p_ratio;
-	RS::get_singleton()->particles_set_amount_ratio(particles, p_ratio);
+	RS::get_singleton()->particles_set_amount_ratio(particles, amount_ratio * lod_ratio);
+}
+
+void GPUParticles3D::set_burst_amount(int p_amount) {
+	ERR_FAIL_COND_MSG(p_amount < 0, "Burst amount of particles cannot be negative.");
+	burst_amount = p_amount;
+	burst_time = burst_interval;
+	RS::get_singleton()->particles_set_emitting(particles, emitting && burst_amount == 0);
+}
+
+int GPUParticles3D::get_burst_amount() const {
+	return burst_amount;
+}
+
+void GPUParticles3D::set_burst_interval(double p_interval) {
+	ERR_FAIL_COND_MSG(p_interval <= 0, "Particles burst interval must be greater than 0.");
+	burst_interval = p_interval;
+}
+
+double GPUParticles3D::get_burst_interval() const {
+	return burst_interval;
+}
+
+void GPUParticles3D::set_lod_distance_begin(float p_distance) {
+	lod_distance_begin = p_distance;
+}
+
+float GPUParticles3D::get_lod_distance_begin() const {
+	return lod_distance_begin;
+}
+
+void GPUParticles3D::set_lod_distance_end(float p_distance) {
+	lod_distance_end = p_distance;
+}
+
+float GPUParticles3D::get_lod_distance_end() const {
+	return lod_distance_end;
+}
+
+void GPUParticles3D::_update_lod() {
+	float ratio = 1.0;
+	// The edited scene has no meaningful camera of its own, so the editor always shows the full amount.
+	if (lod_distance_end > 0.0 && !Engine::get_singleton()->is_editor_hint()) {
+		const Camera3D *camera = get_viewport()->get_camera_3d();
+		if (camera) {
+			const float distance = camera->get_global_position().distance_to(get_global_position());
+			if (distance >= lod_distance_end) {
+				ratio = 0.0;
+			} else if (distance > lod_distance_begin) {
+				ratio = (lod_distance_end - distance) / (lod_distance_end - lod_distance_begin);
+			}
+		}
+	}
+
+	if (ratio != lod_ratio) {
+		lod_ratio = ratio;
+		RS::get_singleton()->particles_set_amount_ratio(particles, amount_ratio * lod_ratio);
+	}
+}
+
+void GPUParticles3D::_process_burst(double p_delta) {
+	if (!emitting || burst_amount == 0) {
+		return;
+	}
+
+	burst_time += p_delta * speed_scale;
+	if (burst_time < burst_interval) {
+		return;
+	}
+	// At most one burst per frame; a long frame does not queue up extra bursts.
+	burst_time = MIN(burst_time - burst_interval, burst_interval);
+
+	const int count = MIN(Math::round(burst_amount * amount_ratio * lod_ratio), amount);
+	for (int i = 0; i < count; i++) {
+		RS::get_singleton()->particles_emit(particles, Transform3D(), Vector3(), Color(), Color(), 0);
+	}
 }
 
 float GPUParticles3D::get_amount_ratio() const {
@@ -862,6 +943,15 @@ void GPUParticles3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_amount_ratio", "ratio"), &GPUParticles3D::set_amount_ratio);
 	ClassDB::bind_method(D_METHOD("get_amount_ratio"), &GPUParticles3D::get_amount_ratio);
 
+	ClassDB::bind_method(D_METHOD("set_burst_amount", "amount"), &GPUParticles3D::set_burst_amount);
+	ClassDB::bind_method(D_METHOD("get_burst_amount"), &GPUParticles3D::get_burst_amount);
+	ClassDB::bind_method(D_METHOD("set_burst_interval", "secs"), &GPUParticles3D::set_burst_interval);
+	ClassDB::bind_method(D_METHOD("get_burst_interval"), &GPUParticles3D::get_burst_interval);
+	ClassDB::bind_method(D_METHOD("set_lod_distance_begin", "distance"), &GPUParticles3D::set_lod_distance_begin);
+	ClassDB::bind_method(D_METHOD("get_lod_distance_begin"), &GPUParticles3D::get_lod_distance_begin);
+	ClassDB::bind_method(D_METHOD("set_lod_distance_end", "distance"), &GPUParticles3D::set_lod_distance_end);
+	ClassDB::bind_method(D_METHOD("get_lod_distance_end"), &GPUParticles3D::get_lod_distance_end);
+
 	ClassDB::bind_method(D_METHOD("request_particles_process", "process_time", "process_time_residual"), &GPUParticles3D::request_particles_process, DEFVAL(0.0));
 
 	ADD_SIGNAL(MethodInfo("finished"));
@@ -885,6 +975,12 @@ void GPUParticles3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "interpolate"), "set_interpolate", "get_interpolate");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fract_delta"), "set_fractional_delta", "get_fractional_delta");
 
+	ADD_GROUP("Burst", "burst_");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "burst_amount", PROPERTY_HINT_RANGE, "0,1000000,1,exp"), "set_burst_amount", "get_burst_amount");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "burst_interval", PROPERTY_HINT_RANGE, "0.01,600.0,0.01,or_greater,exp,suffix:s"), "set_burst_interval", "get_burst_interval");
+	ADD_GROUP("LOD", "lod_");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod_distance_begin", PROPERTY_HINT_RANGE, "0,4096,0.01,or_greater,suffix:m"), "set_lod_distance_begin", "get_lod_distance_begin");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod_distance_end", PROPERTY_HINT_RANGE, "0,4096,0.01,or_greater,suffix:m"), "set_lod_distance_end", "get_lod_distance_end");
 	ADD_GROUP("Collision", "collision_");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "collision_base_size", PROPERTY_HINT_RANGE, "0,128,0.01,or_greater,suffix:m"), "set_collision_base_size", "get_collision_base_size");
 	ADD_GROUP("Drawing", "");

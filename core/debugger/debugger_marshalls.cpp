@@ -32,74 +32,10 @@
 
 #include "core/io/marshalls.h"
 
-#define CHECK_SIZE(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() < (uint32_t)(expected), false, String("Malformed ") + what + " message from script debugger, message too short. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
-#define CHECK_END(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() > (uint32_t)expected, false, String("Malformed ") + what + " message from script debugger, message too long. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
-
-Array DebuggerMarshalls::ScriptStackDump::serialize() {
-	Array arr = { frames.size() * 3 };
-	for (const ScriptLanguage::StackInfo &frame : frames) {
-		arr.push_back(frame.file);
-		arr.push_back(frame.line);
-		arr.push_back(frame.func);
-	}
-	return arr;
-}
-
-bool DebuggerMarshalls::ScriptStackDump::deserialize(const Array &p_arr) {
-	CHECK_SIZE(p_arr, 1, "ScriptStackDump");
-	uint32_t size = p_arr[0];
-	CHECK_SIZE(p_arr, size, "ScriptStackDump");
-	int idx = 1;
-	for (uint32_t i = 0; i < size / 3; i++) {
-		ScriptLanguage::StackInfo sf;
-		sf.file = p_arr[idx];
-		sf.line = p_arr[idx + 1];
-		sf.func = p_arr[idx + 2];
-		frames.push_back(sf);
-		idx += 3;
-	}
-	CHECK_END(p_arr, idx, "ScriptStackDump");
-	return true;
-}
-
-Array DebuggerMarshalls::ScriptStackVariable::serialize(int p_max_size) {
-	Array arr = { name, type, value.get_type() };
-
-	Variant var = value;
-	if (value.get_type() == Variant::OBJECT && value.get_validated_object() == nullptr) {
-		var = Variant();
-	}
-
-	int len = 0;
-	Error err = encode_variant(var, nullptr, len, false);
-	if (err != OK) {
-		ERR_PRINT("Failed to encode variant.");
-	}
-
-	if (len > p_max_size) {
-		arr.push_back(Variant());
-	} else {
-		arr.push_back(var);
-	}
-
-	arr.push_back(type_hint);
-
-	return arr;
-}
-
-bool DebuggerMarshalls::ScriptStackVariable::deserialize(const Array &p_arr) {
-	CHECK_SIZE(p_arr, 5, "ScriptStackVariable");
-	name = p_arr[0];
-	type = p_arr[1];
-	var_type = p_arr[2];
-	value = p_arr[3];
-	type_hint = p_arr[4];
-	CHECK_END(p_arr, 5, "ScriptStackVariable");
-	return true;
-}
+#define CHECK_SIZE(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() < (uint32_t)(expected), false, String("Malformed ") + what + " message from debugger, message too short. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
+#define CHECK_END(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() > (uint32_t)expected, false, String("Malformed ") + what + " message from debugger, message too long. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
 
 Array DebuggerMarshalls::OutputError::serialize() {
-	unsigned int size = callstack.size();
 	Array arr = {
 		hr,
 		min,
@@ -109,20 +45,13 @@ Array DebuggerMarshalls::OutputError::serialize() {
 		source_line,
 		error,
 		error_descr,
-		warning,
-		size * 3
+		warning
 	};
-	const ScriptLanguage::StackInfo *r = callstack.ptr();
-	for (int i = 0; i < callstack.size(); i++) {
-		arr.push_back(r[i].file);
-		arr.push_back(r[i].func);
-		arr.push_back(r[i].line);
-	}
 	return arr;
 }
 
 bool DebuggerMarshalls::OutputError::deserialize(const Array &p_arr) {
-	CHECK_SIZE(p_arr, 11, "OutputError");
+	CHECK_SIZE(p_arr, 10, "OutputError");
 	hr = p_arr[0];
 	min = p_arr[1];
 	sec = p_arr[2];
@@ -133,18 +62,7 @@ bool DebuggerMarshalls::OutputError::deserialize(const Array &p_arr) {
 	error = p_arr[7];
 	error_descr = p_arr[8];
 	warning = p_arr[9];
-	unsigned int stack_size = p_arr[10];
-	CHECK_SIZE(p_arr, stack_size, "OutputError");
-	int idx = 11;
-	callstack.resize(stack_size / 3);
-	ScriptLanguage::StackInfo *w = callstack.ptrw();
-	for (unsigned int i = 0; i < stack_size / 3; i++) {
-		w[i].file = p_arr[idx];
-		w[i].func = p_arr[idx + 1];
-		w[i].line = p_arr[idx + 2];
-		idx += 3;
-	}
-	CHECK_END(p_arr, idx, "OutputError");
+	CHECK_END(p_arr, 10, "OutputError");
 	return true;
 }
 
@@ -188,18 +106,7 @@ String DebuggerMarshalls::parse_type_from_variant(const Variant &p_variant) {
 	if (p_variant.get_type() == Variant::OBJECT) {
 		const Object *obj = p_variant.get_validated_object();
 		if (obj) {
-			const ScriptInstance *script_instance = obj->get_script_instance();
-
-			if (script_instance) {
-				Ref<Script> script(script_instance->get_script());
-				if (script.is_valid()) {
-					name = script->get_global_name();
-				}
-			}
-
-			if (name.is_empty()) {
-				return obj->get_class();
-			}
+			return obj->get_class();
 		}
 	}
 

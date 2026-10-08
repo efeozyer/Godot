@@ -36,7 +36,6 @@
 #include "core/io/resource.h"
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
 #include "core/string/translation_server.h"
@@ -146,9 +145,7 @@ bool Object::_predelete() {
 	notification(NOTIFICATION_PREDELETE_CLEANUP, true);
 
 	// Destruction order starts with the most derived class, and progresses towards the base Object class:
-	// Script subclasses -> GDExtension subclasses -> C++ subclasses -> Object
-	memdelete(script_instance);
-	script_instance = nullptr;
+	// GDExtension subclasses -> C++ subclasses -> Object
 
 	if (_extension) {
 #ifdef TOOLS_ENABLED
@@ -201,15 +198,6 @@ void Object::set(const StringName &p_name, const Variant &p_value, bool *r_valid
 	_edited = true;
 #endif
 
-	if (script_instance) {
-		if (script_instance->set(p_name, p_value)) {
-			if (r_valid) {
-				*r_valid = true;
-			}
-			return;
-		}
-	}
-
 	if (_extension && _extension->set) {
 		if (_extension->set(_extension_instance, (GDExtensionConstStringNamePtr)&p_name, (GDExtensionConstVariantPtr)&p_value)) {
 			if (r_valid) {
@@ -224,35 +212,13 @@ void Object::set(const StringName &p_name, const Variant &p_value, bool *r_valid
 		return;
 	}
 
-	if (p_name == CoreStringName(script)) {
-		set_script(p_value);
+	if (p_name.string().begins_with("metadata/")) {
+		set_meta(p_name.string().substr(strlen("metadata/")), p_value);
 		if (r_valid) {
 			*r_valid = true;
 		}
 		return;
-
-	} else {
-		if (p_name.string().begins_with("metadata/")) {
-			set_meta(p_name.string().substr(strlen("metadata/")), p_value);
-			if (r_valid) {
-				*r_valid = true;
-			}
-			return;
-		}
 	}
-
-#ifdef TOOLS_ENABLED
-	if (script_instance) {
-		bool valid;
-		script_instance->property_set_fallback(p_name, p_value, &valid);
-		if (valid) {
-			if (r_valid) {
-				*r_valid = true;
-			}
-			return;
-		}
-	}
-#endif
 
 	// Something inside the object... :|
 	bool success = _setv(p_name, p_value);
@@ -271,14 +237,6 @@ void Object::set(const StringName &p_name, const Variant &p_value, bool *r_valid
 Variant Object::get(const StringName &p_name, bool *r_valid) const {
 	Variant ret;
 
-	if (script_instance) {
-		if (script_instance->get(p_name, ret)) {
-			if (r_valid) {
-				*r_valid = true;
-			}
-			return ret;
-		}
-	}
 	if (_extension && _extension->get) {
 		if (_extension->get(_extension_instance, (GDExtensionConstStringNamePtr)&p_name, (GDExtensionVariantPtr)&ret)) {
 			if (r_valid) {
@@ -291,14 +249,6 @@ Variant Object::get(const StringName &p_name, bool *r_valid) const {
 	// Try built-in getter.
 	if (Variant value; get_native(p_name, value, r_valid)) {
 		return value;
-	}
-
-	if (p_name == CoreStringName(script)) {
-		ret = get_script();
-		if (r_valid) {
-			*r_valid = true;
-		}
-		return ret;
 	}
 
 	if (p_name.string().begins_with("metadata/")) {
@@ -318,18 +268,6 @@ Variant Object::get(const StringName &p_name, bool *r_valid) const {
 		}
 
 	} else {
-#ifdef TOOLS_ENABLED
-		if (script_instance) {
-			bool valid;
-			ret = script_instance->property_get_fallback(p_name, &valid);
-			if (valid) {
-				if (r_valid) {
-					*r_valid = true;
-				}
-				return ret;
-			}
-		}
-#endif
 		// Something inside the object... :|
 		bool success = _getv(p_name, ret);
 		if (success) {
@@ -556,10 +494,6 @@ Variant Object::get_indexed(const Vector<StringName> &p_names, bool *r_valid) co
 }
 
 void Object::get_property_list(List<PropertyInfo> *p_list, bool p_reversed) const {
-	if (script_instance && p_reversed) {
-		script_instance->get_property_list(p_list);
-	}
-
 	if (_extension) {
 		const ObjectGDExtension *current_extension = _extension;
 		while (current_extension) {
@@ -597,24 +531,11 @@ void Object::get_property_list(List<PropertyInfo> *p_list, bool p_reversed) cons
 
 	_get_property_listv(p_list, p_reversed);
 
-	const uint32_t base_script_usage = is_class(Script::get_class_static()) ? PROPERTY_USAGE_NO_EDITOR : PROPERTY_USAGE_DEFAULT;
-	p_list->push_back(PropertyInfo(Variant::OBJECT, "script", PROPERTY_HINT_RESOURCE_TYPE, Script::get_class_static(), base_script_usage | PROPERTY_USAGE_INTERNAL | PROPERTY_USAGE_NEVER_DUPLICATE));
-
-	if (script_instance && !p_reversed) {
-		script_instance->get_property_list(p_list);
-	}
-
 	for (const KeyValue<StringName, Variant> &K : metadata) {
 		PropertyInfo pi = PropertyInfo(K.value.get_type(), "metadata/" + K.key.string());
 		if (K.value.get_type() == Variant::OBJECT) {
 			pi.hint = PROPERTY_HINT_RESOURCE_TYPE;
-			Object *obj = K.value;
-			if (Object::cast_to<Script>(obj)) {
-				pi.hint_string = Script::get_class_static();
-				pi.usage |= PROPERTY_USAGE_NEVER_DUPLICATE;
-			} else {
-				pi.hint_string = Resource::get_class_static();
-			}
+			pi.hint_string = Resource::get_class_static();
 		}
 		p_list->push_back(pi);
 	}
@@ -643,19 +564,9 @@ void Object::validate_property(PropertyInfo &p_property) const {
 			p_property.usage = gdext_prop.usage;
 		};
 	}
-
-	if (script_instance) { // Call it last to allow user altering already validated properties.
-		script_instance->validate_property(p_property);
-	}
 }
 
 bool Object::property_can_revert(const StringName &p_name) const {
-	if (script_instance) {
-		if (script_instance->property_can_revert(p_name)) {
-			return true;
-		}
-	}
-
 	if (_extension && _extension->property_can_revert) {
 		if (_extension->property_can_revert(_extension_instance, (GDExtensionConstStringNamePtr)&p_name)) {
 			return true;
@@ -667,12 +578,6 @@ bool Object::property_can_revert(const StringName &p_name) const {
 
 Variant Object::property_get_revert(const StringName &p_name) const {
 	Variant ret;
-
-	if (script_instance) {
-		if (script_instance->property_get_revert(p_name, ret)) {
-			return ret;
-		}
-	}
 
 	if (_extension && _extension->property_get_revert) {
 		if (_extension->property_get_revert(_extension_instance, (GDExtensionConstStringNamePtr)&p_name, (GDExtensionVariantPtr)&ret)) {
@@ -688,9 +593,6 @@ Variant Object::property_get_revert(const StringName &p_name) const {
 
 void Object::get_method_list(List<MethodInfo> *p_list) const {
 	ClassDB::get_method_list(get_class_name(), p_list);
-	if (script_instance) {
-		script_instance->get_method_list(p_list);
-	}
 }
 
 Variant Object::_call_bind(const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
@@ -740,18 +642,9 @@ bool Object::has_method(const StringName &p_method) const {
 		return true;
 	}
 
-	if (script_instance && script_instance->has_method(p_method)) {
-		return true;
-	}
-
 	const GDType::Member *member = get_gdtype().members().getptr(p_method);
 	if (member != nullptr && member->type == GDType::Member::Type::METHOD) {
 		return true;
-	}
-
-	const Script *scr = Object::cast_to<Script>(this);
-	if (scr != nullptr) {
-		return scr->has_static_method(p_method);
 	}
 
 	return false;
@@ -769,17 +662,6 @@ int Object::get_method_argument_count(const StringName &p_method, bool *r_is_val
 		return 0;
 	}
 
-	if (script_instance) {
-		bool valid = false;
-		int ret = script_instance->get_method_argument_count(p_method, &valid);
-		if (valid) {
-			if (r_is_valid) {
-				*r_is_valid = true;
-			}
-			return ret;
-		}
-	}
-
 	{
 		bool valid = false;
 		int ret = ClassDB::get_method_argument_count(get_class_name(), p_method, &valid);
@@ -789,19 +671,6 @@ int Object::get_method_argument_count(const StringName &p_method, bool *r_is_val
 			}
 			return ret;
 		}
-	}
-
-	const Script *scr = Object::cast_to<Script>(this);
-	while (scr != nullptr) {
-		bool valid = false;
-		int ret = scr->get_script_method_argument_count(p_method, &valid);
-		if (valid) {
-			if (r_is_valid) {
-				*r_is_valid = true;
-			}
-			return ret;
-		}
-		scr = scr->get_base_script().ptr();
 	}
 
 	if (r_is_valid) {
@@ -879,24 +748,6 @@ Variant Object::callp(const StringName &p_method, const Variant **p_args, int p_
 
 	OBJ_DEBUG_LOCK
 
-	if (script_instance) {
-		Variant ret = script_instance->callp(p_method, p_args, p_argcount, r_error);
-		// Force jump table.
-		switch (r_error.error) {
-			case Callable::CallError::CALL_OK:
-				return ret;
-			case Callable::CallError::CALL_ERROR_INVALID_METHOD:
-				break;
-			case Callable::CallError::CALL_ERROR_INVALID_ARGUMENT:
-			case Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS:
-			case Callable::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS:
-			case Callable::CallError::CALL_ERROR_METHOD_NOT_CONST:
-				return ret;
-			case Callable::CallError::CALL_ERROR_INSTANCE_IS_NULL: {
-			}
-		}
-	}
-
 	//extension does not need this, because all methods are registered in MethodBind
 
 	const GDType::Member *member = get_gdtype().members().getptr(p_method);
@@ -919,25 +770,6 @@ Variant Object::call_const(const StringName &p_method, const Variant **p_args, i
 	}
 
 	OBJ_DEBUG_LOCK
-
-	if (script_instance) {
-		Variant ret = script_instance->call_const(p_method, p_args, p_argcount, r_error);
-		//force jumptable
-		switch (r_error.error) {
-			case Callable::CallError::CALL_OK:
-				return ret;
-			case Callable::CallError::CALL_ERROR_INVALID_METHOD:
-				break;
-			case Callable::CallError::CALL_ERROR_METHOD_NOT_CONST:
-				break;
-			case Callable::CallError::CALL_ERROR_INVALID_ARGUMENT:
-			case Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS:
-			case Callable::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS:
-				return ret;
-			case Callable::CallError::CALL_ERROR_INSTANCE_IS_NULL: {
-			}
-		}
-	}
 
 	//extension does not need this, because all methods are registered in MethodBind
 
@@ -1000,17 +832,9 @@ void Object::_notification_forward(int p_notification) {
 #endif // DISABLE_DEPRECATED
 		}
 	}
-
-	if (script_instance) {
-		script_instance->notification(p_notification, false);
-	}
 }
 
 void Object::_notification_backward(int p_notification) {
-	if (script_instance) {
-		script_instance->notification(p_notification, true);
-	}
-
 	if (_extension) {
 		if (_extension->notification2) {
 			_extension->notification2(_extension_instance, p_notification, static_cast<GDExtensionBool>(true));
@@ -1028,13 +852,6 @@ void Object::_notification_backward(int p_notification) {
 
 String Object::to_string() {
 	// Keep this method in sync with `Node::to_string`.
-	if (script_instance) {
-		bool valid;
-		String ret = script_instance->to_string(&valid);
-		if (valid) {
-			return ret;
-		}
-	}
 	if (_extension && _extension->to_string) {
 		String ret;
 		GDExtensionBool is_valid;
@@ -1044,50 +861,6 @@ String Object::to_string() {
 		}
 	}
 	return _to_string();
-}
-
-void Object::set_script(const Variant &p_script) {
-	if (get_script() == p_script) {
-		return;
-	}
-
-	Ref<Script> s = p_script;
-	if (!p_script.is_null()) {
-		ERR_FAIL_COND_MSG(s.is_null(), "Cannot set object script. Parameter should be null or a reference to a valid script.");
-		ERR_FAIL_COND_MSG(s->is_abstract(), vformat("Cannot set object script. Script '%s' should not be abstract.", s->get_path()));
-	}
-
-	if (script_instance) {
-		memdelete(script_instance);
-		script_instance = nullptr;
-	}
-
-	if (s.is_valid()) {
-		if (s->can_instantiate()) {
-			OBJ_DEBUG_LOCK
-			script_instance = s->instance_create(this);
-		} else if (Engine::get_singleton()->is_editor_hint()) {
-			OBJ_DEBUG_LOCK
-			script_instance = s->placeholder_instance_create(this);
-		}
-	}
-
-	notify_property_list_changed(); //scripts may add variables, so refresh is desired
-	emit_signal(CoreStringName(script_changed));
-}
-
-void Object::set_script_instance(ScriptInstance *p_instance) {
-	if (script_instance == p_instance) {
-		return;
-	}
-
-	memdelete(script_instance);
-
-	script_instance = p_instance;
-}
-
-Variant Object::get_script() const {
-	return script_instance ? Variant(Ref<Script>(script_instance->get_script())) : Variant();
 }
 
 bool Object::has_meta(const StringName &p_name) const {
@@ -1272,12 +1045,6 @@ Error Object::emit_signalp(const StringName &p_name, const Variant **p_args, int
 
 		SignalData *s = signal_map.getptr(p_name);
 		if (!s) {
-#ifdef DEBUG_ENABLED
-			const GDType::Member *member = get_gdtype().members().getptr(p_name);
-			bool signal_is_valid = member && member->type == GDType::Member::Type::SIGNAL;
-			//check in script
-			ERR_FAIL_COND_V_MSG(!signal_is_valid && script_instance && !script_instance->get_script()->has_script_signal(p_name), ERR_UNAVAILABLE, vformat("Can't emit non-existing signal \"%s\".", p_name));
-#endif
 			//not connected? just return
 			return ERR_UNAVAILABLE;
 		}
@@ -1369,15 +1136,6 @@ Error Object::emit_signalp(const StringName &p_name, const Variant **p_args, int
 
 			if (ce.error != Callable::CallError::CALL_OK) {
 				Object *target = callable.get_object();
-#ifdef DEBUG_ENABLED
-				if (target && flags & CONNECT_PERSIST && Engine::get_singleton()->is_editor_hint()) {
-					Ref<Script> other_scr = target->get_script();
-					if (other_scr.is_valid() && !other_scr->is_tool()) {
-						// Trying to call not-tool method in editor, just ignore it.
-						continue;
-					}
-				}
-#endif
 				if (ce.error == Callable::CallError::CALL_ERROR_INVALID_METHOD && target && !ClassDB::class_exists(target->get_class_name())) {
 					// Most likely object is not initialized yet, do not throw error.
 				} else {
@@ -1486,10 +1244,6 @@ TypedArray<Dictionary> Object::_get_incoming_connections() const {
 }
 
 bool Object::has_signal(const StringName &p_name) const {
-	if (script_instance && script_instance->get_script()->has_script_signal(p_name)) {
-		return true;
-	}
-
 	const GDType::Member *member = get_gdtype().members().getptr(p_name);
 	if (member && member->type == GDType::Member::Type::SIGNAL) {
 		return true;
@@ -1504,10 +1258,6 @@ bool Object::has_signal(const StringName &p_name) const {
 
 void Object::get_signal_list(List<MethodInfo> *p_signals) const {
 	ObjectSignalLock signal_lock(this);
-
-	if (script_instance) {
-		script_instance->get_script()->get_script_signal_list(p_signals);
-	}
 
 	ClassDB::get_signal_list(get_class_name(), p_signals);
 	//find maybe usersignals?
@@ -1600,20 +1350,6 @@ Error Object::connect(const StringName &p_signal, const Callable &p_callable, ui
 	if (!s) {
 		const GDType::Member *member = get_gdtype().members().getptr(p_signal);
 		bool signal_is_valid = member && member->type == GDType::Member::Type::SIGNAL;
-		//check in script
-		if (!signal_is_valid && script_instance) {
-			if (script_instance->get_script()->has_script_signal(p_signal)) {
-				signal_is_valid = true;
-			}
-#ifdef TOOLS_ENABLED
-			else {
-				//allow connecting signals anyway if script is invalid, see issue #17070
-				if (!script_instance->get_script()->is_script_valid()) {
-					signal_is_valid = true;
-				}
-			}
-#endif
-		}
 
 		ERR_FAIL_COND_V_MSG(!signal_is_valid, ERR_INVALID_PARAMETER, vformat("In Object of type '%s': Attempt to connect nonexistent signal '%s' to callable '%s'.", String(get_class()), p_signal, p_callable));
 
@@ -1662,10 +1398,6 @@ bool Object::is_connected(const StringName &p_signal, const Callable &p_callable
 			return false;
 		}
 
-		if (script_instance && script_instance->get_script()->has_script_signal(p_signal)) {
-			return false;
-		}
-
 		ERR_FAIL_V_MSG(false, vformat("Nonexistent signal: '%s'.", p_signal));
 	}
 
@@ -1679,10 +1411,6 @@ bool Object::has_connections(const StringName &p_signal) const {
 	if (!s) {
 		const GDType::Member *member = get_gdtype().members().getptr(p_signal);
 		if (member && member->type == GDType::Member::Type::SIGNAL) {
-			return false;
-		}
-
-		if (script_instance && script_instance->get_script()->has_script_signal(p_signal)) {
 			return false;
 		}
 
@@ -1704,8 +1432,7 @@ bool Object::_disconnect(const StringName &p_signal, const Callable &p_callable,
 	SignalData *s = signal_map.getptr(p_signal);
 	if (!s) {
 		const GDType::Member *member = get_gdtype().members().getptr(p_signal);
-		bool signal_is_valid = (member && member->type == GDType::Member::Type::SIGNAL) ||
-				(script_instance && script_instance->get_script()->has_script_signal(p_signal));
+		bool signal_is_valid = member && member->type == GDType::Member::Type::SIGNAL;
 		ERR_FAIL_COND_V_MSG(signal_is_valid, false, vformat("Attempt to disconnect a nonexistent connection from '%s'. Signal: '%s', callable: '%s'.", to_string(), p_signal, p_callable));
 	}
 	ERR_FAIL_NULL_V_MSG(s, false, vformat("Disconnecting nonexistent signal '%s' in '%s'.", p_signal, to_string()));
@@ -1918,9 +1645,6 @@ void Object::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("to_string"), &Object::to_string);
 	ClassDB::bind_method(D_METHOD("get_instance_id"), &Object::get_instance_id);
 
-	ClassDB::bind_method(D_METHOD("set_script", "script"), &Object::set_script);
-	ClassDB::bind_method(D_METHOD("get_script"), &Object::get_script);
-
 	ClassDB::bind_method(D_METHOD("set_meta", "name", "value"), &Object::set_meta);
 	ClassDB::bind_method(D_METHOD("remove_meta", "name"), &Object::remove_meta);
 	ClassDB::bind_method(D_METHOD("get_meta", "name", "default"), &Object::get_meta, DEFVAL(Variant()));
@@ -1989,7 +1713,6 @@ void Object::_bind_methods() {
 
 	ClassDB::add_virtual_method("Object", MethodInfo("free"), false);
 
-	ADD_SIGNAL(MethodInfo("script_changed"));
 	ADD_SIGNAL(MethodInfo("property_list_changed"));
 
 #define BIND_OBJ_CORE_METHOD(m_method) \
@@ -2097,9 +1820,6 @@ Variant::Type Object::get_static_property_type(const StringName &p_property, boo
 		return t;
 	}
 
-	if (get_script_instance()) {
-		return get_script_instance()->get_property_type(p_property, r_valid);
-	}
 	if (r_valid) {
 		*r_valid = false;
 	}
@@ -2608,9 +2328,6 @@ void ObjectDB::cleanup() {
 	if (slot_count > 0) {
 		WARN_PRINT(vformat("%d ObjectDB %s leaked at exit (run with `--verbose` for details).", slot_count, slot_count == 1 ? "instance was" : "instances were"));
 		if (OS::get_singleton()->is_stdout_verbose()) {
-			// Ensure calling the native classes because if a leaked instance has a script
-			// that overrides any of those methods, it'd not be OK to call them at this point,
-			// now the scripting languages have already been terminated.
 			const MethodBind *node_get_path = ClassDB::get_method("Node", "get_path");
 			const MethodBind *resource_get_path = ClassDB::get_method("Resource", "get_path");
 			Callable::CallError call_error;

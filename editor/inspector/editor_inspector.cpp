@@ -40,6 +40,7 @@
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/doc/doc_tools.h"
 #include "editor/docks/inspector_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -50,7 +51,6 @@
 #include "editor/inspector/editor_property_name_processor.h"
 #include "editor/inspector/editor_resource_picker.h"
 #include "editor/inspector/multi_node_edit.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_feature_profile.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -140,11 +140,6 @@ bool EditorInspector::_resource_properties_matches(const Ref<Resource> &p_resour
 
 		if (p.usage & PROPERTY_USAGE_HIGH_END_GFX && RS::get_singleton()->is_low_end()) {
 			// Do not show this property in low end gfx.
-			continue;
-		}
-
-		if (p.name == "script") {
-			// The script is always hidden in sub inspectors.
 			continue;
 		}
 
@@ -1530,7 +1525,7 @@ void EditorProperty::set_object_and_property(Object *p_object, const StringName 
 static bool _is_value_potential_override(Node *p_node, const String &p_property) {
 	// Consider a value is potentially overriding another if either of the following is true:
 	// a) The node is foreign (inheriting or an instance), so the original value may come from another scene.
-	// b) The node belongs to the scene, but the original value comes from somewhere but the builtin class (i.e., a script).
+	// b) The node belongs to the scene, but the original value comes from somewhere but the builtin class.
 	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
 	Vector<SceneState::PackState> states_stack = PropertyUtils::get_node_states_stack(p_node, edited_scene);
 	if (states_stack.size()) {
@@ -1538,7 +1533,7 @@ static bool _is_value_potential_override(Node *p_node, const String &p_property)
 	} else {
 		bool is_valid_default = false;
 		bool is_class_default = false;
-		PropertyUtils::get_property_default_value(p_node, p_property, &is_valid_default, &states_stack, false, nullptr, &is_class_default);
+		PropertyUtils::get_property_default_value(p_node, p_property, &is_valid_default, &states_stack, nullptr, &is_class_default);
 		return !is_class_default;
 	}
 }
@@ -1657,8 +1652,8 @@ void EditorProperty::menu_option(int p_option) {
 			update_property();
 		} break;
 		case MENU_OPEN_DOCUMENTATION: {
-			ScriptEditor::get_singleton()->goto_help(doc_path);
-			ScriptEditor::get_singleton()->focus_editor();
+			DocumentEditor::get_singleton()->goto_help(doc_path);
+			DocumentEditor::get_singleton()->focus_editor();
 		} break;
 		default: {
 			if (p_option >= EditorContextMenuPlugin::BASE_ID) {
@@ -1827,7 +1822,7 @@ void EditorProperty::_update_popup() {
 			menu->add_icon_item(theme_cache.revert_icon, TTR("Revert Value"), MENU_REVERT_VALUE);
 		}
 	}
-	if (!doc_path.is_empty() && ScriptEditor::get_singleton() && EditorNode::get_singleton()) {
+	if (!doc_path.is_empty() && DocumentEditor::get_singleton() && EditorNode::get_singleton()) {
 		menu->add_separator();
 		menu->add_icon_item(theme_cache.help_icon, TTR("Open Documentation"), MENU_OPEN_DOCUMENTATION);
 	}
@@ -1911,13 +1906,6 @@ void EditorInspectorPlugin::_bind_methods() {
 
 ////////////////////////////////////////////////
 ////////////////////////////////////////////////
-
-static Ref<Script> _get_category_script(const PropertyInfo &p_info) {
-	if (!p_info.hint_string.is_empty() && !EditorNode::get_editor_data().is_type_recognized(p_info.name) && ResourceLoader::exists(p_info.hint_string, "Script")) {
-		return ResourceLoader::load(p_info.hint_string, "Script");
-	}
-	return Ref<Script>();
-}
 
 void EditorInspectorCategory::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("unfavorite_all"));
@@ -2047,13 +2035,6 @@ void EditorInspectorCategory::set_as_favorite() {
 void EditorInspectorCategory::set_property_info(const PropertyInfo &p_info) {
 	info = p_info;
 
-	Ref<Script> scr = _get_category_script(info);
-	if (scr.is_valid()) {
-		StringName script_name = EditorNode::get_editor_data().script_class_get_name(scr->get_path());
-		if (script_name != StringName()) {
-			label = script_name;
-		}
-	}
 	if (label.is_empty()) {
 		label = info.name;
 	}
@@ -2129,8 +2110,8 @@ void EditorInspectorCategory::_handle_menu_option(int p_option) {
 		} break;
 
 		case MENU_OPEN_DOCS: {
-			ScriptEditor::get_singleton()->goto_help("class:" + doc_class_name);
-			ScriptEditor::get_singleton()->focus_editor();
+			DocumentEditor::get_singleton()->goto_help("class:" + doc_class_name);
+			DocumentEditor::get_singleton()->focus_editor();
 		} break;
 
 		case MENU_UNFAVORITE_ALL: {
@@ -2185,15 +2166,6 @@ void EditorInspectorCategory::_update_icon() {
 
 	icon = Ref<Texture2D>();
 
-	Ref<Script> scr = _get_category_script(info);
-	if (scr.is_valid()) {
-		StringName script_name = EditorNode::get_editor_data().script_class_get_name(scr->get_path());
-		if (script_name == StringName()) {
-			icon = EditorNode::get_singleton()->get_object_icon(scr.ptr());
-		} else {
-			icon = EditorNode::get_singleton()->get_class_icon(script_name);
-		}
-	}
 	if (icon.is_null() && !info.name.is_empty()) {
 		icon = EditorNode::get_singleton()->get_class_icon(info.name);
 	}
@@ -2933,7 +2905,7 @@ void EditorInspectorSection::_update_popup() {
 		menu->add_separator();
 		menu->add_icon_item(theme_cache.icon_gui_revert, TTRC("Revert Value"), MENU_REVERT_VALUE);
 	}
-	if (!doc_path.is_empty() && ScriptEditor::get_singleton() && EditorNode::get_singleton()) {
+	if (!doc_path.is_empty() && DocumentEditor::get_singleton() && EditorNode::get_singleton()) {
 		menu->add_separator();
 		menu->add_icon_item(theme_cache.help_icon, TTRC("Open Documentation"), MENU_OPEN_DOCUMENTATION);
 	}
@@ -3006,8 +2978,8 @@ void EditorInspectorSection::menu_option(int p_option) {
 		} break;
 
 		case MENU_OPEN_DOCUMENTATION: {
-			ScriptEditor::get_singleton()->goto_help(doc_path);
-			ScriptEditor::get_singleton()->focus_editor();
+			DocumentEditor::get_singleton()->goto_help(doc_path);
+			DocumentEditor::get_singleton()->focus_editor();
 		} break;
 	}
 }
@@ -4167,7 +4139,6 @@ EditorInspector *EditorInspector::create_default_inspector(LineEdit *p_filter_li
 	inspector->set_autoclear(true);
 	inspector->set_show_categories(true, true);
 	inspector->set_use_doc_hints(true);
-	inspector->set_hide_script(false);
 	inspector->set_hide_metadata(false);
 	inspector->set_use_settings_name_style(false);
 	inspector->set_property_name_style(EditorPropertyNameProcessor::get_default_inspector_style());
@@ -4576,8 +4547,8 @@ void EditorInspector::update_tree() {
 			vbox_per_path.clear();
 			editor_inspector_array_per_prefix.clear();
 
-			// `hint_script` should contain a native class name or a script path.
-			// Otherwise the category was probably added via `@export_category` or `_get_property_list()`.
+			// `hint_string` should contain a native class name.
+			// Otherwise the category was probably added via `_get_property_list()`.
 			const bool is_custom_category = p.hint_string.is_empty();
 
 			// Iterate over remaining properties. If no properties in category, skip the category.
@@ -4607,19 +4578,6 @@ void EditorInspector::update_tree() {
 				category_tooltip = p.name;
 			} else {
 				doc_name = p.name;
-
-				// Use category's owner script to update some of its information.
-				if (!EditorNode::get_editor_data().is_type_recognized(p.name) && ResourceLoader::exists(p.hint_string, "Script")) {
-					Ref<Script> scr = ResourceLoader::load(p.hint_string, "Script");
-					if (scr.is_valid()) {
-						doc_name = scr->get_doc_class_name();
-
-						// Property favorites aren't compatible with built-in scripts.
-						if (scr->is_built_in()) {
-							disable_favorite = true;
-						}
-					}
-				}
 
 				if (use_doc_hints) {
 					// `|` separators used in `EditorHelpBit`.
@@ -4663,18 +4621,8 @@ void EditorInspector::update_tree() {
 			continue;
 		}
 
-		if (p.name == "script") {
-			// Script should go into its own category.
-			category_vbox = nullptr;
-		}
-
 		if (p.usage & PROPERTY_USAGE_HIGH_END_GFX && RS::get_singleton()->is_low_end()) {
 			// Do not show this property in low end gfx.
-			continue;
-		}
-
-		if (p.name == "script" && (hide_script || bool(object->call(SNAME("_hide_script_from_inspector"))))) {
-			// Hide script variables from inspector if required.
 			continue;
 		}
 
@@ -4773,11 +4721,7 @@ void EditorInspector::update_tree() {
 		}
 		name_override = name_override.uri_decode();
 
-		// Don't localize script variables.
 		EditorPropertyNameProcessor::Style name_style = property_name_style;
-		if ((p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) && name_style == EditorPropertyNameProcessor::STYLE_LOCALIZED) {
-			name_style = EditorPropertyNameProcessor::STYLE_CAPITALIZED;
-		}
 		// Metadata entries are accessed by String, so we should show the actual key name directly.
 		if (path.begins_with("metadata/")) {
 			name_style = EditorPropertyNameProcessor::STYLE_RAW;
@@ -4854,11 +4798,7 @@ void EditorInspector::update_tree() {
 				String label;
 				String tooltip;
 
-				// Don't localize groups for script variables.
 				EditorPropertyNameProcessor::Style section_name_style = property_name_style;
-				if ((p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) && section_name_style == EditorPropertyNameProcessor::STYLE_LOCALIZED) {
-					section_name_style = EditorPropertyNameProcessor::STYLE_CAPITALIZED;
-				}
 
 				// Only process group label if this is not the group or subgroup.
 				if ((i == 0 && component == group) || (i == 1 && component == subgroup)) {
@@ -4997,19 +4937,6 @@ void EditorInspector::update_tree() {
 				classname = Object::cast_to<MultiNodeEdit>(object)->get_edited_class_name();
 			} else if (classname == "") {
 				classname = object->get_class_name();
-				Resource *res = Object::cast_to<Resource>(object);
-				if (res && !res->get_script().is_null()) {
-					// Grab the script of this resource to get the evaluated script class.
-					Ref<Script> scr = res->get_script();
-					if (scr.is_valid()) {
-						Vector<DocData::ClassDoc> docs = scr->get_documentation();
-						if (!docs.is_empty()) {
-							// The documentation of a GDScript's main class is at the end of the array.
-							// Hacky because this isn't necessarily always guaranteed.
-							classname = docs[docs.size() - 1].name;
-						}
-					}
-				}
 			}
 
 			StringName propname = property_prefix + p.name;
@@ -5041,7 +4968,7 @@ void EditorInspector::update_tree() {
 
 			if (!found) {
 				DocTools *dd = EditorHelp::get_doc_data();
-				// Do not cache the doc path information of scripts.
+				// Only cache the doc path information of native classes.
 				bool is_native_class = ClassDB::class_exists(classname);
 
 				HashMap<String, DocData::ClassDoc>::ConstIterator F = dd->class_list.find(classname);
@@ -5176,7 +5103,7 @@ void EditorInspector::update_tree() {
 					} else {
 						Variant _default = Variant();
 						if (node != nullptr) {
-							_default = PropertyUtils::get_property_default_value(node, p.name, nullptr, &sstack, false, nullptr, nullptr);
+							_default = PropertyUtils::get_property_default_value(node, p.name, nullptr, &sstack, nullptr, nullptr);
 						}
 						ep_deletable = _default == Variant();
 					}
@@ -5576,11 +5503,6 @@ void EditorInspector::set_category_color_level(int p_color_level) {
 
 void EditorInspector::set_use_doc_hints(bool p_enable) {
 	use_doc_hints = p_enable;
-	update_tree();
-}
-
-void EditorInspector::set_hide_script(bool p_hide) {
-	hide_script = p_hide;
 	update_tree();
 }
 
@@ -6071,51 +5993,7 @@ void EditorInspector::_update_current_favorites() {
 
 	HashMap<String, PackedStringArray> favorites = EditorSettings::get_singleton()->get_favorite_properties();
 
-	// Fetch script properties.
 	Object *object = ObjectDB::get_instance(edited_object_id);
-	Ref<Script> scr = object->get_script();
-	if (scr.is_valid()) {
-		List<PropertyInfo> plist;
-		// FIXME: Only properties from a saved script will be available, unsaved ones will be ignored.
-		// Can cause a little wonkiness, while nothing serious, would be nice to find a way to get
-		// unsaved ones without needing to get the entire property list of an object.
-		scr->get_script_property_list(&plist);
-
-		String path;
-		HashMap<String, LocalVector<String>> props;
-
-		for (PropertyInfo &p : plist) {
-			if (p.usage & PROPERTY_USAGE_CATEGORY) {
-				path = favorites.has(p.hint_string) ? p.hint_string : String();
-			} else if (p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE && !path.is_empty()) {
-				props[path].push_back(p.name);
-			}
-		}
-
-		// Add favorited properties while removing invalid ones.
-		bool invalid_props = false;
-		for (const KeyValue<String, LocalVector<String>> &KV : props) {
-			path = KV.key;
-			for (int i = 0; i < favorites[path].size(); i++) {
-				String prop = favorites[path][i];
-				if (KV.value.has(prop)) {
-					current_favorites.append(prop);
-				} else {
-					invalid_props = true;
-					favorites[path].erase(prop);
-					i--;
-				}
-			}
-
-			if (favorites[path].is_empty()) {
-				favorites.erase(path);
-			}
-		}
-
-		if (invalid_props) {
-			EditorSettings::get_singleton()->set_favorite_properties(favorites);
-		}
-	}
 
 	// Fetch built-in properties.
 	const MultiNodeEdit *multi_node_edit = Object::cast_to<MultiNodeEdit>(object);
@@ -6167,31 +6045,7 @@ void EditorInspector::_set_property_favorited(const String &p_path, bool p_favor
 		validate_name = ClassDB::get_parent_class_nocheck(class_name);
 	}
 
-	// "script" isn't a real property, so a hack is necessary.
-	if (validate_name.is_empty() && p_path != "script") {
-		class_name = "";
-	}
-
-	if (class_name.is_empty()) {
-		// Check if it's part of a script.
-		Ref<Script> scr = object->get_script();
-		if (scr.is_valid()) {
-			List<PropertyInfo> plist;
-			scr->get_script_property_list(&plist);
-
-			String path;
-			for (PropertyInfo &p : plist) {
-				if (p.usage & PROPERTY_USAGE_CATEGORY) {
-					path = p.hint_string;
-				} else if (p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE && p.name == p_path) {
-					class_name = path;
-					break;
-				}
-			}
-		}
-
-		ERR_FAIL_COND_MSG(class_name.is_empty(), "Can't favorite invalid property. If said property was from a script and recently renamed, try saving it first.");
-	}
+	ERR_FAIL_COND_MSG(validate_name.is_empty(), "Can't favorite invalid property.");
 
 	HashMap<String, PackedStringArray> favorites = EditorSettings::get_singleton()->get_favorite_properties();
 	if (p_favorited) {
@@ -6219,18 +6073,6 @@ void EditorInspector::_clear_current_favorites() {
 	HashMap<String, PackedStringArray> favorites = EditorSettings::get_singleton()->get_favorite_properties();
 
 	Object *object = ObjectDB::get_instance(edited_object_id);
-	Ref<Script> scr = object->get_script();
-	if (scr.is_valid()) {
-		List<PropertyInfo> plist;
-		scr->get_script_property_list(&plist);
-
-		for (PropertyInfo &p : plist) {
-			if (p.usage & PROPERTY_USAGE_CATEGORY && favorites.has(p.hint_string)) {
-				favorites.erase(p.hint_string);
-			}
-		}
-	}
-
 	StringName class_name = object->get_class_name();
 	while (class_name) {
 		if (favorites.has(class_name)) {

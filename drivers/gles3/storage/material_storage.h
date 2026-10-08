@@ -248,7 +248,8 @@ struct SceneShaderData : public ShaderData {
 		BLEND_MODE_SUB,
 		BLEND_MODE_MUL,
 		BLEND_MODE_PREMULT_ALPHA,
-		BLEND_MODE_ALPHA_TO_COVERAGE
+		BLEND_MODE_ALPHA_TO_COVERAGE,
+		BLEND_MODE_CUSTOM
 	};
 
 	enum DepthDraw {
@@ -300,6 +301,9 @@ struct SceneShaderData : public ShaderData {
 	String code;
 
 	BlendMode blend_mode;
+	// Factor indices for BLEND_MODE_CUSTOM, in the order of the `blend_src_*` / `blend_dst_*` render modes.
+	int blend_src = 4;
+	int blend_dst = 5;
 	AlphaAntiAliasing alpha_antialiasing_mode;
 	DepthDraw depth_draw;
 	DepthTest depth_test;

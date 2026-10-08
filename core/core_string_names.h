@@ -46,8 +46,6 @@ public:
 
 	const StringName free_ = "free"; // free would conflict with C++ keyword.
 	const StringName changed = "changed";
-	const StringName script = "script";
-	const StringName script_changed = "script_changed";
 	const StringName _iter_init = "_iter_init";
 	const StringName _iter_next = "_iter_next";
 	const StringName _iter_get = "_iter_get";

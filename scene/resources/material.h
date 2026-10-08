@@ -230,7 +230,18 @@ public:
 		BLEND_MODE_SUB,
 		BLEND_MODE_MUL,
 		BLEND_MODE_PREMULT_ALPHA,
+		BLEND_MODE_CUSTOM,
 		BLEND_MODE_MAX
+	};
+
+	enum BlendFactor {
+		BLEND_FACTOR_ZERO,
+		BLEND_FACTOR_ONE,
+		BLEND_FACTOR_SRC_COLOR,
+		BLEND_FACTOR_INV_SRC_COLOR,
+		BLEND_FACTOR_SRC_ALPHA,
+		BLEND_FACTOR_INV_SRC_ALPHA,
+		BLEND_FACTOR_MAX
 	};
 
 	enum DepthDrawMode {
@@ -364,6 +375,8 @@ private:
 		uint64_t alpha_antialiasing_mode : Math::get_num_bits(ALPHA_ANTIALIASING_MAX - 1);
 		uint64_t shading_mode : Math::get_num_bits(SHADING_MODE_MAX - 1);
 		uint64_t blend_mode : Math::get_num_bits(BLEND_MODE_MAX - 1);
+		uint64_t blend_src_factor : Math::get_num_bits(BLEND_FACTOR_MAX - 1);
+		uint64_t blend_dst_factor : Math::get_num_bits(BLEND_FACTOR_MAX - 1);
 		uint64_t depth_draw_mode : Math::get_num_bits(DEPTH_DRAW_MAX - 1);
 		uint64_t depth_test : Math::get_num_bits(DEPTH_TEST_MAX - 1);
 		uint64_t cull_mode : Math::get_num_bits(CULL_MAX - 1);
@@ -423,6 +436,8 @@ private:
 
 		mk.detail_uv = detail_uv;
 		mk.blend_mode = blend_mode;
+		mk.blend_src_factor = blend_src_factor;
+		mk.blend_dst_factor = blend_dst_factor;
 		mk.depth_draw_mode = depth_draw_mode;
 		mk.depth_test = depth_test;
 		mk.cull_mode = cull_mode;
@@ -496,6 +511,7 @@ private:
 		StringName uv1_blend_sharpness;
 		StringName uv2_blend_sharpness;
 		StringName grow;
+		StringName billboard_camera_offset;
 		StringName proximity_fade_distance;
 		StringName msdf_pixel_range;
 		StringName msdf_outline_size;
@@ -564,6 +580,7 @@ private:
 	bool grow_enabled = false;
 	float ao_light_affect = 0.0f;
 	float grow = 0.0f;
+	float billboard_camera_offset = 0.0f;
 	int particles_anim_h_frames = 0;
 	int particles_anim_v_frames = 0;
 	bool particles_anim_loop = false;
@@ -599,6 +616,8 @@ private:
 	float distance_fade_min_distance = 0.0f;
 
 	BlendMode blend_mode = BLEND_MODE_MIX;
+	BlendFactor blend_src_factor = BLEND_FACTOR_SRC_ALPHA;
+	BlendFactor blend_dst_factor = BLEND_FACTOR_INV_SRC_ALPHA;
 	BlendMode detail_blend_mode = BLEND_MODE_MIX;
 	DepthDrawMode depth_draw_mode = DEPTH_DRAW_OPAQUE_ONLY;
 	DepthTest depth_test = DEPTH_TEST_DEFAULT;
@@ -742,6 +761,12 @@ public:
 	void set_blend_mode(BlendMode p_mode);
 	BlendMode get_blend_mode() const;
 
+	void set_blend_src_factor(BlendFactor p_factor);
+	BlendFactor get_blend_src_factor() const;
+
+	void set_blend_dst_factor(BlendFactor p_factor);
+	BlendFactor get_blend_dst_factor() const;
+
 	void set_detail_blend_mode(BlendMode p_mode);
 	BlendMode get_detail_blend_mode() const;
 
@@ -808,6 +833,9 @@ public:
 
 	void set_grow(float p_grow);
 	float get_grow() const;
+
+	void set_billboard_camera_offset(float p_offset);
+	float get_billboard_camera_offset() const;
 
 	void set_alpha_scissor_threshold(float p_threshold);
 	float get_alpha_scissor_threshold() const;
@@ -896,6 +924,7 @@ VARIANT_ENUM_CAST(BaseMaterial3D::AlphaAntiAliasing)
 VARIANT_ENUM_CAST(BaseMaterial3D::DetailUV)
 VARIANT_ENUM_CAST(BaseMaterial3D::Feature)
 VARIANT_ENUM_CAST(BaseMaterial3D::BlendMode)
+VARIANT_ENUM_CAST(BaseMaterial3D::BlendFactor)
 VARIANT_ENUM_CAST(BaseMaterial3D::DepthDrawMode)
 VARIANT_ENUM_CAST(BaseMaterial3D::DepthTest)
 VARIANT_ENUM_CAST(BaseMaterial3D::CullMode)

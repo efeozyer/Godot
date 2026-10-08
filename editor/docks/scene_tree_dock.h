@@ -32,12 +32,14 @@
 
 #include "editor/docks/editor_dock.h"
 #include "editor/scene/scene_tree_editor.h"
-#include "editor/script/script_create_dialog.h"
 #include "scene/resources/animation.h"
 
 class CheckBox;
+class CreateDialog;
 class EditorData;
+class EditorFileDialog;
 class EditorSelection;
+class LineEdit;
 class MenuButton;
 class PanelContainer;
 class RenameDialog;
@@ -65,9 +67,6 @@ class SceneTreeDock : public EditorDock {
 		TOOL_RENAME,
 		TOOL_BATCH_RENAME,
 		TOOL_CHANGE_TYPE,
-		TOOL_EXTEND_SCRIPT,
-		TOOL_ATTACH_SCRIPT,
-		TOOL_DETACH_SCRIPT,
 		TOOL_MOVE_UP,
 		TOOL_MOVE_DOWN,
 		TOOL_DUPLICATE,
@@ -117,9 +116,6 @@ class SceneTreeDock : public EditorDock {
 
 	Button *button_add = nullptr;
 	Button *button_instance = nullptr;
-	Button *button_create_script = nullptr;
-	Button *button_detach_script = nullptr;
-	Button *button_extend_script = nullptr;
 	MenuButton *button_tree_menu = nullptr;
 
 	Button *node_shortcuts_toggle = nullptr;
@@ -146,15 +142,12 @@ class SceneTreeDock : public EditorDock {
 
 	EditorData *editor_data = nullptr;
 	EditorSelection *editor_selection = nullptr;
-	LocalVector<ObjectID> node_previous_selection;
-	bool update_script_button_queued = false;
 
 	List<Node *> node_clipboard;
 	HashSet<Node *> node_clipboard_edited_scene_owned;
 	String clipboard_source_scene;
 	HashMap<String, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>>> clipboard_resource_remap;
 
-	ScriptCreateDialog *script_create_dialog = nullptr;
 	ShaderCreateDialog *shader_create_dialog = nullptr;
 	AcceptDialog *accept = nullptr;
 	ConfirmationDialog *delete_dialog = nullptr;
@@ -220,7 +213,6 @@ class SceneTreeDock : public EditorDock {
 	void _node_replace_owner(Node *p_base, Node *p_node, Node *p_root, ReplaceOwnerMode p_mode = MODE_BIDI);
 	void _node_strip_signal_inheritance(Node *p_node);
 	void _load_request(const String &p_path);
-	void _script_open_request(const Ref<Script> &p_script);
 	void _push_item(Object *p_object);
 	void _handle_select(Node *p_node);
 
@@ -229,9 +221,7 @@ class SceneTreeDock : public EditorDock {
 
 	void _node_selected();
 	void _node_renamed();
-	void _script_created(Ref<Script> p_script);
 	void _shader_created(Ref<Shader> p_shader);
-	void _script_creation_closed();
 	void _shader_creation_closed();
 
 	void _delete_confirm(bool p_cut = false);
@@ -281,8 +271,6 @@ class SceneTreeDock : public EditorDock {
 	bool _validate_no_foreign_selected(const List<Node *> &p_selected);
 	bool _validate_no_instance_selected(const List<Node *> &p_selected);
 	void _selection_changed();
-	void _update_script_button();
-	void _queue_update_script_button();
 	void _cancel_highlight();
 
 	void _fill_path_renames(Vector<StringName> base_path, Vector<StringName> new_base_path, Node *p_node, HashMap<Node *, NodePath> *p_renames);
@@ -292,7 +280,6 @@ class SceneTreeDock : public EditorDock {
 
 	void _nodes_dragged(const Array &p_nodes, Node *p_to_node, int p_type);
 	void _files_dropped(const Vector<String> &p_files, Node *p_to_node, int p_type);
-	void _script_dropped(const String &p_file, Node *p_to_node);
 	void _quick_open(const String &p_file_path);
 
 	void _tree_rmb(const Vector2 &p_menu_pos);
@@ -326,7 +313,6 @@ class SceneTreeDock : public EditorDock {
 	void _edit_subresource(int p_idx, const PopupMenu *p_from_menu);
 
 	bool profile_allow_editing = true;
-	bool profile_allow_script_editing = true;
 	bool determine_path_automatically = true;
 
 	static void _update_configuration_warning();
@@ -359,7 +345,6 @@ public:
 	void set_edited_scene(Node *p_scene);
 	void instantiate(const String &p_file);
 	void instantiate_scenes(const Vector<String> &p_files, Node *p_parent = nullptr);
-	void clear_previous_node_selection();
 	void set_selection(const Vector<Node *> &p_nodes);
 	void set_selected(Node *p_node, bool p_emit_selected = false);
 	void highlight_node(Node *p_node);
@@ -377,19 +362,12 @@ public:
 
 	void replace_node(Node *p_node, Node *p_by_node);
 
-	void attach_script_to_selected(bool p_extend);
-	void open_script_dialog(Node *p_for_node, bool p_extend);
-
 	void attach_shader_to_selected(int p_preferred_mode = -1);
 	void open_shader_dialog(const Ref<ShaderMaterial> &p_for_material, int p_preferred_mode = -1);
 
 	List<Node *> paste_nodes(bool p_paste_as_sibling = false);
 	void paste_node_as_replacement();
 	List<Node *> get_node_clipboard() const;
-
-	ScriptCreateDialog *get_script_create_dialog() {
-		return script_create_dialog;
-	}
 
 	SceneTreeDock(Node *p_scene_root, EditorSelection *p_editor_selection, EditorData &p_editor_data);
 	~SceneTreeDock();

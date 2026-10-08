@@ -68,6 +68,12 @@ private:
 	bool one_shot = false;
 	int amount = 0;
 	float amount_ratio = 1.0;
+	int burst_amount = 0;
+	double burst_interval = 1.0;
+	double burst_time = 0.0;
+	float lod_distance_begin = 0.0;
+	float lod_distance_end = 0.0;
+	float lod_ratio = 1.0;
 	double lifetime = 0.0;
 	double pre_process_time = 0.0;
 	real_t explosiveness_ratio = 0.0;
@@ -106,6 +112,9 @@ private:
 	Vector3 previous_position;
 
 	void _attach_sub_emitter();
+
+	void _update_lod();
+	void _process_burst(double p_delta);
 
 	void _skinning_changed();
 
@@ -158,6 +167,18 @@ public:
 
 	void set_amount_ratio(float p_ratio);
 	float get_amount_ratio() const;
+
+	void set_burst_amount(int p_amount);
+	int get_burst_amount() const;
+
+	void set_burst_interval(double p_interval);
+	double get_burst_interval() const;
+
+	void set_lod_distance_begin(float p_distance);
+	float get_lod_distance_begin() const;
+
+	void set_lod_distance_end(float p_distance);
+	float get_lod_distance_end() const;
 
 	void set_fixed_fps(int p_count);
 	int get_fixed_fps() const;

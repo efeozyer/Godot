@@ -35,7 +35,6 @@
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "editor/animation/animation_player_editor_plugin.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/groups_dock.h"
@@ -47,7 +46,6 @@
 #include "editor/gui/filter_line_edit.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/scene/canvas_item_editor_plugin.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/2d/node_2d.h"
@@ -95,10 +93,6 @@ PackedStringArray SceneTreeEditor::_get_node_accessibility_configuration_warning
 }
 
 void SceneTreeEditor::_gui_input(const Ref<InputEvent> &p_event) {
-	if (connect_to_script_mode) {
-		return; // Don't do anything in this mode.
-	}
-
 	Ref<InputEventMouseButton> mb = p_event;
 	if (mb.is_valid()) {
 		if (mb->get_button_index() == MouseButton::LEFT) {
@@ -183,10 +177,6 @@ void SceneTreeEditor::_cell_button_pressed(Object *p_item, int p_column, int p_i
 		return;
 	}
 
-	if (connect_to_script_mode) {
-		return; // Don't do anything in this mode.
-	}
-
 	TreeItem *item = Object::cast_to<TreeItem>(p_item);
 	ERR_FAIL_NULL(item);
 
@@ -204,12 +194,6 @@ void SceneTreeEditor::_cell_button_pressed(Object *p_item, int p_column, int p_i
 		} else {
 			emit_signal(SNAME("open"), n->get_scene_file_path());
 		}
-	} else if (p_id == BUTTON_SCRIPT) {
-		Ref<Script> script_typed = n->get_script();
-		if (script_typed.is_valid()) {
-			emit_signal(SNAME("open_script"), script_typed);
-		}
-
 	} else if (p_id == BUTTON_VISIBILITY) {
 		if (!visibility_drag_nodes.is_empty()) {
 			return;
@@ -465,22 +449,9 @@ void SceneTreeEditor::_update_node_subtree(Node *p_node, TreeItem *p_parent, boo
 	if (valid_types.size()) {
 		bool valid = false;
 		for (const StringName &E : valid_types) {
-			if (p_node->is_class(E) ||
-					EditorNode::get_singleton()->is_object_of_custom_type(p_node, E)) {
+			if (p_node->is_class(E)) {
 				valid = true;
 				break;
-			} else {
-				Ref<Script> node_script = p_node->get_script();
-				while (node_script.is_valid()) {
-					if (node_script->get_path() == E) {
-						valid = true;
-						break;
-					}
-					node_script = node_script->get_base_script();
-				}
-				if (valid) {
-					break;
-				}
 			}
 		}
 
@@ -527,45 +498,7 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 		p_node->connect("editor_state_changed", callable_mp(this, &SceneTreeEditor::_node_editor_state_changed).bind(p_node));
 	}
 
-	if (connecting_signal || (can_open_instance && is_scene_tree_dock)) {
-		if (!p_node->is_connected(CoreStringName(script_changed), callable_mp(this, &SceneTreeEditor::_node_script_changed))) {
-			p_node->connect(CoreStringName(script_changed), callable_mp(this, &SceneTreeEditor::_node_script_changed).bind(p_node));
-		}
-	}
-
-	if (connecting_signal) {
-		// Add script icons for all scripted nodes.
-		Ref<Script> scr = p_node->get_script();
-		if (scr.is_valid()) {
-			p_item->add_button(0, get_editor_theme_icon(SNAME("Script")), BUTTON_SCRIPT);
-			if (EditorNode::get_singleton()->get_object_custom_type_base(p_node) == scr) {
-				// Disable button on custom scripts (pure visual cue).
-				p_item->set_button_disabled(0, p_item->get_button_count(0) - 1, true);
-			}
-		}
-	}
-
-	if (connect_to_script_mode) {
-		Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-
-		Ref<Script> scr = p_node->get_script();
-		bool has_custom_script = scr.is_valid() && EditorNode::get_singleton()->get_object_custom_type_base(p_node) == scr;
-		if (scr.is_null() || has_custom_script) {
-			_set_item_custom_color(p_item, get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
-			p_item->set_selectable(0, false);
-
-			accent.a *= 0.7;
-		}
-
-		if (marked.has(p_node)) {
-			String node_name = p_node->get_name();
-			if (connecting_signal) {
-				node_name += " " + TTR("(Connecting From)");
-			}
-			p_item->set_text(0, node_name);
-			_set_item_custom_color(p_item, accent);
-		}
-	} else if (p_part_of_subscene) {
+	if (p_part_of_subscene) {
 		if (valid_types.is_empty()) {
 			_set_item_custom_color(p_item, get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
 		}
@@ -686,28 +619,6 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 
 	// Show buttons only when necessary (SceneTreeDock) to avoid crashes.
 	if (can_open_instance && is_scene_tree_dock) {
-		Ref<Script> scr = p_node->get_script();
-		if (scr.is_valid()) {
-			String additional_notes;
-			Color button_color = Color(1, 1, 1);
-			// Can't set tooltip after adding button, need to do it before.
-			if (scr->is_tool()) {
-				if (Engine::get_singleton()->is_recovery_mode_hint()) {
-					additional_notes += "\n" + TTR("This script can run in the editor.\nIt is currently disabled due to recovery mode.");
-					button_color = get_theme_color(SNAME("warning_color"), EditorStringName(Editor));
-				} else {
-					additional_notes += "\n" + TTR("This script is currently running in the editor.");
-					button_color = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-				}
-			}
-			if (EditorNode::get_singleton()->get_object_custom_type_base(p_node) == scr) {
-				additional_notes += "\n" + TTR("This script is a custom type.");
-				button_color.a = 0.5;
-			}
-			p_item->add_button(0, get_editor_theme_icon(SNAME("Script")), BUTTON_SCRIPT, false, TTR("Open Script:") + " " + scr->get_path() + additional_notes);
-			p_item->set_button_color(0, p_item->get_button_count(0) - 1, button_color);
-		}
-
 		if (p_node->has_meta("_edit_lock_")) {
 			p_item->add_button(0, get_editor_theme_icon(SNAME("Lock")), BUTTON_LOCK, false, TTR("Node is locked.\nClick to unlock it."));
 		}
@@ -789,8 +700,7 @@ void SceneTreeEditor::_update_node_tooltip(Node *p_node, TreeItem *p_item) {
 		tooltip += String("\n" + TTR("Instance:") + " " + p_node->get_scene_file_path());
 	}
 
-	StringName custom_type = EditorNode::get_singleton()->get_object_custom_type_name(p_node);
-	tooltip += "\n" + TTR("Type:") + " " + (custom_type != StringName() ? String(custom_type) : p_node->get_class());
+	tooltip += "\n" + TTR("Type:") + " " + p_node->get_class();
 
 	if (!p_node->get_editor_description().is_empty()) {
 		const PackedInt32Array boundaries = TS->string_get_word_breaks(p_node->get_editor_description(), "", 80);
@@ -865,19 +775,6 @@ void SceneTreeEditor::_update_visibility_color(Node *p_node, TreeItem *p_item) {
 void SceneTreeEditor::_set_item_custom_color(TreeItem *p_item, Color p_color) {
 	p_item->set_custom_color(0, p_color);
 	p_item->set_meta(SNAME("custom_color"), p_color);
-}
-
-void SceneTreeEditor::_node_script_changed(Node *p_node) {
-	HashMap<Node *, CachedNode>::Iterator I = node_cache.get(p_node, false);
-	if (!I) {
-		// We leave these signals connected when switching tabs.
-		// If the node is not in cache it was for a different tab.
-		return;
-	}
-
-	node_cache.mark_dirty(p_node);
-
-	_update_if_clean();
 }
 
 void SceneTreeEditor::_move_node_children(HashMap<Node *, CachedNode>::Iterator &p_I) {
@@ -1136,22 +1033,9 @@ bool SceneTreeEditor::_update_filter_helper(TreeItem *p_parent, bool p_scroll_to
 		if (!valid_types.is_empty()) {
 			selectable = false;
 			for (const StringName &E : valid_types) {
-				if (n->is_class(E) ||
-						EditorNode::get_singleton()->is_object_of_custom_type(n, E)) {
+				if (n->is_class(E)) {
 					selectable = true;
 					break;
-				} else {
-					Ref<Script> node_script = n->get_script();
-					while (node_script.is_valid()) {
-						if (node_script->get_path() == E) {
-							selectable = true;
-							break;
-						}
-						node_script = node_script->get_base_script();
-					}
-					if (selectable) {
-						break;
-					}
 				}
 			}
 		}
@@ -1252,15 +1136,6 @@ bool SceneTreeEditor::_node_matches_class_term(const Node *p_item_node, const St
 		// Defend against https://github.com/godotengine/godot/issues/82473
 		return true;
 	}
-	Ref<Script> item_script = p_item_node->get_script();
-	while (item_script.is_valid()) {
-		String global_name = item_script->get_global_name();
-		if (global_name.to_lower().contains(p_term)) {
-			return true;
-		}
-		item_script = item_script->get_base_script();
-	}
-
 	String type = p_item_node->get_class();
 	// Every Node is a Node, duh!
 	while (type != "Node") {
@@ -2032,10 +1907,6 @@ Variant SceneTreeEditor::get_drag_data_fw(const Point2 &p_point, Control *p_from
 	return drag_data;
 }
 
-bool SceneTreeEditor::_is_script_type(const StringName &p_type) const {
-	return (script_types->has(p_type));
-}
-
 NodePath SceneTreeEditor::_get_node_path(Node *p_node) const {
 	if (likely(get_scene_node())) {
 		return get_scene_node()->get_path_to(p_node);
@@ -2082,11 +1953,6 @@ bool SceneTreeEditor::can_drop_data_fw(const Point2 &p_point, const Variant &p_d
 			return false; // TODO Weird?
 		}
 
-		if (_is_script_type(EditorFileSystem::get_singleton()->get_file_type(files[0]))) {
-			tree->set_drop_mode_flags(Tree::DROP_MODE_ON_ITEM);
-			return _has_drop_selection(item, p_point);
-		}
-
 		bool scene_drop = true;
 		bool audio_drop = true;
 		for (int i = 0; i < files.size(); i++) {
@@ -2118,17 +1984,6 @@ bool SceneTreeEditor::can_drop_data_fw(const Point2 &p_point, const Variant &p_d
 		}
 		tree->set_drop_mode_flags(Tree::DROP_MODE_ON_ITEM);
 		return _has_drop_selection(item, p_point);
-	}
-
-	if (String(d["type"]) == "script_list_element") {
-		ScriptEditorBase *se = Object::cast_to<ScriptEditorBase>(d["script_list_element"]);
-		if (se) {
-			Ref<Resource> sr = se->get_edited_resource();
-			if (_is_script_type(sr->get_class())) {
-				tree->set_drop_mode_flags(Tree::DROP_MODE_ON_ITEM);
-				return _has_drop_selection(item, p_point);
-			}
-		}
 	}
 
 	if (filter.is_empty() && String(d["type"]) == "nodes") {
@@ -2178,33 +2033,7 @@ void SceneTreeEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data,
 	if (String(d["type"]) == "files") {
 		Vector<String> files = d["files"];
 
-		String ftype = EditorFileSystem::get_singleton()->get_file_type(files[0]);
-		if (_is_script_type(ftype)) {
-			emit_signal(SNAME("script_dropped"), files[0], n);
-		} else {
-			emit_signal(SNAME("files_dropped"), files, n, section);
-		}
-	}
-
-	if (String(d["type"]) == "script_list_element") {
-		ScriptEditorBase *se = Object::cast_to<ScriptEditorBase>(d["script_list_element"]);
-		if (se) {
-			Ref<Resource> sr = se->get_edited_resource();
-			if (_is_script_type(sr->get_class())) {
-				// Check if we are setting a built-in script from another scene.
-				if (sr->is_built_in()) {
-					String src_scene = sr->get_path().get_slice("::", 0);
-					Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
-					String current_scene_path = edited_scene ? edited_scene->get_scene_file_path() : "";
-					if (src_scene != current_scene_path) {
-						sr = sr->duplicate();
-						EditorNode::setup_built_in_resource(sr, current_scene_path);
-					}
-				}
-				String sp = sr->get_path();
-				emit_signal(SNAME("script_dropped"), sp, n);
-			}
-		}
+		emit_signal(SNAME("files_dropped"), files, n, section);
 	}
 }
 
@@ -2265,11 +2094,6 @@ void SceneTreeEditor::set_accessibility_warnings(bool p_enable, bool p_update_se
 	accessibility_warnings = p_enable;
 }
 
-void SceneTreeEditor::set_connect_to_script_mode(bool p_enable) {
-	connect_to_script_mode = p_enable;
-	_update_tree();
-}
-
 void SceneTreeEditor::set_connecting_signal(bool p_enable) {
 	connecting_signal = p_enable;
 	_update_tree();
@@ -2292,11 +2116,9 @@ void SceneTreeEditor::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("nodes_dragged"));
 	ADD_SIGNAL(MethodInfo("nodes_rearranged", PropertyInfo(Variant::ARRAY, "paths"), PropertyInfo(Variant::OBJECT, "to_parent"), PropertyInfo(Variant::INT, "type")));
 	ADD_SIGNAL(MethodInfo("files_dropped", PropertyInfo(Variant::PACKED_STRING_ARRAY, "files"), PropertyInfo(Variant::OBJECT, "to_parent"), PropertyInfo(Variant::INT, "type")));
-	ADD_SIGNAL(MethodInfo("script_dropped", PropertyInfo(Variant::STRING, "file"), PropertyInfo(Variant::OBJECT, "to_parent")));
 	ADD_SIGNAL(MethodInfo("rmb_pressed", PropertyInfo(Variant::VECTOR2, "position")));
 
 	ADD_SIGNAL(MethodInfo("open"));
-	ADD_SIGNAL(MethodInfo("open_script"));
 }
 
 SceneTreeEditor::SceneTreeEditor(bool p_label, bool p_can_rename, bool p_can_open_instance) :
@@ -2375,13 +2197,6 @@ SceneTreeEditor::SceneTreeEditor(bool p_label, bool p_can_rename, bool p_can_ope
 	ask_before_revoke_checkbox = memnew(CheckBox(TTRC("Don't Ask Again")));
 	ask_before_revoke_checkbox->set_tooltip_text(TTRC("This dialog can also be enabled/disabled in the Editor Settings: Docks > Scene Tree > Ask Before Revoking Unique Name."));
 	vb->add_child(ask_before_revoke_checkbox);
-
-	script_types = memnew(LocalVector<StringName>);
-	ClassDB::get_inheriters_from_class("Script", *script_types);
-}
-
-SceneTreeEditor::~SceneTreeEditor() {
-	memdelete(script_types);
 }
 
 /******** DIALOG *********/
@@ -2427,18 +2242,8 @@ void SceneTreeDialog::set_valid_types(const Vector<StringName> &p_valid) {
 		HBoxContainer *hb = memnew(HBoxContainer);
 		hflow->add_child(hb);
 
-		// Attempt to get the correct name and icon for script path types.
 		String name = type;
 		Ref<Texture2D> icon = EditorNode::get_singleton()->get_class_icon(type);
-
-		// If we can't find a global class icon, try to find one for the script.
-		if (icon.is_null() && ResourceLoader::exists(type, "Script")) {
-			Ref<Script> node_script = ResourceLoader::load(type);
-			if (node_script.is_valid()) {
-				name = name.get_file();
-				icon = EditorNode::get_singleton()->get_object_icon(node_script.ptr());
-			}
-		}
 
 		TextureRect *trect = memnew(TextureRect);
 		hb->add_child(trect);

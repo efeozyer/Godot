@@ -54,7 +54,6 @@ class EditorScenePostImportPlugin;
 class EditorToolAddons;
 class EditorTranslationParserPlugin;
 class EditorUndoRedoManager;
-class ScriptCreateDialog;
 
 class EditorPlugin : public Node {
 	GDCLASS(EditorPlugin, Node);
@@ -64,7 +63,6 @@ class EditorPlugin : public Node {
 	bool force_draw_over_forwarding_enabled = false;
 
 	String last_main_screen_name;
-	String plugin_version;
 
 #ifndef DISABLE_DEPRECATED
 	static inline HashMap<Control *, EditorDock *> legacy_docks;
@@ -116,8 +114,6 @@ protected:
 	static void _bind_methods();
 	EditorUndoRedoManager *get_undo_redo();
 
-	void add_custom_type(const String &p_type, const String &p_base, const Ref<Script> &p_script, const Ref<Texture2D> &p_icon);
-	void remove_custom_type(const String &p_type);
 
 	GDVIRTUAL1R(bool, _forward_canvas_gui_input, Ref<InputEvent>)
 	GDVIRTUAL1(_forward_canvas_draw_over_viewport, Control *)
@@ -139,13 +135,10 @@ protected:
 	GDVIRTUAL1RC(String, _get_unsaved_status, String)
 	GDVIRTUAL0(_save_external_data)
 	GDVIRTUAL0(_apply_changes)
-	GDVIRTUAL0RC(Vector<String>, _get_breakpoints)
 	GDVIRTUAL1(_set_window_layout, Ref<ConfigFile>)
 	GDVIRTUAL1(_get_window_layout, Ref<ConfigFile>)
 	GDVIRTUAL0R(bool, _build)
 	GDVIRTUAL2RC(Vector<String>, _run_scene, String, Vector<String>)
-	GDVIRTUAL0(_enable_plugin)
-	GDVIRTUAL0(_disable_plugin)
 
 #ifndef DISABLE_DEPRECATED
 	Button *_add_control_to_bottom_panel_bind_compat_88081(Control *p_control, const String &p_title);
@@ -197,8 +190,6 @@ public:
 
 	virtual String get_plugin_name() const;
 	virtual const Ref<Texture2D> get_plugin_icon() const;
-	virtual String get_plugin_version() const;
-	virtual void set_plugin_version(const String &p_version);
 #ifndef DISABLE_DEPRECATED
 	virtual bool has_main_screen() const;
 #endif
@@ -213,7 +204,6 @@ public:
 	virtual String get_unsaved_status(const String &p_for_scene = "") const;
 	virtual void save_external_data(); // if editor references external resources/scenes, save them
 	virtual void apply_changes(); // if changes are pending in editor, apply them
-	virtual void get_breakpoints(List<String> *p_breakpoints);
 	virtual bool get_remove_list(List<Node *> *p_list);
 	virtual void set_window_layout(Ref<ConfigFile> p_layout);
 	virtual void get_window_layout(Ref<ConfigFile> p_layout);
@@ -222,7 +212,6 @@ public:
 	virtual void run_scene(const String &p_scene, Vector<String> &r_args);
 
 	EditorInterface *get_editor_interface();
-	ScriptCreateDialog *get_script_create_dialog();
 
 	void add_undo_redo_inspector_hook_callback(Callable p_callable);
 	void remove_undo_redo_inspector_hook_callback(Callable p_callable);
@@ -269,9 +258,6 @@ public:
 
 	void add_context_menu_plugin(EditorContextMenuPlugin::ContextMenuSlot p_slot, const Ref<EditorContextMenuPlugin> &p_plugin);
 	void remove_context_menu_plugin(const Ref<EditorContextMenuPlugin> &p_plugin);
-
-	void enable_plugin();
-	void disable_plugin();
 };
 
 #ifndef DISABLE_DEPRECATED

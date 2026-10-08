@@ -258,9 +258,6 @@
 			If [code]true[/code], automatically switches to the [b]Remote[/b] scene tree when running the project from the editor. If [code]false[/code], stays on the [b]Local[/b] scene tree when running the project from the editor.
 			[b]Warning:[/b] Enabling this setting can cause stuttering when running a project with a large amount of nodes (typically a few thousands of nodes or more), even if the editor window isn't focused. This is due to the remote scene tree being updated every second regardless of whether the editor is focused.
 		</member>
-		<member name="debugger/auto_switch_to_stack_trace" type="bool" setter="" getter="">
-			If [code]true[/code], automatically switches to the [b]Stack Trace[/b] panel when the debugger hits a breakpoint or steps.
-		</member>
 		<member name="debugger/max_node_selection" type="int" setter="" getter="">
 			The limit of how many remote nodes can be selected at once.
 			[b]Warning:[/b] Increasing this value is not recommended, as selecting too many can make the editing and inspection of remote properties unreliable.
@@ -291,9 +288,6 @@
 		<member name="docks/filesystem/ask_before_moving_files" type="bool" setter="" getter="">
 			If [code]true[/code], displays a confirmation dialog when moving or duplicating items in the FileSystem dock. This dialog can also be bypassed by holding [kbd]Shift[/kbd].
 		</member>
-		<member name="docks/filesystem/automatically_open_created_scripts" type="bool" setter="" getter="">
-			If [code]true[/code], scripts created in FileSystem dock will be automatically edited.
-		</member>
 		<member name="docks/filesystem/other_file_extensions" type="String" setter="" getter="">
 			A comma separated list of unsupported file extensions to show in the FileSystem dock, e.g. [code]"ico,icns"[/code].
 		</member>
@@ -323,9 +317,6 @@
 		</member>
 		<member name="docks/scene_tree/center_node_on_reparent" type="bool" setter="" getter="">
 			If [code]true[/code], new node created when reparenting node(s) will be positioned at the average position of the selected node(s).
-		</member>
-		<member name="docks/scene_tree/derive_script_globals_by_name" type="bool" setter="" getter="">
-			If [code]true[/code], when extending a script, the global class name of the script is inserted in the script creation dialog, if it exists. If [code]false[/code], the script's file path is always inserted.
 		</member>
 		<member name="docks/scene_tree/hide_filtered_out_parents" type="bool" setter="" getter="">
 			If [code]true[/code], the scene tree dock will only show nodes that match the filter, without showing parents that don't. This settings can also be changed in the Scene dock's top menu.
@@ -1228,9 +1219,6 @@
 			If [code]true[/code], when a project is loaded, restores scenes that were opened on the last editor session.
 			[b]Note:[/b] With many opened scenes, the editor may take longer to become usable. If starting the editor quickly is necessary, consider setting this to [code]false[/code].
 		</member>
-		<member name="interface/scene_tabs/show_script_button" type="bool" setter="" getter="">
-			If [code]true[/code], show a button next to each scene tab that opens the scene's "dominant" script when clicked. The "dominant" script is the one that is at the highest level in the scene's hierarchy.
-		</member>
 		<member name="interface/scene_tabs/show_thumbnail_on_hover" type="bool" setter="" getter="">
 			If [code]true[/code], display an automatically-generated thumbnail when hovering scene tabs with the mouse. Scene thumbnails are generated when saving the scene.
 		</member>
@@ -1350,33 +1338,6 @@
 		<member name="network/http_proxy/port" type="int" setter="" getter="">
 			The port number to use to contact the HTTP and HTTPS proxy in the editor (for the asset store and export template downloads). See also [member network/http_proxy/host].
 			[b]Note:[/b] Godot currently doesn't automatically use system proxy settings, so you have to enter them manually here if needed.
-		</member>
-		<member name="network/language_server/enable_smart_resolve" type="bool" setter="" getter="">
-			If [code]true[/code] the language server will try to provide additional results when resolving symbols at the cost of showing wrong results. All symbols in the project are checked and resolved just based on their name, without taking context into account.
-			[codeblock]
-			func untyped(param):
-				param.print() # Will resolve to the global print method for e.g. hover hints.
-			[/codeblock]
-			When using static typing it is recommended to disable this setting, since it will mostly add false positives for typed code.
-			[b]Note:[/b] This setting also influences how symbols are resolved when using renaming capabilities.
-			[b]Note:[/b] The default value of this setting might change in future versions.
-		</member>
-		<member name="network/language_server/poll_limit_usec" type="int" setter="" getter="">
-			The upper limit of time, that the language server spends for IO each poll.
-		</member>
-		<member name="network/language_server/remote_host" type="String" setter="" getter="">
-			The host used to listen for language server clients.
-		</member>
-		<member name="network/language_server/remote_port" type="int" setter="" getter="">
-			The port used to listen for language server clients.
-			[b]Note:[/b] A port configured with command-line options will take priority over this setting: [code]--lsp-port &lt;port&gt;[/code].
-		</member>
-		<member name="network/language_server/show_native_symbols_in_editor" type="bool" setter="" getter="">
-			The declaration of native symbols can't be resolved to a position in the file system. If [code]true[/code] the language server will instead open the documentation for native symbols in the editor.
-			[b]Note:[/b] The VSCode plugin adds additional functionality which allows viewing Godot documentation directly in VSCode, so this option is usually not needed in VSCode.
-		</member>
-		<member name="network/language_server/use_thread" type="bool" setter="" getter="">
-			If [code]true[/code] the language server will run in a separate thread, if [code]false[/code] it will run on the main thread.
 		</member>
 		<member name="network/tls/editor_tls_certificates" type="String" setter="" getter="">
 			The TLS certificate bundle to use for HTTP requests made within the editor (e.g. from the Asset Store tab). If left empty, the [url=https://github.com/godotengine/godot/blob/master/thirdparty/certs/ca-bundle.crt]included Mozilla certificate bundle[/url] will be used.
@@ -1503,14 +1464,8 @@
 		<member name="text_editor/appearance/whitespace/line_spacing" type="int" setter="" getter="">
 			The space to add between lines (in pixels). Greater line spacing can help improve readability at the cost of displaying fewer lines on screen. Negative values allow for even more compact text, but may look broken with certain fonts.
 		</member>
-		<member name="text_editor/behavior/diagnostics/enable_tooltips" type="bool" setter="" getter="">
-			If [code]true[/code], warning and error messages will appear in tooltips when hovering over code.
-		</member>
 		<member name="text_editor/behavior/documentation/enable_tooltips" type="bool" setter="" getter="">
 			If [code]true[/code], documentation tooltips will appear when hovering over a symbol.
-		</member>
-		<member name="text_editor/behavior/files/auto_reload_and_parse_scripts_on_save" type="bool" setter="" getter="">
-			If [code]true[/code], tool scripts will be automatically soft-reloaded after they are saved.
 		</member>
 		<member name="text_editor/behavior/files/auto_reload_scripts_on_external_change" type="bool" setter="" getter="">
 			If [code]true[/code], automatically reloads scripts and text-based shaders in the editor when they have been modified and saved by external editors or tools and the editor regains focus. External changes can be discarded by using the Undo function after they've been loaded in the editor.
@@ -1522,13 +1477,6 @@
 		</member>
 		<member name="text_editor/behavior/files/convert_indent_on_save" type="bool" setter="" getter="">
 			If [code]true[/code], converts indentation to match the script editor's indentation settings when saving a script. See also [member text_editor/behavior/indent/type].
-		</member>
-		<member name="text_editor/behavior/files/drop_preload_resources_as_uid" type="bool" setter="" getter="">
-			If [code]true[/code], when dropping a [Resource] file to script editor while [kbd]Ctrl[/kbd] is held, the resource will be preloaded with a UID. If [code]false[/code], the resource will be preloaded with a path.
-			When you hold [kbd]Ctrl+Shift[/kbd], the behavior is reversed.
-		</member>
-		<member name="text_editor/behavior/files/open_dominant_script_on_scene_change" type="bool" setter="" getter="">
-			If [code]true[/code], opening a scene automatically opens the script attached to the root node, or the topmost node if the root has no script.
 		</member>
 		<member name="text_editor/behavior/files/restore_scripts_on_load" type="bool" setter="" getter="">
 			If [code]true[/code], reopens scripts that were opened in the last session when the editor is reopened on a given project.
@@ -1567,18 +1515,12 @@
 		<member name="text_editor/behavior/navigation/move_caret_on_right_click" type="bool" setter="" getter="">
 			If [code]true[/code], the caret will be moved when right-clicking somewhere in the script editor (like when left-clicking or middle-clicking). If [code]false[/code], the caret will only be moved when left-clicking or middle-clicking somewhere.
 		</member>
-		<member name="text_editor/behavior/navigation/open_script_when_connecting_signal_to_existing_method" type="bool" setter="" getter="">
-			If [code]true[/code], opens the script editor when connecting a signal to an existing script method from the Signals dock.
-		</member>
 		<member name="text_editor/behavior/navigation/scroll_past_end_of_file" type="bool" setter="" getter="">
 			If [code]true[/code], allows scrolling past the end of the file.
 		</member>
 		<member name="text_editor/behavior/navigation/smooth_scrolling" type="bool" setter="" getter="">
 			If [code]true[/code], enables a smooth scrolling animation when using the mouse wheel to scroll. See [member text_editor/behavior/navigation/v_scroll_speed] for the speed of this animation.
 			[b]Note:[/b] [member text_editor/behavior/navigation/smooth_scrolling] currently behaves poorly in projects where [member ProjectSettings.physics/common/physics_ticks_per_second] has been increased significantly from its default value ([code]60[/code]). In this case, it is recommended to disable this setting.
-		</member>
-		<member name="text_editor/behavior/navigation/stay_in_script_editor_on_node_selected" type="bool" setter="" getter="">
-			If [code]true[/code], prevents automatically switching between the Script and 2D/3D screens when selecting a node in the Scene tree dock.
 		</member>
 		<member name="text_editor/behavior/navigation/use_custom_word_separators" type="bool" setter="" getter="">
 			If [code]true[/code], uses the characters in [member text_editor/behavior/navigation/custom_word_separators] as word separators for word navigation and operations. This is in addition to the default characters if [member text_editor/behavior/navigation/use_default_word_separators] is also enabled. Word navigation and operations include double-clicking on a word or holding [kbd]Ctrl[/kbd] ([kbd]Cmd[/kbd] on macOS) while pressing [kbd]left[/kbd], [kbd]right[/kbd], [kbd]backspace[/kbd], or [kbd]delete[/kbd].
@@ -1589,19 +1531,6 @@
 		<member name="text_editor/behavior/navigation/v_scroll_speed" type="int" setter="" getter="">
 			The speed of scrolling in lines per second when [member text_editor/behavior/navigation/smooth_scrolling] is [code]true[/code]. Higher values make the script scroll by faster when using the mouse wheel.
 			[b]Note:[/b] You can hold down [kbd]Alt[/kbd] while using the mouse wheel to temporarily scroll 5 times faster.
-		</member>
-		<member name="text_editor/completion/add_node_path_literals" type="bool" setter="" getter="">
-			If [code]true[/code], uses [NodePath] instead of [String] when appropriate for code autocompletion or for drag and dropping object properties into the script editor.
-		</member>
-		<member name="text_editor/completion/add_string_name_literals" type="bool" setter="" getter="">
-			If [code]true[/code], uses [StringName] instead of [String] when appropriate for code autocompletion.
-		</member>
-		<member name="text_editor/completion/add_type_hints" type="bool" setter="" getter="">
-			If [code]true[/code], automatically adds [url=$DOCS_URL/tutorials/scripting/gdscript/static_typing.html]GDScript static typing[/url] (such as [code]-&gt; void[/code] and [code]: int[/code]) in many situations where it's possible to, including when:
-			- Accepting a suggestion from code autocompletion;
-			- Creating a new script from a template;
-			- Connecting signals from the Signals dock;
-			- Creating variables prefixed with [annotation @GDScript.@onready], by dropping nodes from the Scene dock into the script editor while holding [kbd]Ctrl[/kbd].
 		</member>
 		<member name="text_editor/completion/auto_brace_complete" type="bool" setter="" getter="">
 			If [code]true[/code], automatically inserts the matching closing brace when the opening brace is inserted by typing or autocompletion. Also automatically removes the closing brace when pressing [kbd]Backspace[/kbd] on the opening brace. This includes brackets ([code]()[/code], [code][][/code], [code]{}[/code]), string quotation marks ([code]''[/code], [code]""[/code]), and comments ([code]/**/[/code]) if the language supports it.
@@ -1615,9 +1544,6 @@
 		<member name="text_editor/completion/colorize_suggestions" type="bool" setter="" getter="">
 			If [code]true[/code] enables the coloring for some items in the autocompletion suggestions, like vector components.
 		</member>
-		<member name="text_editor/completion/complete_file_paths" type="bool" setter="" getter="">
-			If [code]true[/code], provides autocompletion suggestions for file paths in methods such as [code]load()[/code] and [code]preload()[/code].
-		</member>
 		<member name="text_editor/completion/idle_parse_delay" type="float" setter="" getter="">
 			The delay in seconds after which the script editor should check for errors when the user stops typing.
 		</member>
@@ -1626,21 +1552,6 @@
 		</member>
 		<member name="text_editor/completion/put_callhint_tooltip_below_current_line" type="bool" setter="" getter="">
 			If [code]true[/code], the code completion tooltip will appear below the current line unless there is no space on screen below the current line. If [code]false[/code], the code completion tooltip will appear above the current line.
-		</member>
-		<member name="text_editor/completion/use_single_quotes" type="bool" setter="" getter="">
-			If [code]true[/code], performs string autocompletion with single quotes. If [code]false[/code], performs string autocompletion with double quotes (which matches the [url=$DOCS_URL/tutorials/scripting/gdscript/gdscript_styleguide.html]GDScript style guide[/url]).
-		</member>
-		<member name="text_editor/external/exec_flags" type="String" setter="" getter="">
-			The command-line arguments to pass to the external text editor that is run when [member text_editor/external/use_external_editor] is [code]true[/code]. See also [member text_editor/external/exec_path].
-		</member>
-		<member name="text_editor/external/exec_path" type="String" setter="" getter="">
-			The path to the text editor executable used to edit text files if [member text_editor/external/use_external_editor] is [code]true[/code].
-		</member>
-		<member name="text_editor/external/use_external_editor" type="bool" setter="" getter="">
-			If [code]true[/code], uses an external editor instead of the built-in Script Editor. See also [member text_editor/external/exec_path] and [member text_editor/external/exec_flags].
-		</member>
-		<member name="text_editor/help/class_reference_examples" type="int" setter="" getter="">
-			Controls which multi-line code blocks should be displayed in the editor help. This setting does not affect single-line code literals in the editor help.
 		</member>
 		<member name="text_editor/help/help_font_size" type="int" setter="" getter="">
 			The font size to use for the editor help (built-in class reference).
@@ -1782,24 +1693,6 @@
 		<member name="text_editor/theme/highlighting/function_color" type="Color" setter="" getter="">
 			The script editor's function call color.
 			[b]Note:[/b] When using the GDScript syntax highlighter, this is only used when calling some functions since function definitions and global functions have their own colors [member text_editor/theme/highlighting/gdscript/function_definition_color] and [member text_editor/theme/highlighting/gdscript/global_function_color].
-		</member>
-		<member name="text_editor/theme/highlighting/gdscript/annotation_color" type="Color" setter="" getter="">
-			The GDScript syntax highlighter text color for annotations (e.g. [code]@export[/code]).
-		</member>
-		<member name="text_editor/theme/highlighting/gdscript/function_definition_color" type="Color" setter="" getter="">
-			The GDScript syntax highlighter text color for function definitions (e.g. the [code]_ready[/code] in [code]func _ready():[/code]).
-		</member>
-		<member name="text_editor/theme/highlighting/gdscript/global_function_color" type="Color" setter="" getter="">
-			The GDScript syntax highlighter text color for global functions, such as the ones in [@GlobalScope] (e.g. [code]preload()[/code]).
-		</member>
-		<member name="text_editor/theme/highlighting/gdscript/node_path_color" type="Color" setter="" getter="">
-			The GDScript syntax highlighter text color for [NodePath] literals (e.g. [code]^"position:x"[/code]).
-		</member>
-		<member name="text_editor/theme/highlighting/gdscript/node_reference_color" type="Color" setter="" getter="">
-			The GDScript syntax highlighter text color for node reference literals (e.g. [code]$"Sprite"[/code] and [code]%"Sprite"[/code]]).
-		</member>
-		<member name="text_editor/theme/highlighting/gdscript/string_name_color" type="Color" setter="" getter="">
-			The GDScript syntax highlighter text color for [StringName] literals (e.g. [code]&amp;"example"[/code]).
 		</member>
 		<member name="text_editor/theme/highlighting/keyword_color" type="Color" setter="" getter="">
 			The script editor's non-control flow keyword color (used for keywords like [code]var[/code], [code]func[/code], [code]extends[/code], ...).

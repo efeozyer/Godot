@@ -43,18 +43,6 @@ class EditorSettings : public Resource {
 	_THREAD_SAFE_CLASS_
 
 public:
-	struct Plugin {
-		EditorPlugin *instance = nullptr;
-		String path;
-		String name;
-		String author;
-		String version;
-		String description;
-		bool installs = false;
-		String script;
-		Vector<String> install_files;
-	};
-
 	enum NetworkMode {
 		NETWORK_OFFLINE,
 		NETWORK_ONLINE,
@@ -122,7 +110,6 @@ private:
 	void _set_initialized();
 	void _load_defaults(Ref<ConfigFile> p_extra_config = Ref<ConfigFile>());
 	void _load_default_visual_shader_editor_theme();
-	static String _guess_exec_args_for_extenal_editor(const String &p_value);
 	const String _get_project_metadata_path() const;
 #ifndef DISABLE_DEPRECATED
 	HashMap<String, String> compat_map;
@@ -197,7 +184,6 @@ public:
 	static bool is_default_text_editor_theme(const String &p_theme_name);
 	void update_text_editor_themes_list();
 
-	Vector<String> get_script_templates(const String &p_extension, const String &p_custom_path = String());
 	String get_editor_layouts_config() const;
 	static float get_auto_display_scale();
 	String get_language() const;

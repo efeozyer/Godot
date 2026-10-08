@@ -59,7 +59,7 @@ class EditorTranslationParser {
 
 public:
 	enum ParserType {
-		STANDARD, // GDScript, CSharp, ...
+		STANDARD, // Built-in parser plugins.
 		CUSTOM // User-defined parser plugins. This will override standard parsers if the same extension type is defined.
 	};
 

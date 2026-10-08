@@ -33,9 +33,6 @@
 		<member name="array_mesh/deduplicate_surfaces" type="bool" setter="" getter="" default="true">
 			If the 3D model file contains only one mesh, this option has no effect. If [code]true[/code] and the 3D model file contains multiple meshes with the same surface names and formats, the surfaces will be merged together when the meshes are merged. This is useful for reducing the number of surfaces in the resulting mesh, and avoids duplicating materials. If [code]false[/code] and the 3D model file contains multiple meshes, the surfaces will always be kept separate.
 		</member>
-		<member name="import_script/path" type="String" setter="" getter="" default="&quot;&quot;">
-			Path to an import script, which can run code after the import process has completed for custom processing. See [url=$DOCS_URL/tutorials/assets_pipeline/importing_3d_scenes/import_configuration.html#using-import-scripts-for-automation]Using import scripts for automation[/url] for more information.
-		</member>
 		<member name="materials/extract" type="int" setter="" getter="" default="0">
 			Material extraction mode.
 			- [code]0 (Keep Internal)[/code], materials are not extracted.
@@ -88,9 +85,6 @@
 		</member>
 		<member name="nodes/root_scale" type="float" setter="" getter="" default="1.0">
 			The uniform scale to use for the scene root. The default value of [code]1.0[/code] will not perform any rescaling. See [member nodes/apply_root_scale] for details of how this scale is applied.
-		</member>
-		<member name="nodes/root_script" type="Script" setter="" getter="" default="null">
-			If set to a valid script, attaches the script to the root node of the imported scene. If the type of the root node is not compatible with the script, the root node will be replaced with a type that is compatible with the script. This setting can also be used on other non-mesh nodes in the scene to attach scripts to them.
 		</member>
 		<member name="nodes/root_type" type="String" setter="" getter="" default="&quot;&quot;">
 			Override for the root node type. If empty, the root node will use what the scene specifies, or [Node3D] if the scene does not specify a root type. Using a node type that inherits from [Node3D] is recommended. Otherwise, you'll lose the ability to position the node directly in the 3D editor.

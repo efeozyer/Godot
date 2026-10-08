@@ -3482,7 +3482,8 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 					desired_blend_mode = shader->blend_mode;
 				}
 
-				if (desired_blend_mode != scene_state.current_blend_mode) {
+				// Custom factors differ per shader, so they are never considered cached.
+				if (desired_blend_mode != scene_state.current_blend_mode || desired_blend_mode == GLES3::SceneShaderData::BLEND_MODE_CUSTOM) {
 					switch (desired_blend_mode) {
 						case GLES3::SceneShaderData::BLEND_MODE_MIX: {
 							glBlendEquation(GL_FUNC_ADD);
@@ -3519,6 +3520,11 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 						} break;
 						case GLES3::SceneShaderData::BLEND_MODE_ALPHA_TO_COVERAGE: {
 							// Do nothing for now.
+						} break;
+						case GLES3::SceneShaderData::BLEND_MODE_CUSTOM: {
+							static const GLenum custom_blend_factors[6] = { GL_ZERO, GL_ONE, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA };
+							glBlendEquation(GL_FUNC_ADD);
+							glBlendFunc(custom_blend_factors[shader->blend_src], custom_blend_factors[shader->blend_dst]);
 						} break;
 					}
 					scene_state.current_blend_mode = desired_blend_mode;

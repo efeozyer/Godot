@@ -111,7 +111,6 @@ class EditorResourcePicker : public HBoxContainer {
 	void _ensure_allowed_types() const;
 	bool _is_drop_valid(const Dictionary &p_drag_data) const;
 	bool _is_type_valid(const String &p_type_name, const HashSet<StringName> &p_allowed_types) const;
-	bool _is_custom_type_script() const;
 	Ref<Resource> _get_dropped_resource(const Variant &p_data) const;
 
 	Variant get_drag_data_fw(const Point2 &p_point, Control *p_from);
@@ -164,27 +163,6 @@ public:
 	virtual bool handle_menu_selected(int p_which);
 
 	EditorResourcePicker(bool p_hide_assign_button_controls = false);
-};
-
-class EditorScriptPicker : public EditorResourcePicker {
-	GDCLASS(EditorScriptPicker, EditorResourcePicker);
-
-	enum ExtraMenuOption {
-		OBJ_MENU_NEW_SCRIPT = 50,
-		OBJ_MENU_EXTEND_SCRIPT = 51
-	};
-
-	Node *script_owner = nullptr;
-
-protected:
-	static void _bind_methods();
-
-public:
-	virtual void set_create_options(Object *p_menu_node) override;
-	virtual bool handle_menu_selected(int p_which) override;
-
-	void set_script_owner(Node *p_owner);
-	Node *get_script_owner() const;
 };
 
 class EditorShaderPicker : public EditorResourcePicker {

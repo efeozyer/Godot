@@ -306,7 +306,7 @@ def configure(env: "SConsEnvironment"):
     # Do not call main immediately when the support code is ready.
     env.Append(LINKFLAGS=["-sINVOKE_RUN=0"])
 
-    # callMain for manual start, cwrap for the mono version.
+    # callMain for manual start.
     # Make sure also to have those memory-related functions available.
     heap_arrays = [f"HEAP{heap_type}{heap_size}" for heap_size in [8, 16, 32, 64] for heap_type in ["", "U"]] + [
         "HEAPF32",
@@ -321,6 +321,3 @@ def configure(env: "SConsEnvironment"):
     # This workaround creates a closure that prevents the garbage collector from freeing the WebGL context.
     # We also only use WebGL2, and changing context version is not widely supported anyway.
     env.Append(LINKFLAGS=["-sGL_WORKAROUND_SAFARI_GETCONTEXT_BUG=0"])
-
-    # Disable GDScript LSP (as the Web platform is not compatible with TCP).
-    env.Append(CPPDEFINES=["GDSCRIPT_NO_LSP"])

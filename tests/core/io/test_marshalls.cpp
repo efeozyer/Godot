@@ -33,7 +33,6 @@
 TEST_FORCE_LINK(test_marshalls)
 
 #include "core/io/marshalls.h"
-#include "core/object/script_language.h"
 
 namespace TestMarshalls {
 
@@ -351,7 +350,7 @@ TEST_CASE("[Marshalls] FLOAT double precision Variant decoding") {
 TEST_CASE("[Marshalls] Typed array encoding") {
 	int r_len;
 	Array array;
-	array.set_typed(Variant::INT, StringName(), Ref<Script>());
+	array.set_typed(Variant::INT, StringName());
 	array.push_back(Variant(uint64_t(0x0f123456789abcdef)));
 	uint8_t buffer[24];
 
@@ -410,7 +409,7 @@ TEST_CASE("[Marshalls] Typed array decoding") {
 TEST_CASE("[Marshalls] Typed dicttionary encoding") {
 	int r_len;
 	Dictionary dictionary;
-	dictionary.set_typed(Variant::INT, StringName(), Ref<Script>(), Variant::INT, StringName(), Ref<Script>());
+	dictionary.set_typed(Variant::INT, StringName(), Variant::INT, StringName());
 	dictionary[Variant(uint64_t(0x0f123456789abcdef))] = Variant(uint64_t(0x0f123456789abcdef));
 	uint8_t buffer[40];
 

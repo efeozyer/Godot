@@ -46,7 +46,6 @@
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/run/editor_run_bar.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_theme_manager.h"
@@ -102,12 +101,6 @@ EditorDebuggerNode::EditorDebuggerNode() {
 
 	remote_scene_tree_timeout = EDITOR_GET("debugger/remote_scene_tree_refresh_interval");
 	inspect_edited_object_timeout = EDITOR_GET("debugger/remote_inspect_refresh_interval");
-
-	if (Engine::get_singleton()->is_recovery_mode_hint()) {
-		return;
-	}
-
-	EditorRunBar::get_singleton()->get_pause_button()->connect(SceneStringName(pressed), callable_mp(this, &EditorDebuggerNode::_paused));
 }
 
 ScriptEditorDebugger *EditorDebuggerNode::_add_debugger() {
@@ -116,11 +109,6 @@ ScriptEditorDebugger *EditorDebuggerNode::_add_debugger() {
 	int id = tabs->get_tab_count();
 	node->connect("stop_requested", callable_mp(this, &EditorDebuggerNode::_debugger_wants_stop).bind(id));
 	node->connect("stopped", callable_mp(this, &EditorDebuggerNode::_debugger_stopped).bind(id));
-	node->connect("stack_frame_selected", callable_mp(this, &EditorDebuggerNode::_stack_frame_selected).bind(id));
-	node->connect("error_selected", callable_mp(this, &EditorDebuggerNode::_error_selected).bind(id));
-	node->connect("breakpoint_selected", callable_mp(this, &EditorDebuggerNode::_error_selected).bind(id));
-	node->connect("clear_execution", callable_mp(this, &EditorDebuggerNode::_clear_execution));
-	node->connect("breaked", callable_mp(this, &EditorDebuggerNode::_breaked).bind(id));
 	node->connect("debug_data", callable_mp(this, &EditorDebuggerNode::_debug_data).bind(id));
 	node->connect("remote_tree_select_requested", callable_mp(this, &EditorDebuggerNode::_remote_tree_select_requested).bind(id));
 	node->connect("remote_tree_clear_selection_requested", callable_mp(this, &EditorDebuggerNode::_remote_tree_clear_selection_requested).bind(id));
@@ -128,8 +116,6 @@ ScriptEditorDebugger *EditorDebuggerNode::_add_debugger() {
 	node->connect("remote_objects_updated", callable_mp(this, &EditorDebuggerNode::_remote_objects_updated));
 	node->connect("remote_object_property_updated", callable_mp(this, &EditorDebuggerNode::_remote_object_property_updated).bind(id));
 	node->connect("remote_objects_requested", callable_mp(this, &EditorDebuggerNode::_remote_objects_requested).bind(id));
-	node->connect("set_breakpoint", callable_mp(this, &EditorDebuggerNode::_breakpoint_set_in_tree).bind(id));
-	node->connect("clear_breakpoints", callable_mp(this, &EditorDebuggerNode::_breakpoints_cleared_in_tree).bind(id));
 	node->connect("errors_cleared", callable_mp(this, &EditorDebuggerNode::_update_errors).bind(false));
 
 	tabs->add_child(node);
@@ -166,68 +152,6 @@ void EditorDebuggerNode::_update_debugger_tabs() {
 	}
 }
 
-void EditorDebuggerNode::_stack_frame_selected(int p_debugger) {
-	const ScriptEditorDebugger *dbg = get_debugger(p_debugger);
-	ERR_FAIL_NULL(dbg);
-	if (dbg != get_current_debugger()) {
-		return;
-	}
-	_text_editor_stack_goto(dbg);
-}
-
-void EditorDebuggerNode::_error_selected(const String &p_file, int p_line, int p_debugger) {
-	if (!p_file.is_resource_file() && !ResourceCache::has(p_file)) {
-		// If it's a built-in script, make sure the scene is opened first.
-		EditorNode::get_singleton()->open_scene(p_file.get_slice("::", 0));
-	}
-	Ref<Script> s = ResourceLoader::load(p_file);
-	emit_signal(SNAME("goto_script_line"), s, p_line - 1);
-}
-
-void EditorDebuggerNode::_text_editor_stack_goto(const ScriptEditorDebugger *p_debugger) {
-	String file = p_debugger->get_stack_script_file();
-	if (file.is_empty()) {
-		return;
-	}
-	if (file.is_resource_file()) {
-		stack_script = ResourceLoader::load(file);
-	} else {
-		// If the script is built-in, it can be opened only if the scene is loaded in memory.
-		int i = file.find("::");
-		int j = file.rfind_char('(', i);
-		if (j > -1) { // If the script is named, the string is "name (file)", so we need to extract the path.
-			file = file.substr(j + 1, file.find_char(')', i) - j - 1);
-		}
-		Ref<PackedScene> ps = ResourceLoader::load(file.get_slice("::", 0));
-		stack_script = ResourceLoader::load(file);
-	}
-	const int line = p_debugger->get_stack_script_line() - 1;
-	emit_signal(SNAME("goto_script_line"), stack_script, line);
-	emit_signal(SNAME("set_execution"), stack_script, line);
-	stack_script.unref(); // Why?!?
-}
-
-void EditorDebuggerNode::_text_editor_stack_clear(const ScriptEditorDebugger *p_debugger) {
-	String file = p_debugger->get_stack_script_file();
-	if (file.is_empty()) {
-		return;
-	}
-	if (file.is_resource_file()) {
-		stack_script = ResourceLoader::load(file);
-	} else {
-		// If the script is built-in, it can be opened only if the scene is loaded in memory.
-		int i = file.find("::");
-		int j = file.rfind_char('(', i);
-		if (j > -1) { // If the script is named, the string is "name (file)", so we need to extract the path.
-			file = file.substr(j + 1, file.find_char(')', i) - j - 1);
-		}
-		Ref<PackedScene> ps = ResourceLoader::load(file.get_slice("::", 0));
-		stack_script = ResourceLoader::load(file);
-	}
-	emit_signal(SNAME("clear_execution"), stack_script);
-	stack_script.unref(); // Why?!?
-}
-
 void EditorDebuggerNode::_bind_methods() {
 	// LiveDebug.
 	ClassDB::bind_method("live_debug_create_node", &EditorDebuggerNode::live_debug_create_node);
@@ -237,14 +161,6 @@ void EditorDebuggerNode::_bind_methods() {
 	ClassDB::bind_method("live_debug_restore_node", &EditorDebuggerNode::live_debug_restore_node);
 	ClassDB::bind_method("live_debug_duplicate_node", &EditorDebuggerNode::live_debug_duplicate_node);
 	ClassDB::bind_method("live_debug_reparent_node", &EditorDebuggerNode::live_debug_reparent_node);
-
-	ADD_SIGNAL(MethodInfo("goto_script_line"));
-	ADD_SIGNAL(MethodInfo("set_execution", PropertyInfo("script"), PropertyInfo(Variant::INT, "line")));
-	ADD_SIGNAL(MethodInfo("clear_execution", PropertyInfo("script")));
-	ADD_SIGNAL(MethodInfo("breaked", PropertyInfo(Variant::BOOL, "reallydid"), PropertyInfo(Variant::BOOL, "can_debug")));
-	ADD_SIGNAL(MethodInfo("breakpoint_toggled", PropertyInfo(Variant::STRING, "path"), PropertyInfo(Variant::INT, "line"), PropertyInfo(Variant::BOOL, "enabled")));
-	ADD_SIGNAL(MethodInfo("breakpoint_set_in_tree", PropertyInfo("script"), PropertyInfo(Variant::INT, "line"), PropertyInfo(Variant::BOOL, "enabled"), PropertyInfo(Variant::INT, "debugger")));
-	ADD_SIGNAL(MethodInfo("breakpoints_cleared_in_tree", PropertyInfo(Variant::INT, "debugger")));
 }
 
 void EditorDebuggerNode::update_layout(EditorDock::DockLayout p_layout, int p_slot) {
@@ -367,8 +283,6 @@ void EditorDebuggerNode::stop(bool p_force) {
 		server.unref();
 	}
 
-	_break_state_changed();
-	breakpoints.clear();
 	EditorUndoRedoManager::get_singleton()->clear_history(EditorUndoRedoManager::REMOTE_HISTORY, false);
 	set_process(false);
 }
@@ -391,11 +305,6 @@ void EditorDebuggerNode::_notification(int p_what) {
 			_update_margins();
 
 			remote_scene_tree->update_icon_max_width();
-		} break;
-
-		case NOTIFICATION_READY: {
-			_update_debug_options();
-			initializing = false;
 		} break;
 
 		case NOTIFICATION_PROCESS: {
@@ -463,7 +372,6 @@ void EditorDebuggerNode::_notification(int p_what) {
 					}
 				}
 
-				EditorRunBar::get_singleton()->get_pause_button()->set_disabled(false);
 				// Switch to remote tree view if so desired.
 				remote_scene_tree->set_new_session();
 				auto_switch_remote_scene_tree = EDITOR_GET("debugger/auto_switch_to_remote_scene_tree");
@@ -474,11 +382,6 @@ void EditorDebuggerNode::_notification(int p_what) {
 				SceneTreeDock::get_singleton()->show_tab_buttons();
 				debugger->set_editor_remote_tree(remote_scene_tree);
 				debugger->start(server->take_connection());
-				// Send breakpoints.
-				for (const KeyValue<Breakpoint, bool> &E : breakpoints) {
-					const Breakpoint &bp = E.key;
-					debugger->set_breakpoint(bp.source, bp.line, E.value);
-				} // Will arrive too late, how does the regular run work?
 
 				debugger->update_live_edit_root();
 
@@ -551,8 +454,6 @@ void EditorDebuggerNode::_debugger_stopped(int p_id) {
 			remote_scene_tree->clear();
 		}
 	} else {
-		EditorRunBar::get_singleton()->get_pause_button()->set_pressed(false);
-		EditorRunBar::get_singleton()->get_pause_button()->set_disabled(true);
 		SceneTreeDock *dock = SceneTreeDock::get_singleton();
 		if (dock->is_inside_tree()) {
 			dock->hide_remote_tree();
@@ -575,7 +476,6 @@ void EditorDebuggerNode::_debugger_changed(int p_tab) {
 
 	if (ScriptEditorDebugger *prev_debug = get_previous_debugger()) {
 		prev_debug->clear_inspector();
-		_text_editor_stack_clear(prev_debug);
 	}
 
 	if (get_current_debugger()->is_session_active()) {
@@ -587,12 +487,6 @@ void EditorDebuggerNode::_debugger_changed(int p_tab) {
 	} else {
 		remote_scene_tree->clear();
 	}
-
-	if (get_current_debugger()->is_breaked()) {
-		_text_editor_stack_goto(get_current_debugger());
-	}
-
-	_break_state_changed();
 }
 
 void EditorDebuggerNode::_debug_data(const String &p_msg, const Array &p_data, int p_debugger) {
@@ -605,158 +499,6 @@ void EditorDebuggerNode::_debug_data(const String &p_msg, const Array &p_data, i
 	} else if (p_msg == "scene:inspect_objects") {
 		inspect_edited_object_wait = false;
 	}
-}
-
-void EditorDebuggerNode::set_script_debug_button(MenuButton *p_button) {
-	script_menu = p_button;
-	script_menu->set_text(TTRC("Debug"));
-	script_menu->set_switch_on_hover(true);
-	PopupMenu *p = script_menu->get_popup();
-	p->add_shortcut(ED_GET_SHORTCUT("debugger/step_into"), DEBUG_STEP);
-	p->add_shortcut(ED_GET_SHORTCUT("debugger/step_over"), DEBUG_NEXT);
-	p->add_separator();
-	p->add_shortcut(ED_GET_SHORTCUT("debugger/break"), DEBUG_BREAK);
-	p->add_shortcut(ED_GET_SHORTCUT("debugger/continue"), DEBUG_CONTINUE);
-	p->add_separator();
-	p->add_check_shortcut(ED_GET_SHORTCUT("debugger/debug_with_external_editor"), DEBUG_WITH_EXTERNAL_EDITOR);
-	p->connect(SceneStringName(id_pressed), callable_mp(this, &EditorDebuggerNode::_menu_option));
-
-	_break_state_changed();
-	script_menu->show();
-}
-
-void EditorDebuggerNode::_break_state_changed() {
-	const bool breaked = get_current_debugger()->is_breaked();
-	const bool can_debug = get_current_debugger()->is_debuggable();
-	if (breaked) { // Show debugger.
-		EditorDockManager::get_singleton()->focus_dock(this);
-	}
-
-	// Update script menu.
-	if (!script_menu) {
-		return;
-	}
-	PopupMenu *p = script_menu->get_popup();
-	p->set_item_disabled(p->get_item_index(DEBUG_NEXT), !(breaked && can_debug));
-	p->set_item_disabled(p->get_item_index(DEBUG_STEP), !(breaked && can_debug));
-	p->set_item_disabled(p->get_item_index(DEBUG_BREAK), breaked);
-	p->set_item_disabled(p->get_item_index(DEBUG_CONTINUE), !breaked);
-}
-
-void EditorDebuggerNode::_menu_option(int p_id) {
-	switch (p_id) {
-		case DEBUG_NEXT: {
-			debug_next();
-		} break;
-		case DEBUG_STEP: {
-			debug_step();
-		} break;
-		case DEBUG_BREAK: {
-			debug_break();
-		} break;
-		case DEBUG_CONTINUE: {
-			debug_continue();
-		} break;
-		case DEBUG_WITH_EXTERNAL_EDITOR: {
-			bool ischecked = script_menu->get_popup()->is_item_checked(script_menu->get_popup()->get_item_index(DEBUG_WITH_EXTERNAL_EDITOR));
-			debug_with_external_editor = !ischecked;
-			script_menu->get_popup()->set_item_checked(script_menu->get_popup()->get_item_index(DEBUG_WITH_EXTERNAL_EDITOR), !ischecked);
-			if (!initializing) {
-				EditorSettings::get_singleton()->set_project_metadata("debug_options", "debug_with_external_editor", !ischecked);
-			}
-		} break;
-	}
-}
-
-void EditorDebuggerNode::_update_debug_options() {
-	if (EditorSettings::get_singleton()->get_project_metadata("debug_options", "debug_with_external_editor", false).operator bool()) {
-		_menu_option(DEBUG_WITH_EXTERNAL_EDITOR);
-	}
-}
-
-void EditorDebuggerNode::_paused() {
-	const bool paused = EditorRunBar::get_singleton()->get_pause_button()->is_pressed();
-	_for_all(tabs, [&](ScriptEditorDebugger *dbg) {
-		if (paused && !dbg->is_breaked()) {
-			dbg->debug_break();
-		} else if (!paused && dbg->is_breaked()) {
-			dbg->debug_continue();
-		}
-	});
-}
-
-void EditorDebuggerNode::_breaked(bool p_breaked, bool p_can_debug, const String &p_message, bool p_has_stackdump, int p_debugger) {
-	if (get_current_debugger() != get_debugger(p_debugger)) {
-		if (!p_breaked) {
-			return;
-		}
-		tabs->set_current_tab(p_debugger);
-	}
-	_break_state_changed();
-	EditorRunBar::get_singleton()->get_pause_button()->set_pressed(p_breaked);
-	emit_signal(SNAME("breaked"), p_breaked, p_can_debug);
-}
-
-bool EditorDebuggerNode::is_skip_breakpoints() const {
-	return get_current_debugger()->is_skip_breakpoints();
-}
-
-bool EditorDebuggerNode::is_ignore_error_breaks() const {
-	return get_default_debugger()->is_ignore_error_breaks();
-}
-
-void EditorDebuggerNode::set_breakpoint(const String &p_path, int p_line, bool p_enabled) {
-	breakpoints[Breakpoint(p_path, p_line)] = p_enabled;
-	_for_all(tabs, [&](ScriptEditorDebugger *dbg) {
-		dbg->set_breakpoint(p_path, p_line, p_enabled);
-	});
-
-	emit_signal(SNAME("breakpoint_toggled"), p_path, p_line, p_enabled);
-}
-
-void EditorDebuggerNode::set_breakpoints(const String &p_path, const Array &p_lines) {
-	for (int i = 0; i < p_lines.size(); i++) {
-		set_breakpoint(p_path, p_lines[i], true);
-	}
-
-	for (const KeyValue<Breakpoint, bool> &E : breakpoints) {
-		Breakpoint b = E.key;
-		if (b.source == p_path && !p_lines.has(b.line)) {
-			set_breakpoint(p_path, b.line, false);
-		}
-	}
-}
-
-void EditorDebuggerNode::reload_all_scripts() {
-	_for_all(tabs, [&](ScriptEditorDebugger *dbg) {
-		dbg->reload_all_scripts();
-	});
-}
-
-void EditorDebuggerNode::reload_scripts(const Vector<String> &p_script_paths) {
-	_for_all(tabs, [&](ScriptEditorDebugger *dbg) {
-		dbg->reload_scripts(p_script_paths);
-	});
-}
-
-void EditorDebuggerNode::debug_next() {
-	get_current_debugger()->debug_next();
-}
-
-void EditorDebuggerNode::debug_step() {
-	get_current_debugger()->debug_step();
-}
-
-void EditorDebuggerNode::debug_break() {
-	get_current_debugger()->debug_break();
-}
-
-void EditorDebuggerNode::debug_continue() {
-	get_current_debugger()->debug_continue();
-}
-
-String EditorDebuggerNode::get_var_value(const String &p_var) const {
-	return get_current_debugger()->get_var_value(p_var);
 }
 
 // LiveEdit/Inspector
@@ -874,22 +616,6 @@ void EditorDebuggerNode::_save_node_requested(ObjectID p_id, const String &p_fil
 		return;
 	}
 	get_current_debugger()->save_node(p_id, p_file);
-}
-
-void EditorDebuggerNode::_breakpoint_set_in_tree(Ref<RefCounted> p_script, int p_line, bool p_enabled, int p_debugger) {
-	if (p_debugger != tabs->get_current_tab()) {
-		return;
-	}
-
-	emit_signal(SNAME("breakpoint_set_in_tree"), p_script, p_line, p_enabled);
-}
-
-void EditorDebuggerNode::_breakpoints_cleared_in_tree(int p_debugger) {
-	if (p_debugger != tabs->get_current_tab()) {
-		return;
-	}
-
-	emit_signal(SNAME("breakpoints_cleared_in_tree"));
 }
 
 // Remote inspector/edit.

@@ -31,7 +31,6 @@
 #include "ref_counted.h"
 
 #include "core/object/class_db.h"
-#include "core/object/script_instance.h"
 
 bool RefCounted::init_ref() {
 	if (reference()) {
@@ -76,9 +75,6 @@ bool RefCounted::reference() {
 	bool success = rc_val != 0;
 
 	if (success && rc_val <= 2 /* higher is not relevant */) {
-		if (get_script_instance()) {
-			get_script_instance()->refcount_incremented();
-		}
 		if (_get_extension() && _get_extension()->reference) {
 			_get_extension()->reference(_get_extension_instance());
 		}
@@ -95,10 +91,6 @@ bool RefCounted::unreference() {
 	bool die = rc_val == 0;
 
 	if (rc_val <= 1 /* higher is not relevant */) {
-		if (get_script_instance()) {
-			bool script_ret = get_script_instance()->refcount_decremented();
-			die = die && script_ret;
-		}
 		if (_get_extension() && _get_extension()->unreference) {
 			_get_extension()->unreference(_get_extension_instance());
 		}
@@ -111,7 +103,7 @@ bool RefCounted::unreference() {
 
 	// If we are going to be destroyed we need to ensure that no other thread
 	// is still inside our critical section. If they are they might see
-	// a (partially) destroyed Object for get_script_instance, _get_extension,
+	// a (partially) destroyed Object for _get_extension,
 	// or _instance_binding_reference.
 	if (die) {
 		// It is unlikely that we will spin here for very long.

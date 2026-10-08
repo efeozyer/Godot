@@ -199,7 +199,6 @@ abstract class BaseGodotEditor : GodotActivity(), GameMenuFragment.GameMenuListe
 		internal const val GAME_MENU_ACTION_SET_TIME_SCALE = "setTimeScale"
 
 		private const val GAME_WORKSPACE = "Game"
-		private const val SCRIPT_WORKSPACE = "Script"
 
 		internal const val SNACKBAR_SHOW_DURATION_MS = 5000L
 

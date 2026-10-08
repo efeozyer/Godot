@@ -34,12 +34,12 @@
 #include "editor/editor_data.h"
 #include "editor/import/import_defaults_editor.h"
 #include "editor/inspector/editor_sectioned_inspector.h"
-#include "editor/plugins/editor_plugin_settings.h"
 #include "editor/scene/group_settings_editor.h"
 #include "editor/settings/action_map_editor.h"
 #include "editor/settings/editor_autoload_settings.h"
 #include "editor/shader/shader_globals_editor.h"
 #include "editor/translations/localization_editor.h"
+#include "scene/gui/dialogs.h"
 #include "scene/gui/panel_container.h"
 #include "scene/gui/tab_container.h"
 #include "scene/gui/texture_rect.h"
@@ -71,7 +71,6 @@ class ProjectSettingsEditor : public AcceptDialog {
 	ShaderGlobalsEditor *shaders_global_shader_uniforms_editor = nullptr;
 	GroupSettingsEditor *group_settings = nullptr;
 	TabContainer *addons_container = nullptr;
-	EditorPluginSettings *plugin_settings = nullptr;
 	ProjectSettingsGDExtension *gdextension_settings = nullptr;
 
 	LineEdit *search_box = nullptr;
@@ -142,10 +141,7 @@ public:
 	void popup_project_settings(bool p_clear_filter = false);
 	void popup_for_override(const String &p_override);
 
-	void set_plugins_page();
 	void set_general_page(const String &p_category);
-	void update_plugins();
-	void init_autoloads();
 
 	void set_filter(const String &p_filter);
 

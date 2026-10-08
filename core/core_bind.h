@@ -35,7 +35,6 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
-#include "core/object/script_backtrace.h"
 #include "core/os/semaphore.h"
 #include "core/os/thread.h"
 #include "core/templates/safe_refcount.h"
@@ -136,11 +135,11 @@ public:
 
 protected:
 	GDVIRTUAL2(_log_message, String, bool);
-	GDVIRTUAL8(_log_error, String, String, int, String, String, bool, int, TypedArray<ScriptBacktrace>);
+	GDVIRTUAL7(_log_error, String, String, int, String, String, bool, int);
 	static void _bind_methods();
 
 public:
-	virtual void log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify = false, ErrorType p_type = ERROR_TYPE_ERROR, const TypedArray<ScriptBacktrace> &p_script_backtraces = {});
+	virtual void log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify = false, ErrorType p_type = ERROR_TYPE_ERROR);
 	virtual void log_message(const String &p_text, bool p_error);
 };
 
@@ -154,7 +153,7 @@ class OS : public Object {
 		LocalVector<Ref<CoreBind::Logger>> loggers;
 
 		virtual void logv(const char *p_format, va_list p_list, bool p_err) override _PRINTF_FORMAT_ATTRIBUTE_2_0;
-		virtual void log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify = false, ErrorType p_type = ERR_ERROR, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces = {}) override;
+		virtual void log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify = false, ErrorType p_type = ERR_ERROR) override;
 
 		void clear() { loggers.clear(); }
 	};
@@ -317,7 +316,6 @@ public:
 
 	void add_logger(RequiredParam<Logger> p_logger);
 	void remove_logger(RequiredParam<Logger> p_logger);
-	void remove_script_loggers(const ScriptLanguage *p_script);
 
 	static OS *get_singleton() { return singleton; }
 
@@ -620,12 +618,6 @@ public:
 	void unregister_singleton(const StringName &p_name);
 	Vector<String> get_singleton_list() const;
 
-	Error register_script_language(RequiredParam<ScriptLanguage> p_language);
-	Error unregister_script_language(RequiredParam<const ScriptLanguage> p_language);
-	int get_script_language_count();
-	ScriptLanguage *get_script_language(int p_index) const;
-	TypedArray<ScriptBacktrace> capture_script_backtraces(bool p_include_variables = false) const;
-
 	void set_editor_hint(bool p_enabled);
 	bool is_editor_hint() const;
 
@@ -674,24 +666,8 @@ public:
 	bool has_capture(const StringName &p_name);
 
 	void send_message(const String &p_msg, const Array &p_data);
-	void debug(bool p_can_continue = true, bool p_is_error_breakpoint = false);
-	void script_debug(ScriptLanguage *p_lang, bool p_can_continue = true, bool p_is_error_breakpoint = false);
 
 	static Error call_capture(void *p_user, const String &p_cmd, const Array &p_data, bool &r_captured);
-
-	void line_poll();
-
-	void set_lines_left(int p_lines);
-	int get_lines_left() const;
-
-	void set_depth(int p_depth);
-	int get_depth() const;
-
-	bool is_breakpoint(int p_line, const StringName &p_source) const;
-	bool is_skipping_breakpoints() const;
-	void insert_breakpoint(int p_line, const StringName &p_source);
-	void remove_breakpoint(int p_line, const StringName &p_source);
-	void clear_breakpoints();
 
 	EngineDebugger() { singleton = this; }
 	~EngineDebugger();

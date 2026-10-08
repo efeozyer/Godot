@@ -56,7 +56,6 @@
 #include "editor/export/editor_export_plugin.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/editor_paths.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/rich_text_label.h"
@@ -1205,8 +1204,6 @@ Dictionary EditorExportPlatform::get_internal_export_files(const Ref<EditorExpor
 Vector<String> EditorExportPlatform::get_forced_export_files(const Ref<EditorExportPreset> &p_preset) {
 	Vector<String> files;
 
-	files.push_back(ProjectSettings::get_singleton()->get_global_class_list_path());
-
 	String icon = ResourceUID::ensure_path(get_project_setting(p_preset, "application/config/icon"));
 	String splash = ResourceUID::ensure_path(get_project_setting(p_preset, "application/boot_splash/image"));
 	if (!icon.is_empty() && FileAccess::exists(icon)) {
@@ -1767,8 +1764,6 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 
 		if (file == GDExtension::get_extension_list_config_file()) {
 			array = filtered_cache.extension_list;
-		} else if (file == ProjectSettings::get_singleton()->get_global_class_list_path()) {
-			array = filtered_cache.global_class_list;
 		} else {
 			array = FileAccess::get_file_as_bytes(file);
 		}
@@ -1831,7 +1826,7 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	return OK;
 }
 
-// Used by the main export function to filter excluded global classes, extensions
+// Used by the main export function to filter excluded extensions
 // and UIDs based on excluded resources configured in the export preset.
 EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(const HashSet<String> &p_paths) {
 	FilteredCache result;
@@ -1845,32 +1840,14 @@ EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(co
 		}
 	}
 
-	HashMap<String, Dictionary> class_by_path;
-	Ref<ConfigFile> global_class_cf;
-	global_class_cf.instantiate();
-	if (global_class_cf->load(ProjectSettings::get_singleton()->get_global_class_list_path()) == OK) {
-		Array original_list = global_class_cf->get_value("", "list", Array());
-		class_by_path.reserve(original_list.size());
-		for (const Variant &item : original_list) {
-			const Dictionary &class_dict = item;
-			ERR_CONTINUE(!class_dict.has("path"));
-			class_by_path[class_dict["path"]] = class_dict;
-		}
-	}
-
 	Vector<String> extension_lines;
-	Array global_class_list;
 	Vector<Pair<ResourceUID::ID, String>> uid_entries;
 	extension_lines.reserve(extension_list_lines.size());
-	global_class_list.reserve(class_by_path.size());
 	uid_entries.reserve(p_paths.size());
 
 	for (const String &path : p_paths) {
 		if (extension_list_lines.has(path)) {
 			extension_lines.push_back(path);
-		}
-		if (class_by_path.has(path)) {
-			global_class_list.push_back(class_by_path[path]);
 		}
 		ResourceUID::ID uid = EditorFileSystem::get_singleton()->get_file_uid(path);
 		if (uid != ResourceUID::INVALID_ID) {
@@ -1883,10 +1860,6 @@ EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(co
 		result.extension_list.append_array(line.to_utf8_buffer());
 		result.extension_list.append('\n');
 	}
-
-	// Encode global classes.
-	global_class_cf->set_value("", "list", global_class_list);
-	result.global_class_list = global_class_cf->encode_to_text().to_utf8_buffer();
 
 	// Encode UIDs.
 	result.uids = ResourceUID::encode_binary_cache(uid_entries);
@@ -2480,22 +2453,6 @@ Vector<String> EditorExportPlatform::gen_export_flags(BitField<EditorExportPlatf
 		ret.push_back("--remote-debug");
 
 		ret.push_back(get_debug_protocol() + host + ":" + String::num_int64(remote_port));
-
-		List<String> breakpoints;
-		ScriptEditor::get_singleton()->get_breakpoints(&breakpoints);
-
-		if (breakpoints.size()) {
-			ret.push_back("--breakpoints");
-			String bpoints;
-			for (List<String>::Element *E = breakpoints.front(); E; E = E->next()) {
-				bpoints += E->get().replace(" ", "%20");
-				if (E->next()) {
-					bpoints += ",";
-				}
-			}
-
-			ret.push_back(bpoints);
-		}
 	}
 
 	if (p_flags.has_flag(DEBUG_FLAG_VIEW_COLLISIONS)) {

@@ -46,7 +46,6 @@ class EditorPaths : public Object {
 	String self_contained_file; // Self-contained file with configuration.
 	String export_templates_folder = "export_templates";
 	String text_editor_themes_folder = "text_editor_themes";
-	String script_templates_folder = "script_templates";
 	String feature_profiles_folder = "feature_profiles";
 
 	static EditorPaths *singleton;
@@ -68,8 +67,6 @@ public:
 	String get_default_android_sdk_path() const;
 	String get_project_settings_dir() const;
 	String get_text_editor_themes_dir() const;
-	String get_script_templates_dir() const;
-	String get_project_script_templates_dir() const;
 	String get_feature_profiles_dir() const;
 
 	bool is_self_contained() const;

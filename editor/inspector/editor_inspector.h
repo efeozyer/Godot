@@ -814,7 +814,6 @@ private:
 	bool show_standard_categories = false;
 	bool show_custom_categories = false;
 	int category_color_level = -1;
-	bool hide_script = true;
 	bool hide_metadata = true;
 	bool use_doc_hints = false;
 	EditorPropertyNameProcessor::Style property_name_style = EditorPropertyNameProcessor::STYLE_CAPITALIZED;
@@ -962,7 +961,6 @@ public:
 	void set_show_categories(bool p_show_standard, bool p_show_custom);
 	void set_category_color_level(int p_color_level);
 	void set_use_doc_hints(bool p_enable);
-	void set_hide_script(bool p_hide);
 	void set_hide_metadata(bool p_hide);
 
 	void set_use_filter(bool p_use);

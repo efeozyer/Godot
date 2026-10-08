@@ -30,7 +30,6 @@
 
 #include "os_log_logger.h"
 
-#include "core/object/script_backtrace.h"
 #include "core/os/memory.h"
 #include "core/string/print_string.h"
 
@@ -72,7 +71,7 @@ void OsLogLogger::logv(const char *p_format, va_list p_list, bool p_err) {
 	}
 }
 
-void OsLogLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void OsLogLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
 	os_log_t selected_log;
 	switch (p_type) {
 		case ERR_WARNING:
@@ -110,18 +109,5 @@ void OsLogLogger::log_error(const char *p_function, const char *p_file, int p_li
 			break;
 	}
 
-	// Append script backtraces, if any.
-	String back_trace;
-	for (const Ref<ScriptBacktrace> &backtrace : p_script_backtraces) {
-		if (backtrace.is_valid() && !backtrace->is_empty()) {
-			back_trace += "\n";
-			back_trace += backtrace->format(strlen(error_type_indent(p_type)));
-		}
-	}
-
-	if (back_trace.is_empty()) {
-		os_log_with_type(selected_log, log_type, "%{public}s:%d:%{public}s(): %{public}s %{public}s", p_file, p_line, p_function, err_details, p_code);
-	} else {
-		os_log_with_type(selected_log, log_type, "%{public}s:%d:%{public}s(): %{public}s %{public}s%{public}s", p_file, p_line, p_function, err_details, p_code, back_trace.utf8().ptr());
-	}
+	os_log_with_type(selected_log, log_type, "%{public}s:%d:%{public}s(): %{public}s %{public}s", p_file, p_line, p_function, err_details, p_code);
 }

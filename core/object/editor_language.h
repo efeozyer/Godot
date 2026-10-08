@@ -30,18 +30,18 @@
 
 #pragma once
 
-// TODO: This file resides in `core/` while migrating `ScriptLanguage` features to prevent `editor/` includes in core. It should be moved to `editor/` when those includes are not needed anymore.
 #ifdef TOOLS_ENABLED
 
-#include "core/object/script_language.h"
+#include "core/templates/hash_set.h"
+#include "core/templates/list.h"
+#include "core/variant/variant.h"
 
 /**
- * Interface for supporting semantic language features in the builtin script editor.
+ * Interface for supporting semantic language features in the builtin code editors.
  *
- * API design should keep the LSP spec in mind: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ since the GDScript language server is also using this API.
+ * API design should keep the LSP spec in mind: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
  *
- * Note: This class is unstable and work-in-progress, stability is only ensured for the things currently exposed through `ScriptLanguageExtension`.
- * The goal is to move all editor functionality out of `ScriptLanguage` over time.
+ * Note: This class is unstable and work-in-progress.
  */
 class EditorLanguage {
 public:
@@ -115,14 +115,13 @@ public:
 	 *
 	 * @param p_code The current content of the source fragment. Will always contain the special sentinel char 0xFFFF at the cursor position. The content might differ from the state on disk, the exact behavior in that case is up to the implementation.
 	 * @param p_path The path which identifies the source fragment. Implementations MAY support paths to builtin resources, or return an error for those.
-	 * @param p_owner If the source fragment is somehow tied to an object (e.g. the currently open scene) the editor will pass it to the language. Implementations MAY respect this in their analysis, e.g. for GDScript get node literals.
+	 * @param p_owner If the source fragment is somehow tied to an object (e.g. the currently open scene) the editor will pass it to the language. Implementations MAY respect this in their analysis.
 	 * @param r_options The returned options. Can be empty.
 	 * @param r_force If `false` a non-empty signature hint will take priority over completion. If `true` completion will take priority. Might be removed in the future in favor of showing both.
 	 * @param r_call_hint The returned signature hint. Can be empty.
 	 */
 	virtual Error complete_code(const String &p_code, const String &p_path, Object *p_owner, List<CompletionOption> *r_options, bool &r_force, String &r_call_hint) { return ERR_UNAVAILABLE; }
 
-	// Keep ScriptLanguageExtension::LookupResultType a subset of this.
 	struct LookupResult {
 		enum class Type {
 			SCRIPT_LOCATION, // Use if none of the options below apply.
@@ -170,7 +169,7 @@ public:
 	 * @param p_code The current content of the source fragment. Will always contain the special sentinel char 0xFFFF at the requested position. The content might differ from the state on disk, the exact behavior in that case is up to the implementation.
 	 * @param p_symbol The symbol under the cursor position. This parameter is unreliable (sometimes uses the user configured word separators) and will be removed in the future. New implementations should not use it and determine the symbol under the cursor on their own.
 	 * @param p_path The path which identifies the source fragment. Implementations MAY support paths to builtin resources, or return an error for those.
-	 * @param p_owner If the source fragment is somehow tied to an object (e.g. the currently open scene) the editor will pass it to the language. Implementations MAY respect this in their analysis, e.g. for GDScript get node literals.
+	 * @param p_owner If the source fragment is somehow tied to an object (e.g. the currently open scene) the editor will pass it to the language. Implementations MAY respect this in their analysis.
 	 * @param r_result The returned `LookupResult`.
 	 */
 	virtual Error lookup_code(const String &p_code, const String &p_symbol, const String &p_path, Object *p_owner, LookupResult &r_result) { return ERR_UNAVAILABLE; }
@@ -185,8 +184,6 @@ public:
 
 	/**
 	 * Called by the editor to reformat a section of code.
-	 *
-	 * In the case of GDScript the only supported kind of formatting is auto-indentation.
 	 *
 	 * @param r_code The current content of the source fragment. Implementations should also use this to return the formatted code. Either by formatting in place or through assignment.
 	 * @param p_from_line First line to be formatted (inclusive).
@@ -227,7 +224,7 @@ public:
 	 * @param r_errors The returned errors of the script. Might be `nullptr` if the caller does not care.
 	 * @param r_warnings The returned warnings of the script. Might be `nullptr` if the caller does not care.
 	 * @param r_functions The returned functions for the outline. Might be `nullptr` if the caller does not care.
-	 * @param r_safe_lines The returned safe-lines, this is a GDScript specific concept. Might be `nullptr` if the caller does not care.
+	 * @param r_safe_lines The returned safe-lines. Might be `nullptr` if the caller does not care.
 	 * @return `true` if the script has no errors, otherwise `false`.
 	 */
 	virtual bool validate(const String &p_code, const String &p_path, List<ScriptError> *r_errors, List<Warning> *r_warnings, List<String> *r_functions, HashSet<int> *r_safe_lines) const { return true; }

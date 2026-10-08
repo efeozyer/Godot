@@ -851,24 +851,17 @@ void SceneDebugger::_set_object_property(ObjectID p_id, const String &p_property
 		return;
 	}
 
-	String prop_name;
-	if (p_property.begins_with("Members/")) {
-		prop_name = p_property.get_slicec('/', p_property.get_slice_count("/") - 1);
-	} else {
-		prop_name = p_property;
-	}
-
 	Variant value = p_value;
-	if (p_value.is_string() && (obj->get_static_property_type(prop_name) == Variant::OBJECT || p_property == "script")) {
+	if (p_value.is_string() && obj->get_static_property_type(p_property) == Variant::OBJECT) {
 		value = ResourceLoader::load(p_value);
 	}
 
 	if (!p_field.is_empty()) {
 		// Only one specific field.
-		value = fieldwise_assign(obj->get(prop_name), value, p_field);
+		value = fieldwise_assign(obj->get(p_property), value, p_field);
 	}
 
-	obj->set(prop_name, value);
+	obj->set(p_property, value);
 }
 
 void SceneDebugger::_next_frame() {
@@ -887,7 +880,7 @@ void SceneDebugger::add_to_cache(const String &p_filename, Node *p_node) {
 		return;
 	}
 
-	if (EngineDebugger::get_script_debugger() && !p_filename.is_empty()) {
+	if (EngineDebugger::is_active() && !p_filename.is_empty()) {
 		debugger->live_scene_edit_cache[p_filename].insert(p_node);
 	}
 }
@@ -1380,7 +1373,7 @@ void LiveEditor::_duplicate_node_func(const NodePath &p_at, const String &p_new_
 		}
 		Node *n2 = n->get_node(p_at);
 
-		Node *dup = n2->duplicate(Node::DUPLICATE_SIGNALS | Node::DUPLICATE_GROUPS | Node::DUPLICATE_SCRIPTS);
+		Node *dup = n2->duplicate(Node::DUPLICATE_SIGNALS | Node::DUPLICATE_GROUPS);
 
 		if (!dup) {
 			continue;

@@ -74,18 +74,6 @@
 				Gets an array of the settings which have been changed since the last save. Note that internally [code]changed_settings[/code] is cleared after a successful save, so generally the most appropriate place to use this method is when processing [signal settings_changed].
 			</description>
 		</method>
-		<method name="get_global_class_list">
-			<return type="Dictionary[]" />
-			<description>
-				Returns an [Array] of registered global classes. Each global class is represented as a [Dictionary] that contains the following entries:
-				- [code]base[/code] is a name of the base class;
-				- [code]class[/code] is a name of the registered global class;
-				- [code]icon[/code] is a path to a custom icon of the global class, if it has any;
-				- [code]language[/code] is a name of a programming language in which the global class is written;
-				- [code]path[/code] is a path to a file containing the global class.
-				[b]Note:[/b] Both the script and the icon paths are local to the project filesystem, i.e. they start with [code]res://[/code].
-			</description>
-		</method>
 		<method name="get_order" qualifiers="const">
 			<return type="int" />
 			<param index="0" name="name" type="String" />
@@ -547,179 +535,11 @@
 			Specifies the maximum number of log files allowed (used for rotation). Set to [code]1[/code] to disable log file rotation.
 			If the [code]--log-file &lt;file&gt;[/code] [url=$DOCS_URL/tutorials/editor/command_line_tutorial.html]command line argument[/url] is used, log rotation is always disabled.
 		</member>
-		<member name="debug/gdscript/warnings/assert_always_false" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an [code]assert[/code] call always evaluates to [code]false[/code].
-		</member>
-		<member name="debug/gdscript/warnings/assert_always_true" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an [code]assert[/code] call always evaluates to [code]true[/code].
-		</member>
-		<member name="debug/gdscript/warnings/confusable_capture_reassignment" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a local variable captured by a lambda is reassigned, since this does not modify the outer local variable.
-		</member>
-		<member name="debug/gdscript/warnings/confusable_identifier" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an identifier contains characters that can be confused with something else, like when mixing different alphabets.
-		</member>
-		<member name="debug/gdscript/warnings/confusable_local_declaration" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an identifier declared in the nested block has the same name as an identifier declared below in the parent block.
-		</member>
-		<member name="debug/gdscript/warnings/confusable_local_usage" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an identifier that will be shadowed below in the block is used.
-		</member>
-		<member name="debug/gdscript/warnings/confusable_temporary_modification" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a built-in property of type [code]Packed*Array[/code] is modified using a complex assignment chain or a non-[code]const[/code] method call. In this case, you are only modifying a temporary value, and the property's value remains unchanged.
-		</member>
-		<member name="debug/gdscript/warnings/deprecated_keyword" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when deprecated keywords are used.
-			[b]Note:[/b] There are currently no deprecated keywords, so this warning is never produced.
-		</member>
-		<member name="debug/gdscript/warnings/directory_rules" type="Dictionary" setter="" getter="" default="{ &quot;res://addons&quot;: 0 }">
-			The rules for including or excluding scripts when generating warnings, as a dictionary. Each rule is an entry consisting of a directory path (key) and a decision (value). When trying to generate a warning, the GDScript parser chooses the most specific rule, i.e. the most nested directory containing the script. If the decision is [b]Exclude[/b], warnings are not generated for this script. If the decision is [b]Include[/b] or the script doesn't satisfy any of the rules, the warning configuration specified in the Project Settings is applied.
-			It is recommended to include your own addons/libraries, either project-specific or actively being developed at the moment. Third-party or project-agnostic addons/libraries should be excluded, as they may be incompatible with the project's warning configuration.
-			[b]Note:[/b] It is not recommended to remove or change the rule for [code]"res://addons"[/code] as the project's warning configuration may break third-party addons. Instead, consider including individual addons, if necessary.
-			[b]Note:[/b] The editor does not check whether the specified paths are existing directories. It also does not automatically update these paths when directories are moved.
-		</member>
-		<member name="debug/gdscript/warnings/empty_file" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an empty file is parsed.
-		</member>
-		<member name="debug/gdscript/warnings/enable" type="bool" setter="" getter="" default="true">
-			If [code]true[/code], enables specific GDScript warnings (see [code]debug/gdscript/warnings/*[/code] settings). If [code]false[/code], disables all GDScript warnings.
-		</member>
-		<member name="debug/gdscript/warnings/enum_variable_without_default" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a variable has an enum type but no explicit default value, but only if the enum does not contain [code]0[/code] as a valid value.
-		</member>
-		<member name="debug/gdscript/warnings/get_node_default_without_onready" type="int" setter="" getter="" default="2">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when [method Node.get_node] (or the shorthand [code]$[/code]) is used as default value of a class variable without the [code]@onready[/code] annotation.
-		</member>
-		<member name="debug/gdscript/warnings/incompatible_ternary" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a ternary operator may emit values with incompatible types.
-		</member>
-		<member name="debug/gdscript/warnings/inference_on_variant" type="int" setter="" getter="" default="2">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a static inferred type uses a [Variant] as initial value, which makes the static type to also be Variant.
-		</member>
-		<member name="debug/gdscript/warnings/inferred_declaration" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a variable, constant, or parameter has an implicitly inferred static type. In GDScript, type inference is performed by declaring a variable with [code]:=[/code] instead of [code]=[/code] and leaving out the type specifier. For example, [code]var x := 1[/code] will [i]infer[/i] the [int] type, while [code]var x: int = 1[/code] explicitly declares the variable as [int].
-			[b]Note:[/b] This warning is recommended [i]in addition[/i] to [member debug/gdscript/warnings/untyped_declaration] if you want to always specify the type explicitly. Having [code]INFERRED_DECLARATION[/code] warning level higher than [code]UNTYPED_DECLARATION[/code] warning level makes little sense and is not recommended.
-		</member>
-		<member name="debug/gdscript/warnings/int_as_enum_without_cast" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when trying to use an integer as an enum without an explicit cast.
-		</member>
-		<member name="debug/gdscript/warnings/int_as_enum_without_match" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when trying to use an integer as an enum when there is no matching enum member for that numeric value.
-		</member>
-		<member name="debug/gdscript/warnings/integer_division" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when dividing an integer by another integer (the decimal part will be discarded).
-		</member>
-		<member name="debug/gdscript/warnings/missing_await" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when calling a coroutine without [code]await[/code].
-		</member>
-		<member name="debug/gdscript/warnings/missing_tool" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when the base class script has the [code]@tool[/code] annotation, but the current class script does not have it.
-		</member>
-		<member name="debug/gdscript/warnings/narrowing_conversion" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when passing a floating-point value to a function that expects an integer (it will be converted and lose precision).
-		</member>
-		<member name="debug/gdscript/warnings/native_method_override" type="int" setter="" getter="" default="2">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a method in the script overrides a native method, because it may not behave as expected.
-		</member>
-		<member name="debug/gdscript/warnings/onready_with_cast" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an [code]@onready[/code] initializer uses a cast on a [code]$GetNodeLiteral[/code], because it may unexpectedly assign [code]null[/code].
-		</member>
-		<member name="debug/gdscript/warnings/onready_with_export" type="int" setter="" getter="" default="2">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when the [code]@onready[/code] annotation is used together with the [code]@export[/code] annotation, since it may not behave as expected.
-		</member>
-		<member name="debug/gdscript/warnings/redundant_await" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a function that is not a coroutine is called with await.
-		</member>
-		<member name="debug/gdscript/warnings/redundant_static_unload" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when the [code]@static_unload[/code] annotation is used in a script without any static variables.
-		</member>
-		<member name="debug/gdscript/warnings/renamed_in_godot_4_hint" type="bool" setter="" getter="" default="true">
-			When enabled, using a property, enum, or function that was renamed since Godot 3 will produce a hint if an error occurs.
-		</member>
-		<member name="debug/gdscript/warnings/return_value_discarded" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when calling a function without using its return value (by assigning it to a variable or using it as a function argument). These return values are sometimes used to indicate possible errors using the [enum Error] enum.
-		</member>
-		<member name="debug/gdscript/warnings/shadowed_global_identifier" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when defining a local or member variable, signal, or enum that would have the same name as a built-in function or global class name, thus shadowing it.
-		</member>
-		<member name="debug/gdscript/warnings/shadowed_variable" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a local variable or local constant shadows a member declared in the current class.
-		</member>
-		<member name="debug/gdscript/warnings/shadowed_variable_base_class" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a local variable or local constant shadows a member declared in a base class.
-		</member>
-		<member name="debug/gdscript/warnings/standalone_expression" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when calling an expression that may have no effect on the surrounding code, such as writing [code]2 + 2[/code] as a statement.
-		</member>
-		<member name="debug/gdscript/warnings/standalone_ternary" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when calling a ternary expression that may have no effect on the surrounding code, such as writing [code]42 if active else 0[/code] as a statement.
-		</member>
-		<member name="debug/gdscript/warnings/static_called_on_instance" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when calling a static method from an instance of a class instead of from the class directly.
-		</member>
-		<member name="debug/gdscript/warnings/unassigned_variable" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when using a variable that wasn't previously assigned.
-		</member>
-		<member name="debug/gdscript/warnings/unassigned_variable_op_assign" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when assigning a variable using an assignment operator like [code]+=[/code] if the variable wasn't previously assigned.
-		</member>
-		<member name="debug/gdscript/warnings/unreachable_code" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when unreachable code is detected (such as after a [code]return[/code] statement that will always be executed).
-		</member>
-		<member name="debug/gdscript/warnings/unreachable_pattern" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an unreachable [code]match[/code] pattern is detected.
-		</member>
-		<member name="debug/gdscript/warnings/unsafe_call_argument" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when using an expression whose type may not be compatible with the function parameter expected.
-		</member>
-		<member name="debug/gdscript/warnings/unsafe_cast" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a [Variant] value is cast to a non-Variant.
-		</member>
-		<member name="debug/gdscript/warnings/unsafe_method_access" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when calling a method whose presence is not guaranteed at compile-time in the class.
-		</member>
-		<member name="debug/gdscript/warnings/unsafe_property_access" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when accessing a property whose presence is not guaranteed at compile-time in the class.
-		</member>
-		<member name="debug/gdscript/warnings/unsafe_void_return" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when returning a call from a [code]void[/code] function when such call cannot be guaranteed to be also [code]void[/code].
-		</member>
-		<member name="debug/gdscript/warnings/untyped_declaration" type="int" setter="" getter="" default="0">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a variable or parameter has no static type, or if a function has no static return type.
-			[b]Note:[/b] This warning is recommended together with [member EditorSettings.text_editor/completion/add_type_hints] to help achieve type safety.
-		</member>
-		<member name="debug/gdscript/warnings/unused_local_constant" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a local constant is never used.
-		</member>
-		<member name="debug/gdscript/warnings/unused_parameter" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a function parameter is never used.
-		</member>
-		<member name="debug/gdscript/warnings/unused_private_class_variable" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a private member variable is never used.
-		</member>
-		<member name="debug/gdscript/warnings/unused_signal" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a signal is declared but never explicitly used in the class.
-		</member>
-		<member name="debug/gdscript/warnings/unused_variable" type="int" setter="" getter="" default="1">
-			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a local variable is unused.
-		</member>
 		<member name="debug/settings/crash_handler/message" type="String" setter="" getter="" default="&quot;Please include this when reporting the bug to the project developer.&quot;">
 			Message to be displayed before the backtrace when the engine crashes. By default, this message is only used in exported projects due to the editor-only override applied to this setting.
 		</member>
 		<member name="debug/settings/crash_handler/message.editor" type="String" setter="" getter="" default="&quot;Please include this when reporting the bug on: https://github.com/godotengine/godot/issues&quot;">
 			Editor-only override for [member debug/settings/crash_handler/message]. Does not affect exported projects in debug or release mode.
-		</member>
-		<member name="debug/settings/gdscript/always_track_call_stacks" type="bool" setter="" getter="" default="false">
-			Whether GDScript call stacks will be tracked in release builds, thus allowing [method Engine.capture_script_backtraces] to function.
-			[b]Note:[/b] This setting has no effect on editor builds or debug builds, where GDScript call stacks are tracked regardless.
-		</member>
-		<member name="debug/settings/gdscript/always_track_local_variables" type="bool" setter="" getter="" default="false">
-			Whether GDScript local variables will be tracked in all builds, including export builds, thus allowing [method Engine.capture_script_backtraces] to capture them when enabling its [code]include_variables[/code] parameter.
-			Enabling this comes at the cost of roughly 50 bytes of memory per local variable, for every compiled class in the entire project, so can be several MiB in larger projects.
-			[b]Note:[/b] This setting has no effect when running the game from the editor, where GDScript local variables are tracked regardless.
-		</member>
-		<member name="debug/settings/gdscript/max_call_stack" type="int" setter="" getter="" default="1024">
-			Maximum call stack allowed for debugging GDScript.
 		</member>
 		<member name="debug/settings/physics_interpolation/enable_warnings" type="bool" setter="" getter="" default="true">
 			If [code]true[/code], enables warnings which can help pinpoint where nodes are being incorrectly updated, which will result in incorrect interpolation and visual glitches.
@@ -1127,16 +947,6 @@
 			[b]Note:[/b] The [b]Adaptive[/b] and [b]Mailbox[/b] V-Sync modes are only supported in the Forward+ and Mobile rendering methods, not Compatibility.
 			[b]Note:[/b] This property is only read when the project starts. To change the V-Sync mode at runtime, call [method DisplayServer.window_set_vsync_mode] instead.
 		</member>
-		<member name="dotnet/project/assembly_name" type="String" setter="" getter="" default="&quot;&quot;">
-			Name of the .NET assembly. This name is used as the name of the [code].csproj[/code] and [code].sln[/code] files. By default, it's set to the name of the project ([member application/config/name]) allowing to change it in the future without affecting the .NET assembly.
-		</member>
-		<member name="dotnet/project/assembly_reload_attempts" type="int" setter="" getter="" default="3">
-			Number of times to attempt assembly reloading after rebuilding .NET assemblies. Effectively also the timeout in seconds to wait for unloading of script assemblies to finish.
-		</member>
-		<member name="dotnet/project/solution_directory" type="String" setter="" getter="" default="&quot;&quot;">
-			Directory that contains the [code].sln[/code] file. By default, the [code].sln[/code] files is in the root of the project directory, next to the [code]project.godot[/code] and [code].csproj[/code] files.
-			Change this value to set up a multi-project scenario where there are multiple [code].csproj[/code] files. Keep in mind that the Godot project is considered one of the C# projects in the workspace and its root directory should contain the [code]project.godot[/code] and [code].csproj[/code] files next to each other.
-		</member>
 		<member name="editor/export/convert_text_resources_to_binary" type="bool" setter="" getter="" default="true">
 			If [code]true[/code], text resource ([code]tres[/code]) and text scene ([code]tscn[/code]) files are converted to their corresponding binary format on export. This decreases file sizes and speeds up loading slightly.
 			[b]Note:[/b] Because a resource's file extension may change in an exported project, it is heavily recommended to use [method @GDScript.load] or [ResourceLoader] instead of [FileAccess] to load resources dynamically.
@@ -1204,9 +1014,6 @@
 		<member name="editor/naming/scene_name_casing" type="int" setter="" getter="" default="2">
 			When generating scene file names from scene root node, set the type of casing to use in this project. This is mostly an editor setting.
 		</member>
-		<member name="editor/naming/script_name_casing" type="int" setter="" getter="" default="0">
-			When generating script file names from the selected node, set the type of casing to use in this project. This is mostly an editor setting.
-		</member>
 		<member name="editor/run/main_run_args" type="String" setter="" getter="" default="&quot;&quot;">
 			The command-line arguments to append to Godot's own command line when running the project. This doesn't affect the editor itself.
 			It is possible to make another executable run Godot by using the [code]%command%[/code] placeholder. The placeholder will be replaced with Godot's own command line. Program-specific arguments should be placed [i]before[/i] the placeholder, whereas Godot-specific arguments should be placed [i]after[/i] the placeholder.
@@ -1214,9 +1021,6 @@
 			[codeblock lang=text]
 			prime-run %command%
 			[/codeblock]
-		</member>
-		<member name="editor/script/templates_search_path" type="String" setter="" getter="" default="&quot;res://script_templates&quot;">
-			Search path for project-specific script templates. Godot will search for script templates both in the editor-specific path and in this project-specific path.
 		</member>
 		<member name="editor/version_control/autoload_on_startup" type="bool" setter="" getter="" default="false">
 		</member>

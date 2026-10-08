@@ -404,14 +404,6 @@ void EditorInterface::add_root_node(Node *p_node) {
 	EditorSceneTabs::get_singleton()->update_scene_tabs();
 }
 
-void EditorInterface::set_plugin_enabled(const String &p_plugin, bool p_enabled) {
-	EditorNode::get_singleton()->set_addon_plugin_enabled(p_plugin, p_enabled, true);
-}
-
-bool EditorInterface::is_plugin_enabled(const String &p_plugin) const {
-	return EditorNode::get_singleton()->is_addon_plugin_enabled(p_plugin);
-}
-
 // Editor GUI.
 
 Ref<Theme> EditorInterface::get_editor_theme() const {
@@ -427,10 +419,6 @@ VBoxContainer *EditorInterface::get_editor_main_screen() const {
 	return EditorNode::get_singleton()->get_editor_main_screen()->get_control();
 }
 #endif
-
-ScriptEditor *EditorInterface::get_script_editor() const {
-	return ScriptEditor::get_singleton();
-}
 
 SubViewport *EditorInterface::get_editor_viewport_2d() const {
 	return EditorNode::get_singleton()->get_scene_root();
@@ -576,7 +564,7 @@ void EditorInterface::popup_quick_open(const Callable &p_callback, const TypedAr
 	} else {
 		for (int i = 0; i < p_base_types.size(); i++) {
 			StringName type = p_base_types[i];
-			ERR_FAIL_COND_MSG(!(ClassDB::is_parent_class(type, required_type) || EditorNode::get_editor_data().script_class_is_parent(type, required_type)), "Only types deriving from Resource are supported in the quick open dialog.");
+			ERR_FAIL_COND_MSG(!ClassDB::is_parent_class(type, required_type), "Only types deriving from Resource are supported in the quick open dialog.");
 			base_types.append(type);
 		}
 	}
@@ -599,7 +587,7 @@ void EditorInterface::popup_create_dialog(const Callable &p_callback, const Stri
 	create_dialog->set_type_blocklist(blocklist);
 
 	String safe_base_type = p_base_type;
-	if (p_base_type.is_empty() || (!ClassDB::class_exists(p_base_type) && !ScriptServer::is_global_class(p_base_type))) {
+	if (p_base_type.is_empty() || !ClassDB::class_exists(p_base_type)) {
 		ERR_PRINT(vformat("Invalid base type '%s'. The base type has fallen back to 'Object'.", p_base_type));
 		safe_base_type = "Object";
 	}
@@ -711,10 +699,6 @@ void EditorInterface::edit_resource(const Ref<Resource> &p_resource) {
 
 void EditorInterface::edit_node(Node *p_node) {
 	EditorNode::get_singleton()->edit_node(p_node);
-}
-
-void EditorInterface::edit_script(const Ref<Script> &p_script, int p_line, int p_col, bool p_grab_focus) {
-	ScriptEditor::get_singleton()->edit(p_script, p_line - 1, p_col - 1, p_grab_focus);
 }
 
 void EditorInterface::open_scene_from_path(const String &scene_path, bool p_set_inherited) {
@@ -849,7 +833,7 @@ void EditorInterface::get_argument_options(const StringName &p_function, int p_i
 	if (p_idx == 0) {
 #ifndef DISABLE_DEPRECATED
 		if (pf == "set_main_screen_editor") {
-			for (String E : { "\"2D\"", "\"3D\"", "\"Script\"", "\"Game\"", "\"Asset Store\"" }) {
+			for (String E : { "\"2D\"", "\"3D\"", "\"Docs\"", "\"Game\"", "\"Asset Store\"" }) {
 				r_options->push_back(E);
 			}
 		}
@@ -883,14 +867,10 @@ void EditorInterface::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("make_mesh_previews", "meshes", "preview_size"), &EditorInterface::_make_mesh_previews);
 
-	ClassDB::bind_method(D_METHOD("set_plugin_enabled", "plugin", "enabled"), &EditorInterface::set_plugin_enabled);
-	ClassDB::bind_method(D_METHOD("is_plugin_enabled", "plugin"), &EditorInterface::is_plugin_enabled);
-
 	// Editor GUI.
 
 	ClassDB::bind_method(D_METHOD("get_editor_theme"), &EditorInterface::get_editor_theme);
 	ClassDB::bind_method(D_METHOD("get_base_control"), &EditorInterface::get_base_control);
-	ClassDB::bind_method(D_METHOD("get_script_editor"), &EditorInterface::get_script_editor);
 	ClassDB::bind_method(D_METHOD("get_editor_viewport_2d"), &EditorInterface::get_editor_viewport_2d);
 	ClassDB::bind_method(D_METHOD("get_editor_viewport_3d", "idx"), &EditorInterface::get_editor_viewport_3d, DEFVAL(0));
 
@@ -945,7 +925,6 @@ void EditorInterface::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("edit_resource", "resource"), &EditorInterface::edit_resource);
 	ClassDB::bind_method(D_METHOD("edit_node", "node"), &EditorInterface::edit_node);
-	ClassDB::bind_method(D_METHOD("edit_script", "script", "line", "column", "grab_focus"), &EditorInterface::edit_script, DEFVAL(-1), DEFVAL(0), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("open_scene_from_path", "scene_filepath", "set_inherited"), &EditorInterface::open_scene_from_path, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("reload_scene_from_path", "scene_filepath"), &EditorInterface::reload_scene_from_path);
 

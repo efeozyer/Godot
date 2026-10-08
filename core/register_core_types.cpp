@@ -77,8 +77,6 @@
 #include "core/math/random_number_generator.h"
 #include "core/math/triangle_mesh.h"
 #include "core/object/class_db.h"
-#include "core/object/script_backtrace.h"
-#include "core/object/script_language_extension.h"
 #include "core/object/undo_redo.h"
 #include "core/object/worker_thread_pool.h"
 #include "core/os/main_loop.h"
@@ -179,12 +177,6 @@ void register_core_types() {
 		resource_format_image.instantiate();
 		ResourceLoader::add_resource_format_loader(resource_format_image);
 	}
-
-	GDREGISTER_ABSTRACT_CLASS(Script);
-	GDREGISTER_ABSTRACT_CLASS(ScriptLanguage);
-	GDREGISTER_CLASS(ScriptBacktrace);
-	GDREGISTER_VIRTUAL_CLASS(ScriptExtension);
-	GDREGISTER_VIRTUAL_CLASS(ScriptLanguageExtension);
 
 	GDREGISTER_CLASS(MissingResource);
 	GDREGISTER_CLASS(Image);
@@ -350,7 +342,6 @@ void register_core_types() {
 	_engine_debugger = memnew(CoreBind::EngineDebugger);
 
 	GDREGISTER_NATIVE_STRUCT(ObjectID, "uint64_t id = 0");
-	GDREGISTER_NATIVE_STRUCT(ScriptLanguageExtensionProfilingInfo, "StringName signature;uint64_t call_count;uint64_t total_time;uint64_t self_time");
 
 	worker_thread_pool = memnew(WorkerThreadPool);
 

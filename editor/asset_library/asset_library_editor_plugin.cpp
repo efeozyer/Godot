@@ -47,12 +47,12 @@
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/project_manager/project_manager.h"
 #include "editor/settings/editor_settings.h"
-#include "editor/settings/project_settings_editor.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/color_rect.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/separator.h"
 #include "scene/main/scene_tree.h"
+#include "scene/main/timer.h"
 #include "scene/resources/image_texture.h"
 #include "scene/resources/style_box_flat.h"
 
@@ -2119,11 +2119,6 @@ void EditorAssetLibrary::_asset_open() {
 	asset_open->popup_file_dialog();
 }
 
-void EditorAssetLibrary::_manage_plugins() {
-	ProjectSettingsEditor::get_singleton()->popup_project_settings(true);
-	ProjectSettingsEditor::get_singleton()->set_plugins_page();
-}
-
 EditorAssetLibraryItemDownload *EditorAssetLibrary::_get_asset_in_progress(const String &p_asset_id) const {
 	for (int i = 0; i < downloads_hb->get_child_count(); i++) {
 		EditorAssetLibraryItemDownload *d = Object::cast_to<EditorAssetLibraryItemDownload>(downloads_hb->get_child(i));
@@ -2254,14 +2249,8 @@ EditorAssetLibrary::EditorAssetLibrary(bool p_templates_only) {
 	search_hb->add_child(open_asset);
 	open_asset->connect(SceneStringName(pressed), callable_mp(this, &EditorAssetLibrary::_asset_open));
 
-	Button *plugins = memnew(Button);
-	plugins->set_text(TTRC("Plugins..."));
-	search_hb->add_child(plugins);
-	plugins->connect(SceneStringName(pressed), callable_mp(this, &EditorAssetLibrary::_manage_plugins));
-
 	if (templates_only) {
 		open_asset->hide();
-		plugins->hide();
 	}
 
 	HBoxContainer *search_hb2 = memnew(HBoxContainer);

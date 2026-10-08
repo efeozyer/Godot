@@ -39,7 +39,6 @@
 #include "core/io/resource_importer.h"
 #include "core/io/xml_parser.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/string/translation_server.h"
 #include "editor/export/editor_export_platform.h"
 #include "editor/settings/editor_settings.h"
@@ -357,15 +356,6 @@ void DocTools::remove_doc(const String &p_class_name) {
 		}
 	}
 	class_list.erase(p_class_name);
-}
-
-void DocTools::remove_script_doc_by_path(const String &p_path) {
-	for (KeyValue<String, DocData::ClassDoc> &E : class_list) {
-		if (E.value.is_script_doc && E.value.script_path == p_path) {
-			remove_doc(E.key);
-			return;
-		}
-	}
 }
 
 bool DocTools::has_doc(const String &p_class_name) {
@@ -1092,107 +1082,6 @@ void DocTools::generate(BitField<GenerateFlags> p_flags) {
 		}
 
 		c.methods.sort_custom<MethodCompare>();
-	}
-
-	// Add scripting language built-ins.
-	{
-		// We only add a doc entry for languages which actually define any built-in
-		// methods, constants, or annotations.
-		for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-			ScriptLanguage *lang = ScriptServer::get_language(i);
-			String cname = "@" + lang->get_name();
-			DocData::ClassDoc c;
-			c.name = cname;
-
-			inheriting[""].insert(cname);
-
-			// Get functions.
-			List<MethodInfo> minfo;
-			lang->get_public_functions(&minfo);
-
-			for (const MethodInfo &mi : minfo) {
-				DocData::MethodDoc md;
-				md.name = mi.name;
-
-				if (mi.flags & METHOD_FLAG_VARARG) {
-					if (!md.qualifiers.is_empty()) {
-						md.qualifiers += " ";
-					}
-					md.qualifiers += "vararg";
-				}
-
-				DocData::return_doc_from_retinfo(md, mi.return_val);
-
-				for (int64_t j = 0; j < mi.arguments.size(); ++j) {
-					DocData::ArgumentDoc ad;
-					DocData::argument_doc_from_arginfo(ad, mi.arguments[j]);
-
-					int darg_idx = j - (mi.arguments.size() - mi.default_arguments.size());
-					if (darg_idx >= 0) {
-						ad.default_value = DocData::get_default_value_string(mi.default_arguments[darg_idx]);
-					}
-
-					md.arguments.push_back(ad);
-				}
-
-				c.methods.push_back(md);
-			}
-
-			// Get constants.
-			List<Pair<String, Variant>> cinfo;
-			lang->get_public_constants(&cinfo);
-
-			for (const Pair<String, Variant> &E : cinfo) {
-				DocData::ConstantDoc cd;
-				cd.name = E.first;
-				cd.value = E.second;
-				cd.is_value_valid = true;
-				cd.type = Variant::get_type_name(E.second.get_type());
-				c.constants.push_back(cd);
-			}
-
-			// Get annotations.
-			List<MethodInfo> ainfo;
-			lang->get_public_annotations(&ainfo);
-
-			for (const MethodInfo &ai : ainfo) {
-				DocData::MethodDoc atd;
-				atd.name = ai.name;
-
-				if (ai.flags & METHOD_FLAG_VARARG) {
-					if (!atd.qualifiers.is_empty()) {
-						atd.qualifiers += " ";
-					}
-					atd.qualifiers += "vararg";
-				}
-
-				DocData::return_doc_from_retinfo(atd, ai.return_val);
-
-				for (int64_t j = 0; j < ai.arguments.size(); ++j) {
-					DocData::ArgumentDoc ad;
-					DocData::argument_doc_from_arginfo(ad, ai.arguments[j]);
-
-					int64_t darg_idx = j - (ai.arguments.size() - ai.default_arguments.size());
-					if (darg_idx >= 0) {
-						ad.default_value = DocData::get_default_value_string(ai.default_arguments[darg_idx]);
-					}
-
-					atd.arguments.push_back(ad);
-				}
-
-				c.annotations.push_back(atd);
-			}
-
-			// Skip adding the lang if it doesn't expose anything (e.g. C#).
-			if (c.methods.is_empty() && c.constants.is_empty() && c.annotations.is_empty()) {
-				continue;
-			}
-
-			c.methods.sort_custom<MethodCompare>();
-			c.annotations.sort_custom<MethodCompare>();
-
-			class_list[cname] = c;
-		}
 	}
 }
 

@@ -36,9 +36,9 @@
 #include "core/object/editor_language.h"
 #include "core/os/keyboard.h"
 #include "core/string/string_builder.h"
+#include "editor/document/document_navigation_marker.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
-#include "editor/script/script_editor_navigation_marker.h"
 #include "editor/script/syntax_highlighters.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -90,9 +90,9 @@ void GotoLinePopup::_goto_line() {
 }
 
 void GotoLinePopup::_submit() {
-	ScriptEditorNavigationMarker::get_singleton()->locate_begin();
+	DocumentNavigationMarker::get_singleton()->locate_begin();
 	_goto_line();
-	ScriptEditorNavigationMarker::get_singleton()->locate_end();
+	DocumentNavigationMarker::get_singleton()->locate_end();
 	hide();
 }
 
@@ -586,7 +586,7 @@ void FindReplaceBar::_hide_bar() {
 
 void FindReplaceBar::_update_toggle_replace_button(bool p_replace_visible) {
 	String tooltip = p_replace_visible ? TTRC("Hide Replace") : TTRC("Show Replace");
-	String shortcut = ED_GET_SHORTCUT(p_replace_visible ? "script_text_editor/find" : "script_text_editor/replace")->get_as_text();
+	String shortcut = ED_GET_SHORTCUT(p_replace_visible ? "document_text_editor/find" : "document_text_editor/replace")->get_as_text();
 	toggle_replace_button->set_tooltip_text(vformat("%s (%s)", tooltip, shortcut));
 	StringName rtl_compliant_arrow = is_layout_rtl() ? SNAME("GuiTreeArrowLeft") : SNAME("GuiTreeArrowRight");
 	toggle_replace_button->set_button_icon(get_editor_theme_icon(p_replace_visible ? SNAME("GuiTreeArrowDown") : rtl_compliant_arrow));
@@ -890,12 +890,12 @@ void CodeTextEditor::input(const Ref<InputEvent> &event) {
 
 	if (!text_editor->has_focus()) {
 		if ((find_replace_bar != nullptr && find_replace_bar->is_visible()) && (find_replace_bar->has_focus() || (get_viewport()->gui_get_focus_owner() && find_replace_bar->is_ancestor_of(get_viewport()->gui_get_focus_owner())))) {
-			if (ED_IS_SHORTCUT("script_text_editor/find_next", key_event)) {
+			if (ED_IS_SHORTCUT("document_text_editor/find_next", key_event)) {
 				find_replace_bar->search_next();
 				accept_event();
 				return;
 			}
-			if (ED_IS_SHORTCUT("script_text_editor/find_previous", key_event)) {
+			if (ED_IS_SHORTCUT("document_text_editor/find_previous", key_event)) {
 				find_replace_bar->search_prev();
 				accept_event();
 				return;
@@ -904,32 +904,32 @@ void CodeTextEditor::input(const Ref<InputEvent> &event) {
 		return;
 	}
 
-	if (ED_IS_SHORTCUT("script_text_editor/move_up", key_event)) {
+	if (ED_IS_SHORTCUT("document_text_editor/move_up", key_event)) {
 		text_editor->move_lines_up();
 		accept_event();
 		return;
 	}
-	if (ED_IS_SHORTCUT("script_text_editor/move_down", key_event)) {
+	if (ED_IS_SHORTCUT("document_text_editor/move_down", key_event)) {
 		text_editor->move_lines_down();
 		accept_event();
 		return;
 	}
-	if (ED_IS_SHORTCUT("script_text_editor/delete_line", key_event)) {
+	if (ED_IS_SHORTCUT("document_text_editor/delete_line", key_event)) {
 		text_editor->delete_lines();
 		accept_event();
 		return;
 	}
-	if (ED_IS_SHORTCUT("script_text_editor/join_lines", key_event)) {
+	if (ED_IS_SHORTCUT("document_text_editor/join_lines", key_event)) {
 		text_editor->join_lines();
 		accept_event();
 		return;
 	}
-	if (ED_IS_SHORTCUT("script_text_editor/duplicate_selection", key_event)) {
+	if (ED_IS_SHORTCUT("document_text_editor/duplicate_selection", key_event)) {
 		text_editor->duplicate_selection();
 		accept_event();
 		return;
 	}
-	if (ED_IS_SHORTCUT("script_text_editor/duplicate_lines", key_event)) {
+	if (ED_IS_SHORTCUT("document_text_editor/duplicate_lines", key_event)) {
 		text_editor->duplicate_lines();
 		accept_event();
 		return;
@@ -967,17 +967,17 @@ void CodeTextEditor::_text_editor_gui_input(const Ref<InputEvent> &p_event) {
 
 	if (k.is_valid()) {
 		if (k->is_pressed()) {
-			if (ED_IS_SHORTCUT("script_editor/zoom_in", p_event)) {
+			if (ED_IS_SHORTCUT("document_editor/zoom_in", p_event)) {
 				_zoom_in();
 				accept_event();
 				return;
 			}
-			if (ED_IS_SHORTCUT("script_editor/zoom_out", p_event)) {
+			if (ED_IS_SHORTCUT("document_editor/zoom_out", p_event)) {
 				_zoom_out();
 				accept_event();
 				return;
 			}
-			if (ED_IS_SHORTCUT("script_editor/reset_zoom", p_event)) {
+			if (ED_IS_SHORTCUT("document_editor/reset_zoom", p_event)) {
 				_zoom_to(1);
 				accept_event();
 				return;
@@ -1044,10 +1044,6 @@ void CodeTextEditor::_complete_request() {
 			font_color = completion_string_color;
 		} else if (e.insert_text.begins_with("##") || e.insert_text.begins_with("///")) {
 			font_color = completion_doc_comment_color;
-		} else if (e.insert_text.begins_with("&")) {
-			font_color = completion_string_name_color;
-		} else if (e.insert_text.begins_with("^")) {
-			font_color = completion_node_path_color;
 		} else if (e.insert_text.begins_with("#") || e.insert_text.begins_with("//")) {
 			font_color = completion_comment_color;
 		}
@@ -1111,8 +1107,6 @@ void CodeTextEditor::update_editor_settings() {
 	// Theme: Highlighting
 	completion_font_color = EDITOR_GET("text_editor/theme/highlighting/completion_font_color");
 	completion_string_color = EDITOR_GET("text_editor/theme/highlighting/string_color");
-	completion_string_name_color = EDITOR_GET("text_editor/theme/highlighting/gdscript/string_name_color");
-	completion_node_path_color = EDITOR_GET("text_editor/theme/highlighting/gdscript/node_path_color");
 	completion_comment_color = EDITOR_GET("text_editor/theme/highlighting/comment_color");
 	completion_doc_comment_color = EDITOR_GET("text_editor/theme/highlighting/doc_comment_color");
 
@@ -1415,10 +1409,10 @@ void CodeTextEditor::center_viewport_to_caret_if_line_invisible(int p_line) {
 }
 
 void CodeTextEditor::trigger_history_save_on_navigate() {
-	if (!ScriptEditorNavigationMarker::get_singleton()->is_initializing() && ScriptEditorNavigationMarker::get_singleton()->is_locating()) {
+	if (!DocumentNavigationMarker::get_singleton()->is_initializing() && DocumentNavigationMarker::get_singleton()->is_locating()) {
 		call_on_all_layout_pending_finished(callable_mp(this, &CodeTextEditor::_emit_request_save_new_history));
-		if (ScriptEditorNavigationMarker::get_singleton()->is_locating()) {
-			ScriptEditorNavigationMarker::get_singleton()->locate_end();
+		if (DocumentNavigationMarker::get_singleton()->is_locating()) {
+			DocumentNavigationMarker::get_singleton()->locate_end();
 		}
 	}
 }
@@ -1464,14 +1458,6 @@ void CodeTextEditor::goto_line_and_center_if_necessary(int p_line, int p_column)
 	} else {
 		goto_line(p_line, p_column);
 	}
-}
-
-void CodeTextEditor::set_executing_line(int p_line) {
-	text_editor->set_line_as_executing(p_line, true);
-}
-
-void CodeTextEditor::clear_executing_line() {
-	text_editor->clear_executing_lines();
 }
 
 Dictionary CodeTextEditor::get_edit_state() {
@@ -1790,7 +1776,7 @@ void CodeTextEditor::_notification(int p_what) {
 			zoom_button->set_tooltip_text(
 					TTR("Zoom Factor") + "\n" +
 					// TRANSLATORS: The placeholders are keyboard shortcuts. The first one is in the form of "Ctrl+"/"Cmd+".
-					vformat(TTR("%s+Mouse Wheel, %s/%s: Finetune\n%s: Reset"), keycode_get_string((Key)KeyModifierMask::CMD_OR_CTRL), ED_GET_SHORTCUT("script_editor/zoom_in")->get_as_text(), ED_GET_SHORTCUT("script_editor/zoom_out")->get_as_text(), ED_GET_SHORTCUT("script_editor/reset_zoom")->get_as_text()));
+					vformat(TTR("%s+Mouse Wheel, %s/%s: Finetune\n%s: Reset"), keycode_get_string((Key)KeyModifierMask::CMD_OR_CTRL), ED_GET_SHORTCUT("document_editor/zoom_in")->get_as_text(), ED_GET_SHORTCUT("document_editor/zoom_out")->get_as_text(), ED_GET_SHORTCUT("document_editor/reset_zoom")->get_as_text()));
 
 			[[fallthrough]];
 		}
@@ -1961,9 +1947,9 @@ void CodeTextEditor::set_code_complete_func(CodeTextEditorCodeCompleteFunc p_cod
 
 CodeTextEditor::CodeTextEditor() {
 	code_complete_func = nullptr;
-	ED_SHORTCUT("script_editor/zoom_in", TTRC("Zoom In"), KeyModifierMask::CMD_OR_CTRL | Key::EQUAL);
-	ED_SHORTCUT("script_editor/zoom_out", TTRC("Zoom Out"), KeyModifierMask::CMD_OR_CTRL | Key::MINUS);
-	ED_SHORTCUT_ARRAY("script_editor/reset_zoom", TTRC("Reset Zoom"),
+	ED_SHORTCUT("document_editor/zoom_in", TTRC("Zoom In"), KeyModifierMask::CMD_OR_CTRL | Key::EQUAL);
+	ED_SHORTCUT("document_editor/zoom_out", TTRC("Zoom Out"), KeyModifierMask::CMD_OR_CTRL | Key::MINUS);
+	ED_SHORTCUT_ARRAY("document_editor/reset_zoom", TTRC("Reset Zoom"),
 			{ int32_t(KeyModifierMask::CMD_OR_CTRL | Key::KEY_0), int32_t(KeyModifierMask::CMD_OR_CTRL | Key::KP_0) });
 
 	text_editor = memnew(CodeEdit);
@@ -2057,7 +2043,7 @@ CodeTextEditor::CodeTextEditor() {
 	line_and_col_button->set_tooltip_text(TTRC("Line and column numbers."));
 	line_and_col_button->set_accessibility_name(TTRC("Line and column numbers."));
 	line_and_col_button->connect(SceneStringName(pressed), callable_mp(this, &CodeTextEditor::_show_goto_popup_request));
-	line_and_col_button->set_shortcut(ED_GET_SHORTCUT("script_text_editor/goto_line"));
+	line_and_col_button->set_shortcut(ED_GET_SHORTCUT("document_text_editor/goto_line"));
 	line_and_col_button->set_shortcut_context(this);
 	status_bar->add_child(line_and_col_button);
 

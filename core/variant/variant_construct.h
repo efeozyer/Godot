@@ -417,16 +417,16 @@ public:
 			return;
 		}
 
-		if (p_args[4]->get_type() != Variant::INT) {
+		if (p_args[3]->get_type() != Variant::INT) {
 			r_error.error = Callable::CallError::CALL_ERROR_INVALID_ARGUMENT;
-			r_error.argument = 4;
+			r_error.argument = 3;
 			r_error.expected = Variant::INT;
 			return;
 		}
 
-		if (p_args[5]->get_type() != Variant::STRING_NAME) {
+		if (p_args[4]->get_type() != Variant::STRING_NAME) {
 			r_error.error = Callable::CallError::CALL_ERROR_INVALID_ARGUMENT;
-			r_error.argument = 5;
+			r_error.argument = 4;
 			r_error.expected = Variant::STRING_NAME;
 			return;
 		}
@@ -434,35 +434,33 @@ public:
 		const Dictionary &base_dict = VariantInternalAccessor<Dictionary>::get(p_args[0]);
 		const uint32_t key_type = p_args[1]->operator uint32_t();
 		const StringName &key_class_name = VariantInternalAccessor<StringName>::get(p_args[2]);
-		const uint32_t value_type = p_args[4]->operator uint32_t();
-		const StringName &value_class_name = VariantInternalAccessor<StringName>::get(p_args[5]);
-		r_ret = Dictionary(base_dict, key_type, key_class_name, *p_args[3], value_type, value_class_name, *p_args[6]);
+		const uint32_t value_type = p_args[3]->operator uint32_t();
+		const StringName &value_class_name = VariantInternalAccessor<StringName>::get(p_args[4]);
+		r_ret = Dictionary(base_dict, key_type, key_class_name, value_type, value_class_name);
 	}
 
 	static inline void validated_construct(Variant *r_ret, const Variant **p_args) {
 		const Dictionary &base_dict = VariantInternalAccessor<Dictionary>::get(p_args[0]);
 		const uint32_t key_type = p_args[1]->operator uint32_t();
 		const StringName &key_class_name = VariantInternalAccessor<StringName>::get(p_args[2]);
-		const uint32_t value_type = p_args[4]->operator uint32_t();
-		const StringName &value_class_name = VariantInternalAccessor<StringName>::get(p_args[5]);
-		*r_ret = Dictionary(base_dict, key_type, key_class_name, *p_args[3], value_type, value_class_name, *p_args[6]);
+		const uint32_t value_type = p_args[3]->operator uint32_t();
+		const StringName &value_class_name = VariantInternalAccessor<StringName>::get(p_args[4]);
+		*r_ret = Dictionary(base_dict, key_type, key_class_name, value_type, value_class_name);
 	}
 
 	static void ptr_construct(void *p_base, const void **p_args) {
 		const Dictionary &base_dict = PtrToArg<Dictionary>::convert(p_args[0]);
 		const uint32_t key_type = PtrToArg<uint32_t>::convert(p_args[1]);
 		const StringName &key_class_name = PtrToArg<StringName>::convert(p_args[2]);
-		const Variant &key_script = PtrToArg<Variant>::convert(p_args[3]);
-		const uint32_t value_type = PtrToArg<uint32_t>::convert(p_args[4]);
-		const StringName &value_class_name = PtrToArg<StringName>::convert(p_args[5]);
-		const Variant &value_script = PtrToArg<Variant>::convert(p_args[6]);
-		Dictionary dst_arr = Dictionary(base_dict, key_type, key_class_name, key_script, value_type, value_class_name, value_script);
+		const uint32_t value_type = PtrToArg<uint32_t>::convert(p_args[3]);
+		const StringName &value_class_name = PtrToArg<StringName>::convert(p_args[4]);
+		Dictionary dst_arr = Dictionary(base_dict, key_type, key_class_name, value_type, value_class_name);
 
 		PtrConstruct<Dictionary>::construct(dst_arr, p_base);
 	}
 
 	static int get_argument_count() {
-		return 7;
+		return 5;
 	}
 
 	static Variant::Type get_argument_type(int p_arg) {
@@ -477,16 +475,10 @@ public:
 				return Variant::STRING_NAME;
 			} break;
 			case 3: {
-				return Variant::NIL;
-			} break;
-			case 4: {
 				return Variant::INT;
 			} break;
-			case 5: {
+			case 4: {
 				return Variant::STRING_NAME;
-			} break;
-			case 6: {
-				return Variant::NIL;
 			} break;
 			default: {
 				return Variant::NIL;
@@ -525,28 +517,27 @@ public:
 
 		const Array &base_arr = VariantInternalAccessor<Array>::get(p_args[0]);
 		const uint32_t type = p_args[1]->operator uint32_t();
-		r_ret = Array(base_arr, type, *p_args[2], *p_args[3]);
+		r_ret = Array(base_arr, type, *p_args[2]);
 	}
 
 	static inline void validated_construct(Variant *r_ret, const Variant **p_args) {
 		const Array &base_arr = VariantInternalAccessor<Array>::get(p_args[0]);
 		const uint32_t type = p_args[1]->operator uint32_t();
 		const StringName &class_name = VariantInternalAccessor<StringName>::get(p_args[2]);
-		*r_ret = Array(base_arr, type, class_name, *p_args[3]);
+		*r_ret = Array(base_arr, type, class_name);
 	}
 
 	static void ptr_construct(void *p_base, const void **p_args) {
 		const Array &base_arr = PtrToArg<Array>::convert(p_args[0]);
 		const uint32_t type = PtrToArg<uint32_t>::convert(p_args[1]);
 		const StringName &class_name = PtrToArg<StringName>::convert(p_args[2]);
-		const Variant &script = PtrToArg<Variant>::convert(p_args[3]);
-		Array dst_arr = Array(base_arr, type, class_name, script);
+		Array dst_arr = Array(base_arr, type, class_name);
 
 		PtrConstruct<Array>::construct(dst_arr, p_base);
 	}
 
 	static int get_argument_count() {
-		return 4;
+		return 3;
 	}
 
 	static Variant::Type get_argument_type(int p_arg) {
@@ -559,9 +550,6 @@ public:
 			} break;
 			case 2: {
 				return Variant::STRING_NAME;
-			} break;
-			case 3: {
-				return Variant::NIL;
 			} break;
 			default: {
 				return Variant::NIL;

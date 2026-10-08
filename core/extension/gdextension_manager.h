@@ -63,10 +63,6 @@ private:
 	void _finish_load_extension(const Ref<GDExtension> &p_extension);
 	LoadStatus _unload_extension_internal(const Ref<GDExtension> &p_extension);
 
-#ifdef TOOLS_ENABLED
-	static void _reload_all_scripts();
-#endif
-
 public:
 	LoadStatus load_extension(const String &p_path);
 	LoadStatus load_extension_from_function(const String &p_path, GDExtensionPtr<const GDExtensionInitializationFunction> p_init_func);

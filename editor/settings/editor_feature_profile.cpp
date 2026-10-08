@@ -46,7 +46,6 @@
 
 const char *EditorFeatureProfile::feature_names[FEATURE_MAX] = {
 	TTRC("3D Editor"),
-	TTRC("Script Editor"),
 	TTRC("Asset Store"),
 	TTRC("Scene Tree Editing"),
 #ifndef DISABLE_DEPRECATED
@@ -62,7 +61,6 @@ const char *EditorFeatureProfile::feature_names[FEATURE_MAX] = {
 
 const char *EditorFeatureProfile::feature_descriptions[FEATURE_MAX] = {
 	TTRC("Allows to view and edit 3D scenes."),
-	TTRC("Allows to edit scripts using the integrated script editor."),
 	TTRC("Provides built-in access to the Asset Store."),
 	TTRC("Allows editing the node hierarchy in the Scene dock."),
 #ifndef DISABLE_DEPRECATED
@@ -78,7 +76,6 @@ const char *EditorFeatureProfile::feature_descriptions[FEATURE_MAX] = {
 
 const char *EditorFeatureProfile::feature_identifiers[FEATURE_MAX] = {
 	"3d",
-	"script",
 	"asset_lib",
 	"scene_tree",
 #ifndef DISABLE_DEPRECATED
@@ -319,7 +316,6 @@ void EditorFeatureProfile::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("load_from_file", "path"), &EditorFeatureProfile::load_from_file);
 
 	BIND_ENUM_CONSTANT(FEATURE_3D);
-	BIND_ENUM_CONSTANT(FEATURE_SCRIPT);
 	BIND_ENUM_CONSTANT(FEATURE_ASSET_LIB);
 	BIND_ENUM_CONSTANT(FEATURE_SCENE_TREE);
 #ifndef DISABLE_DEPRECATED

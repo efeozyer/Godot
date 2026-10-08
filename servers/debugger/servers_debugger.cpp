@@ -35,13 +35,12 @@
 #include "core/debugger/engine_debugger.h"
 #include "core/debugger/engine_profiler.h"
 #include "core/io/resource_loader.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "servers/display/display_server.h"
 #include "servers/rendering/rendering_server.h"
 
-#define CHECK_SIZE(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() < (uint32_t)(expected), false, String("Malformed ") + what + " message from script debugger, message too short. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
-#define CHECK_END(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() > (uint32_t)expected, false, String("Malformed ") + what + " message from script debugger, message too long. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
+#define CHECK_SIZE(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() < (uint32_t)(expected), false, String("Malformed ") + what + " message from debugger, message too short. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
+#define CHECK_END(arr, expected, what) ERR_FAIL_COND_V_MSG((uint32_t)arr.size() > (uint32_t)expected, false, String("Malformed ") + what + " message from debugger, message too long. Expected size: " + itos(expected) + ", actual size: " + itos(arr.size()))
 
 Array ServersDebugger::ResourceUsage::serialize() {
 	infos.sort();
@@ -75,20 +74,8 @@ bool ServersDebugger::ResourceUsage::deserialize(const Array &p_arr) {
 	return true;
 }
 
-Array ServersDebugger::ScriptFunctionSignature::serialize() {
-	return Array{ name, id };
-}
-
-bool ServersDebugger::ScriptFunctionSignature::deserialize(const Array &p_arr) {
-	CHECK_SIZE(p_arr, 2, "ScriptFunctionSignature");
-	name = p_arr[0];
-	id = p_arr[1];
-	CHECK_END(p_arr, 2, "ScriptFunctionSignature");
-	return true;
-}
-
 Array ServersDebugger::ServersProfilerFrame::serialize() {
-	Array arr = { frame_number, frame_time, process_time, physics_time, physics_frame_time, script_time };
+	Array arr = { frame_number, frame_time, process_time, physics_time, physics_frame_time };
 
 	arr.push_back(servers.size());
 	for (const ServerInfo &s : servers) {
@@ -99,28 +86,18 @@ Array ServersDebugger::ServersProfilerFrame::serialize() {
 			arr.push_back(f.time);
 		}
 	}
-
-	arr.push_back(script_functions.size() * 5);
-	for (int i = 0; i < script_functions.size(); i++) {
-		arr.push_back(script_functions[i].sig_id);
-		arr.push_back(script_functions[i].call_count);
-		arr.push_back(script_functions[i].self_time);
-		arr.push_back(script_functions[i].total_time);
-		arr.push_back(script_functions[i].internal_time);
-	}
 	return arr;
 }
 
 bool ServersDebugger::ServersProfilerFrame::deserialize(const Array &p_arr) {
-	CHECK_SIZE(p_arr, 7, "ServersProfilerFrame");
+	CHECK_SIZE(p_arr, 6, "ServersProfilerFrame");
 	frame_number = p_arr[0];
 	frame_time = p_arr[1];
 	process_time = p_arr[2];
 	physics_time = p_arr[3];
 	physics_frame_time = p_arr[4];
-	script_time = p_arr[5];
-	int servers_size = p_arr[6];
-	int idx = 7;
+	int servers_size = p_arr[5];
+	int idx = 6;
 	while (servers_size) {
 		CHECK_SIZE(p_arr, idx + 2, "ServersProfilerFrame");
 		servers_size--;
@@ -137,20 +114,6 @@ bool ServersDebugger::ServersProfilerFrame::deserialize(const Array &p_arr) {
 			si.functions.push_back(sf);
 		}
 		servers.push_back(si);
-	}
-	CHECK_SIZE(p_arr, idx + 1, "ServersProfilerFrame");
-	int func_size = p_arr[idx];
-	idx += 1;
-	CHECK_SIZE(p_arr, idx + func_size, "ServersProfilerFrame");
-	for (int i = 0; i < func_size / 5; i++) {
-		ScriptFunctionInfo fi;
-		fi.sig_id = p_arr[idx];
-		fi.call_count = p_arr[idx + 1];
-		fi.self_time = p_arr[idx + 2];
-		fi.total_time = p_arr[idx + 3];
-		fi.internal_time = p_arr[idx + 4];
-		script_functions.push_back(fi);
-		idx += 5;
 	}
 	CHECK_END(p_arr, idx, "ServersProfilerFrame");
 	return true;
@@ -183,100 +146,12 @@ bool ServersDebugger::VisualProfilerFrame::deserialize(const Array &p_arr) {
 	CHECK_END(p_arr, idx, "VisualProfilerFrame");
 	return true;
 }
-class ServersDebugger::ScriptsProfiler : public EngineProfiler {
-	typedef ServersDebugger::ScriptFunctionSignature FunctionSignature;
-	typedef ServersDebugger::ScriptFunctionInfo FunctionInfo;
-	struct ProfileInfoSort {
-		bool operator()(ScriptLanguage::ProfilingInfo *A, ScriptLanguage::ProfilingInfo *B) const {
-			return A->total_time > B->total_time;
-		}
-	};
-	Vector<ScriptLanguage::ProfilingInfo> info;
-	Vector<ScriptLanguage::ProfilingInfo *> ptrs;
-	HashMap<StringName, int> sig_map;
-	int max_frame_functions = 16;
-
-public:
-	void toggle(bool p_enable, const Array &p_opts) {
-		if (p_enable) {
-			sig_map.clear();
-			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-				ScriptServer::get_language(i)->profiling_start();
-				if (p_opts.size() == 2 && p_opts[1].get_type() == Variant::BOOL) {
-					ScriptServer::get_language(i)->profiling_set_save_native_calls(p_opts[1]);
-				}
-			}
-			if (p_opts.size() > 0 && p_opts[0].get_type() == Variant::INT) {
-				max_frame_functions = MAX(0, int(p_opts[0]));
-			}
-		} else {
-			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-				ScriptServer::get_language(i)->profiling_stop();
-			}
-		}
-	}
-
-	void write_frame_data(Vector<FunctionInfo> &r_funcs, uint64_t &r_total, bool p_accumulated) {
-		int ofs = 0;
-		for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-			if (p_accumulated) {
-				ofs += ScriptServer::get_language(i)->profiling_get_accumulated_data(&info.write[ofs], info.size() - ofs);
-			} else {
-				ofs += ScriptServer::get_language(i)->profiling_get_frame_data(&info.write[ofs], info.size() - ofs);
-			}
-		}
-
-		for (int i = 0; i < ofs; i++) {
-			ptrs.write[i] = &info.write[i];
-		}
-
-		SortArray<ScriptLanguage::ProfilingInfo *, ProfileInfoSort> sa;
-		sa.sort(ptrs.ptrw(), ofs);
-
-		int to_send = MIN(ofs, max_frame_functions);
-
-		// Check signatures first, and compute total time.
-		r_total = 0;
-		for (int i = 0; i < to_send; i++) {
-			if (!sig_map.has(ptrs[i]->signature)) {
-				int idx = sig_map.size();
-				FunctionSignature sig;
-				sig.name = ptrs[i]->signature;
-				sig.id = idx;
-				EngineDebugger::get_singleton()->send_message("servers:function_signature", sig.serialize());
-				sig_map[ptrs[i]->signature] = idx;
-			}
-			r_total += ptrs[i]->self_time;
-		}
-
-		// Send frame, script time, functions information then
-		r_funcs.resize(to_send);
-
-		FunctionInfo *w = r_funcs.ptrw();
-		for (int i = 0; i < to_send; i++) {
-			if (sig_map.has(ptrs[i]->signature)) {
-				w[i].sig_id = sig_map[ptrs[i]->signature];
-			}
-			w[i].call_count = ptrs[i]->call_count;
-			w[i].total_time = ptrs[i]->total_time / 1000000.0;
-			w[i].self_time = ptrs[i]->self_time / 1000000.0;
-			w[i].internal_time = ptrs[i]->internal_time / 1000000.0;
-		}
-	}
-
-	ScriptsProfiler() {
-		info.resize(GLOBAL_GET("debug/settings/profiler/max_functions"));
-		ptrs.resize(info.size());
-	}
-};
-
 class ServersDebugger::ServersProfiler : public EngineProfiler {
 	bool skip_profile_frame = false;
 	typedef ServersDebugger::ServerInfo ServerInfo;
 	typedef ServersDebugger::ServerFunctionInfo ServerFunctionInfo;
 
 	HashMap<StringName, ServerInfo> server_data;
-	ScriptsProfiler scripts_profiler;
 
 	double frame_time = 0;
 	double process_time = 0;
@@ -298,9 +173,6 @@ class ServersDebugger::ServersProfiler : public EngineProfiler {
 			E->value.functions.clear();
 			++E;
 		}
-		uint64_t time = 0;
-		scripts_profiler.write_frame_data(frame.script_functions, time, p_final);
-		frame.script_time = USEC_TO_SEC(time);
 		if (skip_profile_frame) {
 			skip_profile_frame = false;
 			return;
@@ -320,7 +192,6 @@ public:
 		} else {
 			_send_frame_data(true); // Send final frame.
 		}
-		scripts_profiler.toggle(p_enable, p_opts);
 	}
 
 	void add(const Array &p_data) {

@@ -31,19 +31,17 @@
 #pragma once
 
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/variant/variant.h"
 
 struct ContainerType {
 	Variant::Type variant_type = Variant::NIL;
 	StringName class_name;
-	Ref<Script> script;
 
 	_FORCE_INLINE_ bool operator==(const ContainerType &p_type) const {
-		return variant_type == p_type.variant_type && class_name == p_type.class_name && script == p_type.script;
+		return variant_type == p_type.variant_type && class_name == p_type.class_name;
 	}
 	_FORCE_INLINE_ bool operator!=(const ContainerType &p_type) const {
-		return variant_type != p_type.variant_type || class_name != p_type.class_name || script != p_type.script;
+		return variant_type != p_type.variant_type || class_name != p_type.class_name;
 	}
 };
 
@@ -97,14 +95,6 @@ public:
 		} else if (p_type.class_name == StringName()) {
 			return false;
 		} else if (class_name != p_type.class_name && !ClassDB::is_parent_class(p_type.class_name, class_name)) {
-			return false;
-		}
-
-		if (script.is_null()) {
-			return true;
-		} else if (p_type.script.is_null()) {
-			return false;
-		} else if (script != p_type.script && !p_type.script->inherits_script(script)) {
 			return false;
 		}
 

@@ -32,7 +32,6 @@
 
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
-#include "scene/gui/check_button.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/spin_box.h"
 #include "scene/gui/split_container.h"
@@ -63,11 +62,7 @@ public:
 			struct Item {
 				StringName signature;
 				String name;
-				String script;
-				int line = 0;
-				float self = 0;
 				float total = 0;
-				float internal = 0;
 				int calls = 0;
 			};
 
@@ -85,11 +80,6 @@ public:
 		DISPLAY_AVERAGE_TIME,
 		DISPLAY_FRAME_PERCENT,
 		DISPLAY_PHYSICS_FRAME_PERCENT,
-	};
-
-	enum DisplayTime {
-		DISPLAY_TOTAL_TIME,
-		DISPLAY_SELF_TIME,
 	};
 
 private:
@@ -116,10 +106,6 @@ private:
 	HashSet<StringName> collapsed_categories;
 
 	OptionButton *display_mode = nullptr;
-	OptionButton *display_time = nullptr;
-
-	CheckButton *display_internal_profiles = nullptr;
-
 	SpinBox *cursor_metric_edit = nullptr;
 
 	Vector<Metric> frame_metrics;
@@ -143,8 +129,6 @@ private:
 	void _activate_pressed();
 	void _clear_pressed();
 	void _autostart_toggled(bool p_toggled_on);
-
-	void _internal_profiles_pressed();
 
 	String _get_time_as_text(const Metric &m, float p_time, int p_calls);
 
@@ -177,8 +161,6 @@ public:
 	void set_enabled(bool p_enable, bool p_clear = true);
 	void set_profiling(bool p_pressed);
 	bool is_profiling();
-	bool is_seeking() { return seeking; }
-	void disable_seeking();
 
 	void clear();
 

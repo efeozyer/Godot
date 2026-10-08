@@ -198,11 +198,11 @@ void Variant::_register_variant_constructors() {
 
 	add_constructor<VariantConstructNoArgs<Dictionary>>(sarray());
 	add_constructor<VariantConstructor<Dictionary, Dictionary>>(sarray("from"));
-	add_constructor<VariantConstructorTypedDictionary>(sarray("base", "key_type", "key_class_name", "key_script", "value_type", "value_class_name", "value_script"));
+	add_constructor<VariantConstructorTypedDictionary>(sarray("base", "key_type", "key_class_name", "value_type", "value_class_name"));
 
 	add_constructor<VariantConstructNoArgs<Array>>(sarray());
 	add_constructor<VariantConstructor<Array, Array>>(sarray("from"));
-	add_constructor<VariantConstructorTypedArray>(sarray("base", "type", "class_name", "script"));
+	add_constructor<VariantConstructorTypedArray>(sarray("base", "type", "class_name"));
 	add_constructor<VariantConstructorToArray<PackedByteArray>>(sarray("from"));
 	add_constructor<VariantConstructorToArray<PackedInt32Array>>(sarray("from"));
 	add_constructor<VariantConstructorToArray<PackedInt64Array>>(sarray("from"));

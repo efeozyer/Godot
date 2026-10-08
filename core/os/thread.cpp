@@ -35,7 +35,6 @@
 #include "thread.h"
 
 #ifdef THREADS_ENABLED
-#include "core/object/script_language.h"
 
 SafeNumeric<uint64_t> Thread::id_counter(1); // The first value after .increment() is 2, hence by default the main thread ID should be 1.
 thread_local Thread::ID Thread::caller_id = Thread::id_counter.increment();
@@ -57,13 +56,11 @@ void Thread::callback(ID p_caller_id, const Settings &p_settings, Callback p_cal
 	if (platform_functions.init) {
 		platform_functions.init();
 	}
-	ScriptServer::thread_enter(); // Scripts may need to attach a stack.
 	if (platform_functions.wrapper) {
 		platform_functions.wrapper(p_callback, p_userdata);
 	} else {
 		p_callback(p_userdata);
 	}
-	ScriptServer::thread_exit();
 	if (platform_functions.term) {
 		platform_functions.term();
 	}

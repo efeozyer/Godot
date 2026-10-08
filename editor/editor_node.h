@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "core/object/script_language.h"
 #include "core/os/process_id.h"
 #include "core/templates/safe_refcount.h"
 #include "editor/editor_data.h"
@@ -158,7 +157,6 @@ public:
 		SCENE_MULTI_SAVE_AS_SCENE,
 		SCENE_QUICK_OPEN,
 		SCENE_QUICK_OPEN_SCENE,
-		SCENE_QUICK_OPEN_SCRIPT,
 		SCENE_EXPORT_AS,
 		SCENE_UNDO,
 		SCENE_REDO,
@@ -289,9 +287,6 @@ private:
 	FBXImporterManager *fbx_importer_manager = nullptr;
 
 	Vector<EditorPlugin *> editor_plugins;
-	bool _initializing_plugins = false;
-	HashMap<String, EditorPlugin *> addon_name_to_plugin;
-	LocalVector<String> pending_addons;
 	HashMap<ObjectID, HashSet<EditorPlugin *>> active_plugins;
 
 	Control *gui_base = nullptr;
@@ -344,7 +339,7 @@ private:
 	EditorRunBar *project_run_bar = nullptr;
 	HBoxContainer *right_menu_hb = nullptr;
 
-	// Spacers to center 2D / 3D / Script buttons.
+	// Spacers to center 2D / 3D / Docs buttons.
 	HBoxContainer *left_spacer = nullptr;
 	Control *right_spacer = nullptr;
 
@@ -451,7 +446,7 @@ private:
 	ConfirmationDialog *project_data_missing = nullptr;
 
 	bool scene_distraction_free = false;
-	bool script_distraction_free = false;
+	bool document_distraction_free = false;
 
 	bool changing_scene = false;
 	bool cmdline_mode = false;
@@ -548,7 +543,6 @@ private:
 	void _update_system_menu_icons(bool p_dark_mode);
 	void _update_theme(bool p_skip_creation = false);
 	void _build_icon_type_cache();
-	void _enable_pending_addons();
 
 	void _dialog_action(String p_file);
 
@@ -581,7 +575,6 @@ private:
 	void _palette_quick_open_dialog();
 	void _clear_cache_confirmed();
 
-	void _remove_plugin_from_enabled(const String &p_name);
 	void _plugin_over_edit(EditorPlugin *p_plugin, Object *p_object, bool p_set_current = true);
 	void _plugin_over_self_own(EditorPlugin *p_plugin);
 
@@ -694,8 +687,6 @@ private:
 	void _update_layouts_menu();
 	void _layout_menu_option(int p_id);
 
-	void _update_addon_config();
-
 	void _toggle_distraction_free_mode();
 
 	void _inherit_imported(const String &p_action);
@@ -712,7 +703,7 @@ private:
 	void _feature_profile_changed();
 	bool _is_class_editor_disabled_by_feature_profile(const StringName &p_class);
 
-	Ref<Texture2D> _get_class_or_script_icon(const String &p_class, const String &p_script_path, const String &p_fallback = "", bool p_fallback_script_to_theme = false, bool p_skip_fallback_virtual = false);
+	Ref<Texture2D> _get_class_icon(const String &p_class, const String &p_fallback = "", bool p_skip_fallback_virtual = false);
 
 	void _pick_main_scene_custom_action(const String &p_custom_action_name);
 
@@ -758,9 +749,6 @@ protected:
 
 public:
 	// Public for use as signal callback.
-	void _on_plugin_ready(Object *p_script, const String &p_activate_name);
-
-	void init_plugins();
 
 	bool call_build();
 	void call_run_scene(const String &p_scene, Vector<String> &r_args);
@@ -783,7 +771,6 @@ public:
 	static Button *get_distraction_free_button() { return singleton->distraction_free; }
 
 	static String adjust_scene_name_casing(const String &p_root_name);
-	static String adjust_script_name_casing(const String &p_file_name, ScriptLanguage::ScriptNameCasing p_auto_casing);
 
 	static bool has_unsaved_changes() { return singleton->unsaved_cache; }
 	static void disambiguate_filenames(const Vector<String> p_full_paths, Vector<String> &r_filenames);
@@ -799,8 +786,8 @@ public:
 	static void progress_task_step_bg(const String &p_task, int p_step = -1);
 	static void progress_end_task_bg(const String &p_task);
 
-	static void add_editor_plugin(EditorPlugin *p_editor, bool p_config_changed = false);
-	static void remove_editor_plugin(EditorPlugin *p_editor, bool p_config_changed = false);
+	static void add_editor_plugin(EditorPlugin *p_editor);
+	static void remove_editor_plugin(EditorPlugin *p_editor);
 
 	static void add_extension_editor_plugin(const StringName &p_class_name);
 	static void remove_extension_editor_plugin(const StringName &p_class_name);
@@ -838,9 +825,6 @@ public:
 	void update_distraction_free_button_theme();
 
 	void set_center_split_offset(int p_offset);
-
-	void set_addon_plugin_enabled(const String &p_addon, bool p_enabled, bool p_config_changed = false);
-	bool is_addon_plugin_enabled(const String &p_addon) const;
 
 	void edit_node(Node *p_node);
 	void edit_resource(const Ref<Resource> &p_resource);
@@ -985,12 +969,8 @@ public:
 	Ref<Theme> get_editor_theme() const { return theme; }
 	void update_preview_themes(int p_mode);
 
-	Ref<Script> get_object_custom_type_base(const Object *p_object) const;
-	StringName get_object_custom_type_name(const Object *p_object) const;
 	Ref<Texture2D> get_object_icon(const Object *p_object, const String &p_fallback = "");
 	Ref<Texture2D> get_class_icon(const String &p_class, const String &p_fallback = "");
-
-	bool is_object_of_custom_type(const Object *p_object, const StringName &p_class);
 
 	void show_save_accept(const String &p_text, const String &p_ok_text = TTRC("OK"));
 	void show_warning(const String &p_text, const String &p_title = TTRC("Warning!"));
@@ -1044,7 +1024,6 @@ public:
 	void save_before_run();
 	void try_autosave();
 	void restart_editor(bool p_goto_project_manager = false);
-	void unload_editor_addons();
 
 	void open_setting_override(const String &p_property);
 	void notify_settings_overrides_changed();
@@ -1073,7 +1052,6 @@ public:
 
 	bool ensure_main_scene(bool p_from_native);
 	bool validate_custom_directory();
-	void run_editor_script(const Ref<Script> &p_script);
 	bool is_scene_unsaved(int p_idx);
 
 	bool is_portrait() const { return portrait_mode; }

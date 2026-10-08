@@ -39,19 +39,11 @@
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/editor_node.h"
 #include "editor/run/run_instances_dialog.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/gui/popup_menu.h"
 
 DebuggerEditorPlugin::DebuggerEditorPlugin(PopupMenu *p_debug_menu) {
 	EditorDebuggerServer::initialize();
-
-	ED_SHORTCUT("debugger/step_into", TTRC("Step Into"), Key::F11);
-	ED_SHORTCUT("debugger/step_over", TTRC("Step Over"), Key::F10);
-	ED_SHORTCUT("debugger/step_out", TTRC("Step Out"), KeyModifierMask::ALT | Key::F11);
-	ED_SHORTCUT("debugger/break", TTRC("Break"));
-	ED_SHORTCUT("debugger/continue", TTRC("Continue"), Key::F12);
-	ED_SHORTCUT("debugger/debug_with_external_editor", TTRC("Debug with External Editor"));
 
 	// File Server for deploy with remote filesystem.
 	file_server = memnew(EditorFileServer);
@@ -64,7 +56,7 @@ DebuggerEditorPlugin::DebuggerEditorPlugin(PopupMenu *p_debug_menu) {
 	debug_menu->set_hide_on_checkable_item_selection(false);
 	debug_menu->add_check_shortcut(ED_SHORTCUT("editor/deploy_with_remote_debug", TTRC("Deploy with Remote Debug")), RUN_DEPLOY_REMOTE_DEBUG);
 	debug_menu->set_item_tooltip(-1,
-			TTRC("When this option is enabled, using remote deploy will make the executable attempt to connect to this computer's IP so the running project can be debugged.\nThis option is intended to be used for remote debugging (typically with a mobile device).\nYou don't need to enable it to use the GDScript debugger locally."));
+			TTRC("When this option is enabled, using remote deploy will make the executable attempt to connect to this computer's IP so the running project can be debugged.\nThis option is intended to be used for remote debugging (typically with a mobile device)."));
 	debug_menu->add_check_shortcut(ED_SHORTCUT("editor/small_deploy_with_network_fs", TTRC("Small Deploy with Network Filesystem")), RUN_FILE_SERVER);
 	debug_menu->set_item_tooltip(-1,
 			TTRC("When this option is enabled, using remote deploy for Android will only export an executable without the project data.\nThe filesystem will be provided from the project by the editor over the network.\nOn Android, deploying will use the USB cable for faster performance. This option speeds up testing for projects with large assets."));
@@ -89,9 +81,6 @@ DebuggerEditorPlugin::DebuggerEditorPlugin(PopupMenu *p_debug_menu) {
 	debug_menu->add_check_shortcut(ED_SHORTCUT("editor/sync_scene_changes", TTRC("Synchronize Scene Changes")), RUN_LIVE_DEBUG);
 	debug_menu->set_item_tooltip(-1,
 			TTRC("When this option is enabled, any changes made to the scene in the editor will be replicated in the running project.\nWhen used remotely on a device, this is more efficient when the network filesystem option is enabled."));
-	debug_menu->add_check_shortcut(ED_SHORTCUT("editor/sync_script_changes", TTRC("Synchronize Script Changes")), RUN_RELOAD_SCRIPTS);
-	debug_menu->set_item_tooltip(-1,
-			TTRC("When this option is enabled, any script that is saved will be reloaded in the running project.\nWhen used remotely on a device, this is more efficient when the network filesystem option is enabled."));
 	debug_menu->add_check_shortcut(ED_SHORTCUT("editor/keep_server_open", TTRC("Keep Debug Server Open")), SERVER_KEEP_OPEN);
 	debug_menu->set_item_tooltip(-1,
 			TTRC("When this option is enabled, the editor debug server will stay open and listen for new sessions started outside of the editor itself."));
@@ -188,16 +177,6 @@ void DebuggerEditorPlugin::_menu_option(int p_option) {
 			}
 
 		} break;
-		case RUN_RELOAD_SCRIPTS: {
-			bool ischecked = debug_menu->is_item_checked(debug_menu->get_item_index(RUN_RELOAD_SCRIPTS));
-			debug_menu->set_item_checked(debug_menu->get_item_index(RUN_RELOAD_SCRIPTS), !ischecked);
-
-			ScriptEditor::get_singleton()->set_live_auto_reload_running_scripts(!ischecked);
-			if (!initializing) {
-				EditorSettings::get_singleton()->set_project_metadata("debug_options", "run_reload_scripts", !ischecked);
-			}
-
-		} break;
 		case SERVER_KEEP_OPEN: {
 			bool ischecked = debug_menu->is_item_checked(debug_menu->get_item_index(SERVER_KEEP_OPEN));
 			debug_menu->set_item_checked(debug_menu->get_item_index(SERVER_KEEP_OPEN), !ischecked);
@@ -237,7 +216,6 @@ void DebuggerEditorPlugin::_update_debug_options() {
 	bool check_debug_avoidance = EditorSettings::get_singleton()->get_project_metadata("debug_options", "run_debug_avoidance", false);
 	bool check_debug_canvas_redraw = EditorSettings::get_singleton()->get_project_metadata("debug_options", "run_debug_canvas_redraw", false);
 	bool check_live_debug = EditorSettings::get_singleton()->get_project_metadata("debug_options", "run_live_debug", true);
-	bool check_reload_scripts = EditorSettings::get_singleton()->get_project_metadata("debug_options", "run_reload_scripts", true);
 	bool check_server_keep_open = EditorSettings::get_singleton()->get_project_metadata("debug_options", "server_keep_open", false);
 
 	if (check_deploy_remote) {
@@ -263,9 +241,6 @@ void DebuggerEditorPlugin::_update_debug_options() {
 	}
 	if (check_live_debug) {
 		_menu_option(RUN_LIVE_DEBUG);
-	}
-	if (check_reload_scripts) {
-		_menu_option(RUN_RELOAD_SCRIPTS);
 	}
 	if (check_server_keep_open) {
 		_menu_option(SERVER_KEEP_OPEN);

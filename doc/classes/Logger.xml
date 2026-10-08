@@ -19,7 +19,6 @@
 			<param index="4" name="rationale" type="String" />
 			<param index="5" name="editor_notify" type="bool" />
 			<param index="6" name="error_type" type="int" />
-			<param index="7" name="script_backtraces" type="ScriptBacktrace[]" />
 			<description>
 				Called when an error is logged. The error provides the [param function], [param file], and [param line] that it originated from, as well as either the [param code] that generated the error or a [param rationale].
 				The type of error provided by [param error_type] is described in the [enum ErrorType] enumeration.

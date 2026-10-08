@@ -38,7 +38,6 @@ class EditorValidationPanel;
 class FileDialog;
 class LineEdit;
 class SceneCreateDialog;
-class ScriptCreateDialog;
 class Tree;
 
 class EditorAutoloadSettings : public VBoxContainer {
@@ -57,10 +56,7 @@ class EditorAutoloadSettings : public VBoxContainer {
 	struct AutoloadInfo {
 		String name;
 		String path;
-		bool is_singleton = false;
-		bool in_editor = false;
 		int order = 0;
-		Node *node = nullptr;
 
 		bool operator==(const AutoloadInfo &p_info) const {
 			return order == p_info.order;
@@ -74,11 +70,9 @@ class EditorAutoloadSettings : public VBoxContainer {
 
 	Tree *tree = nullptr;
 	Button *browse_button = nullptr;
-	Button *create_script_autoload = nullptr;
 	Button *create_scene_autoload = nullptr;
 	FileDialog *autoload_file_dialog = nullptr;
 	FileDialog *scene_file_dialog = nullptr;
-	ScriptCreateDialog *script_create_dialog = nullptr;
 	SceneCreateDialog *scene_create_dialog = nullptr;
 
 	ConfirmationDialog *name_dialog = nullptr;
@@ -93,14 +87,11 @@ class EditorAutoloadSettings : public VBoxContainer {
 	void _autoload_button_pressed(Object *p_item, int p_column, int p_button, MouseButton p_mouse_button);
 	void _autoload_activated();
 	void _autoload_open(const String &fpath);
-	Node *_create_autoload(const String &p_path);
 
-	void _create_script_autoload();
 	void _create_scene_autoload();
 	void _autoload_file_selected(const String &p_path);
 	void _scene_file_selected(const String &p_path);
 
-	void _script_created(Ref<Script> p_script);
 	void _scene_created();
 	void _add_autoload(const String &p_name, const String &p_path);
 	void _try_add_autoload(const String &p_name, const String &p_path);
@@ -115,11 +106,9 @@ protected:
 	static void _bind_methods();
 
 public:
-	void init_autoloads();
 	void update_autoload();
 	bool autoload_add(const String &p_name, const String &p_path, bool p_use_undo);
 	void autoload_remove(const StringName &p_name);
 
 	EditorAutoloadSettings();
-	~EditorAutoloadSettings();
 };

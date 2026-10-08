@@ -39,7 +39,6 @@
 #include "editor/docks/editor_dock.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/inspector_dock.h"
-#include "editor/docks/scene_tree_dock.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
@@ -57,29 +56,13 @@
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/scene/canvas_item_editor_plugin.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/project_settings_editor.h"
 #include "editor/translations/editor_translation_parser.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/gui/popup_menu.h"
 
-void EditorPlugin::add_custom_type(const String &p_type, const String &p_base, const Ref<Script> &p_script, const Ref<Texture2D> &p_icon) {
-	EditorNode::get_editor_data().add_custom_type(p_type, p_base, p_script, p_icon);
-}
-
-void EditorPlugin::remove_custom_type(const String &p_type) {
-	EditorNode::get_editor_data().remove_custom_type(p_type);
-}
-
 void EditorPlugin::add_autoload_singleton(const String &p_name, const String &p_path) {
-	if (p_path.begins_with("res://")) {
-		EditorNode::get_singleton()->get_project_settings()->get_autoload_settings()->autoload_add(p_name, p_path, false);
-	} else {
-		const Ref<Script> plugin_script = static_cast<Ref<Script>>(get_script());
-		ERR_FAIL_COND(plugin_script.is_null());
-		const String script_base_path = plugin_script->get_path().get_base_dir();
-		EditorNode::get_singleton()->get_project_settings()->get_autoload_settings()->autoload_add(p_name, script_base_path.path_join(p_path), false);
-	}
+	EditorNode::get_singleton()->get_project_settings()->get_autoload_settings()->autoload_add(p_name, p_path, false);
 }
 
 void EditorPlugin::remove_autoload_singleton(const String &p_name) {
@@ -350,14 +333,6 @@ const Ref<Texture2D> EditorPlugin::get_plugin_icon() const {
 	return icon;
 }
 
-String EditorPlugin::get_plugin_version() const {
-	return plugin_version;
-}
-
-void EditorPlugin::set_plugin_version(const String &p_version) {
-	plugin_version = p_version;
-}
-
 #ifndef DISABLE_DEPRECATED
 bool EditorPlugin::has_main_screen() const {
 	bool success = false;
@@ -411,15 +386,6 @@ void EditorPlugin::save_external_data() {
 // if changes are pending in editor, apply them
 void EditorPlugin::apply_changes() {
 	GDVIRTUAL_CALL(_apply_changes);
-}
-
-void EditorPlugin::get_breakpoints(List<String> *p_breakpoints) {
-	PackedStringArray arr;
-	if (GDVIRTUAL_CALL(_get_breakpoints, arr)) {
-		for (int i = 0; i < arr.size(); i++) {
-			p_breakpoints->push_back(arr[i]);
-		}
-	}
 }
 
 bool EditorPlugin::get_remove_list(List<Node *> *p_list) {
@@ -540,18 +506,6 @@ int find(const PackedStringArray &a, const String &v) {
 	return -1;
 }
 
-void EditorPlugin::enable_plugin() {
-	// Called when the plugin gets enabled in project settings, after it's added to the tree.
-	// You can implement it to register autoloads.
-	GDVIRTUAL_CALL(_enable_plugin);
-}
-
-void EditorPlugin::disable_plugin() {
-	// Last function called when the plugin gets disabled in project settings.
-	// Implement it to cleanup things from the project, such as unregister autoloads.
-	GDVIRTUAL_CALL(_disable_plugin);
-}
-
 void EditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) {
 	GDVIRTUAL_CALL(_set_window_layout, p_layout);
 }
@@ -587,10 +541,6 @@ void EditorPlugin::hide_bottom_panel() {
 
 EditorInterface *EditorPlugin::get_editor_interface() {
 	return EditorInterface::get_singleton();
-}
-
-ScriptCreateDialog *EditorPlugin::get_script_create_dialog() {
-	return SceneTreeDock::get_singleton()->get_script_create_dialog();
 }
 
 void EditorPlugin::add_debugger_plugin(const Ref<EditorDebuggerPlugin> &p_plugin) {
@@ -644,8 +594,6 @@ void EditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("add_tool_submenu_item", "name", "submenu"), &EditorPlugin::add_tool_submenu_item);
 	ClassDB::bind_method(D_METHOD("remove_tool_menu_item", "name"), &EditorPlugin::remove_tool_menu_item);
 	ClassDB::bind_method(D_METHOD("get_export_as_menu"), &EditorPlugin::get_export_as_menu);
-	ClassDB::bind_method(D_METHOD("add_custom_type", "type", "base", "script", "icon"), &EditorPlugin::add_custom_type);
-	ClassDB::bind_method(D_METHOD("remove_custom_type", "type"), &EditorPlugin::remove_custom_type);
 
 #ifndef DISABLE_DEPRECATED
 	ClassDB::bind_method(D_METHOD("add_control_to_dock", "slot", "control", "shortcut"), &EditorPlugin::add_control_to_dock, DEFVAL(Ref<Shortcut>()));
@@ -692,10 +640,8 @@ void EditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("remove_scene_post_import_plugin", "scene_import_plugin"), &EditorPlugin::remove_scene_post_import_plugin);
 
 	ClassDB::bind_method(D_METHOD("get_editor_interface"), &EditorPlugin::get_editor_interface);
-	ClassDB::bind_method(D_METHOD("get_script_create_dialog"), &EditorPlugin::get_script_create_dialog);
 	ClassDB::bind_method(D_METHOD("add_debugger_plugin", "script"), &EditorPlugin::add_debugger_plugin);
 	ClassDB::bind_method(D_METHOD("remove_debugger_plugin", "script"), &EditorPlugin::remove_debugger_plugin);
-	ClassDB::bind_method(D_METHOD("get_plugin_version"), &EditorPlugin::get_plugin_version);
 
 	GDVIRTUAL_BIND(_forward_canvas_gui_input, "event");
 	GDVIRTUAL_BIND(_forward_canvas_draw_over_viewport, "viewport_control");
@@ -717,13 +663,10 @@ void EditorPlugin::_bind_methods() {
 	GDVIRTUAL_BIND(_get_unsaved_status, "for_scene");
 	GDVIRTUAL_BIND(_save_external_data);
 	GDVIRTUAL_BIND(_apply_changes);
-	GDVIRTUAL_BIND(_get_breakpoints);
 	GDVIRTUAL_BIND(_set_window_layout, "configuration");
 	GDVIRTUAL_BIND(_get_window_layout, "configuration");
 	GDVIRTUAL_BIND(_build);
 	GDVIRTUAL_BIND(_run_scene, "scene", "args");
-	GDVIRTUAL_BIND(_enable_plugin);
-	GDVIRTUAL_BIND(_disable_plugin);
 
 	ADD_SIGNAL(MethodInfo("scene_changed", PropertyInfo(Variant::OBJECT, "scene_root", PROPERTY_HINT_RESOURCE_TYPE, Node::get_class_static())));
 	ADD_SIGNAL(MethodInfo("scene_closed", PropertyInfo(Variant::STRING, "filepath")));

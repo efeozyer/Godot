@@ -187,12 +187,9 @@
 			<param index="0" name="base" type="Dictionary" />
 			<param index="1" name="key_type" type="int" />
 			<param index="2" name="key_class_name" type="StringName" />
-			<param index="3" name="key_script" type="Variant" />
-			<param index="4" name="value_type" type="int" />
-			<param index="5" name="value_class_name" type="StringName" />
-			<param index="6" name="value_script" type="Variant" />
+			<param index="3" name="value_type" type="int" />
+			<param index="4" name="value_class_name" type="StringName" />
 			<description>
-				Creates a typed dictionary from the [param base] dictionary. A typed dictionary can only contain keys and values of the given types, or that inherit from the given classes, as described by this constructor's parameters.
 			</description>
 		</constructor>
 		<constructor name="Dictionary">
@@ -285,12 +282,6 @@
 				Returns the [b]built-in[/b] class name of the typed dictionary's keys, if the built-in [Variant] type is [constant TYPE_OBJECT]. Otherwise, returns an empty [StringName]. See also [method is_typed_key] and [method Object.get_class].
 			</description>
 		</method>
-		<method name="get_typed_key_script" qualifiers="const">
-			<return type="Variant" />
-			<description>
-				Returns the [Script] instance associated with this typed dictionary's keys, or [code]null[/code] if it does not exist. See also [method is_typed_key].
-			</description>
-		</method>
 		<method name="get_typed_value_builtin" qualifiers="const">
 			<return type="int" />
 			<description>
@@ -301,12 +292,6 @@
 			<return type="StringName" />
 			<description>
 				Returns the [b]built-in[/b] class name of the typed dictionary's values, if the built-in [Variant] type is [constant TYPE_OBJECT]. Otherwise, returns an empty [StringName]. See also [method is_typed_value] and [method Object.get_class].
-			</description>
-		</method>
-		<method name="get_typed_value_script" qualifiers="const">
-			<return type="Variant" />
-			<description>
-				Returns the [Script] instance associated with this typed dictionary's values, or [code]null[/code] if it does not exist. See also [method is_typed_value].
 			</description>
 		</method>
 		<method name="has" qualifiers="const">

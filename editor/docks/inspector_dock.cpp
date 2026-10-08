@@ -36,6 +36,7 @@
 #include "editor/debugger/editor_debugger_inspector.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/docks/filesystem_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -43,7 +44,6 @@
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/gui/editor_object_selector.h"
 #include "editor/gui/editor_toaster.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -112,7 +112,7 @@ void InspectorDock::_menu_option_confirm(int p_option, bool p_confirmed) {
 
 		case OBJECT_REQUEST_HELP: {
 			if (current) {
-				ScriptEditor::get_singleton()->focus_editor();
+				DocumentEditor::get_singleton()->focus_editor();
 				emit_signal(SNAME("request_help"), current->get_class());
 			}
 		} break;
@@ -262,7 +262,7 @@ void InspectorDock::_resource_file_selected(const String &p_file) {
 	} else {
 		const Vector<String> textfile_ext = ((String)(EDITOR_GET("docks/filesystem/textfile_extensions"))).split(",", false);
 		if (textfile_ext.has(p_file.get_extension())) {
-			res = ScriptEditor::get_singleton()->open_file(p_file);
+			res = DocumentEditor::get_singleton()->open_file(p_file);
 		}
 	}
 
@@ -506,9 +506,6 @@ void InspectorDock::_notification(int p_what) {
 }
 
 void InspectorDock::_bind_methods() {
-	ClassDB::bind_method("store_script_properties", &InspectorDock::store_script_properties);
-	ClassDB::bind_method("apply_script_properties", &InspectorDock::apply_script_properties);
-
 	ADD_SIGNAL(MethodInfo("request_help"));
 }
 
@@ -655,61 +652,6 @@ void InspectorDock::update(Object *p_object) {
 
 EditorPropertyNameProcessor::Style InspectorDock::get_property_name_style() const {
 	return property_name_style;
-}
-
-void InspectorDock::store_script_properties(Object *p_object) {
-	ERR_FAIL_NULL(p_object);
-	ScriptInstance *si = p_object->get_script_instance();
-	if (!si) {
-		return;
-	}
-	si->get_property_state(stored_properties);
-}
-
-void InspectorDock::apply_script_properties(Object *p_object) {
-	ERR_FAIL_NULL(p_object);
-	ScriptInstance *si = p_object->get_script_instance();
-	if (!si) {
-		return;
-	}
-
-	List<PropertyInfo> properties;
-	si->get_property_list(&properties);
-
-	for (const Pair<StringName, Variant> &E : stored_properties) {
-		Variant current_prop;
-		if (si->get(E.first, current_prop) && current_prop.get_type() == E.second.get_type()) {
-			si->set(E.first, E.second);
-		} else if (E.second.get_type() == Variant::OBJECT) {
-			for (const PropertyInfo &pi : properties) {
-				if (E.first != pi.name) {
-					continue;
-				}
-
-				if (pi.type != Variant::OBJECT) {
-					break;
-				}
-
-				Object *p_property_object = E.second;
-
-				if (p_property_object->is_class(pi.hint_string)) {
-					si->set(E.first, E.second);
-					break;
-				}
-
-				Ref<Script> base_script = p_property_object->get_script();
-				while (base_script.is_valid()) {
-					if (base_script->get_global_name() == pi.hint_string) {
-						si->set(E.first, E.second);
-						break;
-					}
-					base_script = base_script->get_base_script();
-				}
-				break;
-			}
-		}
-	}
-	stored_properties.clear();
 }
 
 void InspectorDock::shortcut_input(const Ref<InputEvent> &p_event) {

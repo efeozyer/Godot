@@ -154,7 +154,6 @@ private:
 
 	struct FilteredCache {
 		Vector<uint8_t> extension_list;
-		Vector<uint8_t> global_class_list;
 		Vector<uint8_t> uids;
 	};
 

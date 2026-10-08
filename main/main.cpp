@@ -50,7 +50,6 @@
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/os/process_id.h"
 #include "core/os/time.h"
@@ -118,7 +117,6 @@
 #endif
 
 #ifdef TOOLS_ENABLED
-#include "editor/debugger/debug_adapter/debug_adapter_server.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/doc/doc_data_class_path.gen.h"
 #include "editor/doc/doc_tools.h"
@@ -135,28 +133,11 @@
 #if defined(TOOLS_ENABLED) && !defined(NO_EDITOR_SPLASH)
 #include "main/splash_editor.gen.h"
 #endif
-
-#ifndef DISABLE_DEPRECATED
-#include "editor/project_upgrade/project_converter_3_to_4.h"
-#endif // DISABLE_DEPRECATED
 #endif // TOOLS_ENABLED
 
 #if defined(STEAMAPI_ENABLED)
 #include "main/steam_tracker.h"
 #endif
-
-#include "modules/modules_enabled.gen.h" // For mono.
-
-#if defined(MODULE_MONO_ENABLED) && defined(TOOLS_ENABLED)
-#include "modules/mono/editor/bindings_generator.h"
-#endif
-
-#ifdef MODULE_GDSCRIPT_ENABLED
-#include "modules/gdscript/gdscript.h"
-#if defined(TOOLS_ENABLED) && !defined(GDSCRIPT_NO_LSP)
-#include "modules/gdscript/language_server/gdscript_language_server.h"
-#endif // TOOLS_ENABLED && !GDSCRIPT_NO_LSP
-#endif // MODULE_GDSCRIPT_ENABLED
 
 /* Static members */
 
@@ -216,17 +197,11 @@ static String log_file;
 static bool show_help = false;
 static uint64_t quit_after = 0;
 #ifdef TOOLS_ENABLED
-static ProcessID editor_pid = 0;
 static bool found_project = false;
 static bool recovery_mode = false;
-static bool auto_build_solutions = false;
 static String debug_server_uri;
 static bool wait_for_import = false;
 static bool restore_editor_window_layout = true;
-#ifndef DISABLE_DEPRECATED
-static int converter_max_kb_file = 4 * 1024; // 4MB
-static int converter_max_line_length = 100000;
-#endif // DISABLE_DEPRECATED
 
 HashMap<Main::CLIScope, Vector<String>> forwardable_cli_arguments;
 #endif
@@ -263,7 +238,6 @@ static bool force_res = false;
 // Debug
 
 #ifdef DEBUG_ENABLED
-static bool use_debug_profiler = false;
 static bool debug_collisions = false;
 static bool debug_paths = false;
 static bool debug_navigation = false;
@@ -324,31 +298,6 @@ static String get_full_version_string() {
 	}
 	return String(GODOT_VERSION_FULL_BUILD) + hash;
 }
-
-#if defined(TOOLS_ENABLED) && defined(MODULE_GDSCRIPT_ENABLED)
-static Vector<String> get_files_with_extension(const String &p_root, const String &p_extension) {
-	Vector<String> paths;
-
-	Ref<DirAccess> dir = DirAccess::open(p_root);
-	if (dir.is_valid()) {
-		dir->list_dir_begin();
-		String fn = dir->get_next();
-		while (!fn.is_empty()) {
-			if (!dir->current_is_hidden() && fn != "." && fn != "..") {
-				if (dir->current_is_dir()) {
-					paths.append_array(get_files_with_extension(p_root.path_join(fn), p_extension));
-				} else if (fn.get_extension() == p_extension) {
-					paths.append(p_root.path_join(fn));
-				}
-			}
-			fn = dir->get_next();
-		}
-		dir->list_dir_end();
-	}
-
-	return paths;
-}
-#endif
 
 void finalize_display() {
 	if (rendering_server) {
@@ -506,12 +455,8 @@ void Main::print_help(const char *p_binary) {
 #ifdef TOOLS_ENABLED
 	print_help_option("-e, --editor", "Start the editor instead of running the scene.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("-p, --project-manager", "Start the project manager, even if a project is auto-detected.\n", CLI_OPTION_AVAILABILITY_EDITOR);
-	print_help_option("--recovery-mode", "Start the editor in recovery mode, which disables features that can typically cause startup crashes, such as tool scripts, editor plugins, GDExtension addons, and others.\n", CLI_OPTION_AVAILABILITY_EDITOR);
+	print_help_option("--recovery-mode", "Start the editor in recovery mode, which disables features that can typically cause startup crashes, such as editor plugins, GDExtension addons, and others.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--debug-server <uri>", "Start the editor debug server (<protocol>://<host/IP>[:port], e.g. tcp://127.0.0.1:6007)\n", CLI_OPTION_AVAILABILITY_EDITOR);
-	print_help_option("--dap-port <port>", "Use the specified port for the GDScript Debug Adapter Protocol. Recommended port range [1024, 49151].\n", CLI_OPTION_AVAILABILITY_EDITOR);
-#if defined(MODULE_GDSCRIPT_ENABLED) && !defined(GDSCRIPT_NO_LSP)
-	print_help_option("--lsp-port <port>", "Use the specified port for the GDScript Language Server Protocol. Recommended port range [1024, 49151].\n", CLI_OPTION_AVAILABILITY_EDITOR);
-#endif // MODULE_GDSCRIPT_ENABLED && !GDSCRIPT_NO_LSP
 #endif
 	print_help_option("--quit", "Quit after the first iteration.\n");
 	print_help_option("--quit-after <int>", "Quit after the given number of iterations. Set to 0 to disable.\n");
@@ -567,7 +512,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--gpu-index <device_index>", "Use a specific GPU (only available on the Forward+/Mobile renderers; run with --verbose to get a list of available devices).\n");
 	print_help_option("--text-driver <driver>", "Text driver (used for font rendering, bidirectional support and shaping).\n");
 	print_help_option("--tablet-driver <driver>", "Pen tablet input driver.\n");
-	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script.\n");
+	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers.\n");
 	print_help_option("--log-file <file>", "Write output/error log to the specified path instead of the default location defined by the project.\n");
 	print_help_option("", "<file> path should be absolute or relative to the project directory.\n");
 	print_help_option("--write-movie <file>", "Write a video to the specified path (usually with .avi or .png extension).\n");
@@ -592,12 +537,6 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--accessibility-driver <driver>", "Select accessibility driver ['accesskit', 'dummy'].\n");
 
 	print_help_title("Debug options");
-#ifdef DEBUG_ENABLED
-	print_help_option("-d, --debug", "Debug (local stdout debugger).\n");
-	print_help_option("-b, --breakpoints", "Breakpoint list as source:line comma-separated pairs, no spaces (use %%20 instead).\n");
-	print_help_option("--ignore-error-breaks", "If debugger is connected, prevents sending error breakpoints.\n");
-	print_help_option("--profiling", "Enable profiling in the script debugger.\n");
-#endif
 	print_help_option("--gpu-profile", "Show a GPU profile of the tasks that took the most time during frame rendering.\n");
 	print_help_option("--gpu-validation", "Enable graphics API validation layers for debugging.\n");
 #ifdef DEBUG_ENABLED
@@ -626,7 +565,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--frame-delay <ms>", "Simulate high CPU load (delay each frame by <ms> milliseconds). Do not use as a FPS limiter; use --max-fps instead.\n");
 	print_help_option("--time-scale <scale>", "Force time scale (higher values are faster, 1.0 is normal speed).\n");
 	print_help_option("--disable-vsync", "Forces disabling of vertical synchronization, even if enabled in the project settings. Does not override driver-level V-Sync enforcement.\n");
-	print_help_option("--disable-render-loop", "Disable render loop so rendering only occurs when called explicitly from script.\n");
+	print_help_option("--disable-render-loop", "Disable render loop so rendering only occurs when called explicitly.\n");
 	print_help_option("--disable-crash-handler", "Disable crash handler when supported by the platform code.\n");
 	print_help_option("--fixed-fps <fps>", "Force a fixed number of frames per second. This setting disables real-time synchronization.\n");
 	print_help_option("--delta-smoothing <enable>", "Enable or disable frame delta smoothing [\"enable\", \"disable\"].\n");
@@ -639,9 +578,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_title("Standalone tools");
 #endif // defined(OVERRIDE_PATH_ENABLED) || defined(TESTS_ENABLED)
 #if defined(OVERRIDE_PATH_ENABLED)
-	print_help_option("-s, --script <script>", "Run a script.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
-	print_help_option("--main-loop <main_loop_name>", "Run a MainLoop specified by its global class name.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
-	print_help_option("--check-only", "Only parse for errors and quit (use with --script).\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
+	print_help_option("--main-loop <main_loop_name>", "Run a MainLoop specified by its class name.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
 #endif // defined(OVERRIDE_PATH_ENABLED)
 #ifdef TOOLS_ENABLED
 	print_help_option("--import", "Starts the editor, waits for any resources to be imported, and then quits.\n", CLI_OPTION_AVAILABILITY_EDITOR);
@@ -653,20 +590,9 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--export-patch <preset> <path>", "Export pack with changed files only. See --export-pack description for other considerations.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--patches <paths>", "List of patches to use with --export-patch. The list is comma-separated.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--install-android-build-template", "Install the Android build template. Used in conjunction with --export-release or --export-debug.\n", CLI_OPTION_AVAILABILITY_EDITOR);
-#ifndef DISABLE_DEPRECATED
-	// Commands are long; split the description to a second line.
-	print_help_option("--convert-3to4 ", "\n", CLI_OPTION_AVAILABILITY_HIDDEN);
-	print_help_option("  [max_file_kb] [max_line_size]", "Converts project from Godot 3.x to Godot 4.x.\n", CLI_OPTION_AVAILABILITY_EDITOR);
-	print_help_option("--validate-conversion-3to4 ", "\n", CLI_OPTION_AVAILABILITY_HIDDEN);
-	print_help_option("  [max_file_kb] [max_line_size]", "Shows what elements will be renamed when converting project from Godot 3.x to Godot 4.x.\n", CLI_OPTION_AVAILABILITY_EDITOR);
-#endif // DISABLE_DEPRECATED
 	print_help_option("--doctool [path]", "Dump the engine API reference to the given <path> (defaults to current directory) in XML format, merging if existing files are found.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--no-docbase", "Disallow dumping the base types (used with --doctool).\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--gdextension-docs", "Rather than dumping the engine API, generate API reference from all the GDExtensions loaded in the current project (used with --doctool).\n", CLI_OPTION_AVAILABILITY_EDITOR);
-#ifdef MODULE_GDSCRIPT_ENABLED
-	print_help_option("--gdscript-docs <path>", "Rather than dumping the engine API, generate API reference from the inline documentation in the GDScript files found in <path> (used with --doctool).\n", CLI_OPTION_AVAILABILITY_EDITOR);
-#endif
-	print_help_option("--build-solutions", "Build the scripting solutions (e.g. for C# projects). Implies --editor and requires a valid project to edit.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--dump-gdextension-interface", "Generate a GDExtension header file \"gdextension_interface.h\" in the current folder. This file is the base file required to implement a GDExtension.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--dump-gdextension-interface-json", "Generate a JSON dump of the GDExtension interface named \"gdextension_interface.json\" in the current folder.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--dump-extension-api", "Generate a JSON dump of the Godot API for GDExtension bindings named \"extension_api.json\" in the current folder.\n", CLI_OPTION_AVAILABILITY_EDITOR);
@@ -774,7 +700,7 @@ Error Main::test_setup() {
 	rendering_server->set_render_loop_enabled(false);
 
 	// Initialize ThemeDB early so that scene types can register their theme items.
-	// Default theme will be initialized later, after modules and ScriptServer are ready.
+	// Default theme will be initialized later, after modules are ready.
 	initialize_theme_db();
 
 #ifndef NAVIGATION_3D_DISABLED
@@ -852,8 +778,6 @@ void Main::test_cleanup() {
 		TextServerManager::get_singleton()->get_interface(i)->cleanup();
 	}
 
-	ResourceLoader::remove_custom_loaders();
-	ResourceSaver::remove_custom_savers();
 	PropertyListHelper::clear_base_helpers();
 
 #ifdef TOOLS_ENABLED
@@ -1064,9 +988,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 #if defined(DEBUG_ENABLED) || defined(TOOLS_ENABLED)
 	String debug_uri = "";
-	bool skip_breakpoints = false;
-	bool ignore_error_breaks = false;
-	Vector<String> breakpoints;
 #endif
 
 	Error err = OK;
@@ -1482,14 +1403,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				OS::get_singleton()->print("Missing log file path argument, aborting.\n");
 				goto error;
 			}
-		} else if (arg == "--profiling") { // enable profiling
-#ifdef DEBUG_ENABLED
-			use_debug_profiler = true;
-#else
-			ERR_PRINT(
-					"`--profiling` was specified on the command line, but this Godot binary was compiled without debug. Aborting.\n"
-					"To be able to use it, use the `target=template_debug` SCons option when compiling Godot.\n");
-#endif
 		} else if (arg == "-l" || arg == "--language") { // language
 
 			if (N) {
@@ -1579,11 +1492,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			}
 		} else if (arg == "--single-threaded-scene") {
 			single_threaded_scene = true;
-		} else if (arg == "--build-solutions") { // Build the scripting solution such C#
-
-			auto_build_solutions = true;
-			editor = true;
-			cmdline_tool = true;
 		} else if (arg == "--dump-gdextension-interface") {
 			// Register as an editor instance to use low-end fallback if relevant.
 			editor = true;
@@ -1670,36 +1578,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		} else if (arg == "--export") { // For users used to 3.x syntax.
 			OS::get_singleton()->print("The Godot 3 --export option was changed to more explicit --export-release / --export-debug / --export-pack options.\nSee the --help output for details.\n");
 			goto error;
-		} else if (arg == "--convert-3to4") {
-			// Actually handling is done in start().
-			cmdline_tool = true;
-			main_args.push_back(arg);
-
-			if (N && !N->get().begins_with("-")) {
-				if (itos(N->get().to_int()) == N->get()) {
-					converter_max_kb_file = N->get().to_int();
-				}
-				if (N->next() && !N->next()->get().begins_with("-")) {
-					if (itos(N->next()->get().to_int()) == N->next()->get()) {
-						converter_max_line_length = N->next()->get().to_int();
-					}
-				}
-			}
-		} else if (arg == "--validate-conversion-3to4") {
-			// Actually handling is done in start().
-			cmdline_tool = true;
-			main_args.push_back(arg);
-
-			if (N && !N->get().begins_with("-")) {
-				if (itos(N->get().to_int()) == N->get()) {
-					converter_max_kb_file = N->get().to_int();
-				}
-				if (N->next() && !N->next()->get().begins_with("-")) {
-					if (itos(N->next()->get().to_int()) == N->next()->get()) {
-						converter_max_line_length = N->next()->get().to_int();
-					}
-				}
-			}
 #endif // DISABLE_DEPRECATED
 		} else if (arg == "--doctool") {
 			// Actually handling is done in start().
@@ -1710,22 +1588,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			audio_driver = NULL_AUDIO_DRIVER;
 			display_driver = NULL_DISPLAY_DRIVER;
 			main_args.push_back(arg);
-#ifdef MODULE_GDSCRIPT_ENABLED
-		} else if (arg == "--gdscript-docs") {
-			if (N) {
-				project_path = N->get();
-				// Will be handled in start()
-				main_args.push_back(arg);
-				main_args.push_back(N->get());
-				N = N->next();
-				// GDScript docgen requires Autoloads, but loading those also creates a main loop.
-				// This forces main loop to quit without adding more GDScript-specific exceptions to setup.
-				quit_after = 1;
-			} else {
-				OS::get_singleton()->print("Missing relative or absolute path to project for --gdscript-docs, aborting.\n");
-				goto error;
-			}
-#endif // MODULE_GDSCRIPT_ENABLED
 #endif // TOOLS_ENABLED
 
 		} else if (arg == "--path") { // set path of project to start or edit
@@ -1784,18 +1646,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 					"To be able to use it, use the `disable_path_overrides=no` SCons option when compiling Godot.\n");
 			goto error;
 #endif // defined(OVERRIDE_PATH_ENABLED)
-#if defined(DEBUG_ENABLED) || defined(TOOLS_ENABLED)
-		} else if (arg == "-b" || arg == "--breakpoints") { // add breakpoints
-
-			if (N) {
-				String bplist = N->get();
-				breakpoints = bplist.split(",");
-				N = N->next();
-			} else {
-				OS::get_singleton()->print("Missing list of breakpoints, aborting.\n");
-				goto error;
-			}
-#endif // defined(DEBUG_ENABLED) || defined (TOOLS_ENABLED)
 		} else if (arg == "--max-fps") { // set maximum rendered FPS
 
 			if (N) {
@@ -1859,16 +1709,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			goto error;
 #endif // defined(OVERRIDE_PATH_ENABLED) || defined(WEB_ENABLED) || defined(ANDROID_ENABLED)
 
-		} else if (arg == "-d" || arg == "--debug") {
-#if defined(DEBUG_ENABLED) || defined(TOOLS_ENABLED)
-			debug_uri = "local://";
-			OS::get_singleton()->_debug_stdout = true;
-#else
-			ERR_PRINT(
-					arg + " was specified on the command line, but this Godot binary was compiled without debug. Aborting.\n"
-						  "To be able to use it, use the `target=template_debug` SCons option when compiling Godot.\n");
-			goto error;
-#endif
 #if defined(DEBUG_ENABLED)
 		} else if (arg == "--debug-collisions") {
 			debug_collisions = true;
@@ -1911,16 +1751,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 					"To be able to use it, use the `target=template_debug` SCons option when compiling Godot.\n");
 			goto error;
 #endif // defined(DEBUG_ENABLED) || defined (TOOLS_ENABLED)
-#ifdef TOOLS_ENABLED
-		} else if (arg == "--editor-pid") { // not exposed to user
-			if (N) {
-				editor_pid = N->get().to_int();
-				N = N->next();
-			} else {
-				OS::get_singleton()->print("Missing editor PID argument, aborting.\n");
-				goto error;
-			}
-#endif // TOOLS_ENABLED
 		} else if (arg == "--disable-render-loop") {
 			disable_render_loop = true;
 		} else if (arg == "--fixed-fps") {
@@ -1956,12 +1786,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			profile_gpu = true;
 		} else if (arg == "--disable-crash-handler") {
 			OS::get_singleton()->disable_crash_handler();
-#if defined(DEBUG_ENABLED) || defined(TOOLS_ENABLED)
-		} else if (arg == "--skip-breakpoints") {
-			skip_breakpoints = true;
-		} else if (I->get() == "--ignore-error-breaks") {
-			ignore_error_breaks = true;
-#endif // defined(DEBUG_ENABLED) || defined(TOOLS_ENABLED)
 #ifndef XR_DISABLED
 		} else if (arg == "--xr-mode") {
 			if (N) {
@@ -1994,36 +1818,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				OS::get_singleton()->print("Missing <path> argument for --benchmark-file <path>.\n");
 				goto error;
 			}
-#if defined(TOOLS_ENABLED) && defined(MODULE_GDSCRIPT_ENABLED) && !defined(GDSCRIPT_NO_LSP)
-		} else if (arg == "--lsp-port") {
-			if (N) {
-				int port_override = N->get().to_int();
-				if (port_override < 0 || port_override > 65535) {
-					OS::get_singleton()->print("<port> argument for --lsp-port <port> must be between 0 and 65535.\n");
-					goto error;
-				}
-				GDScriptLanguageServer::port_override = port_override;
-				N = N->next();
-			} else {
-				OS::get_singleton()->print("Missing <port> argument for --lsp-port <port>.\n");
-				goto error;
-			}
-#endif // TOOLS_ENABLED && MODULE_GDSCRIPT_ENABLED && !GDSCRIPT_NO_LSP
-#if defined(TOOLS_ENABLED)
-		} else if (arg == "--dap-port") {
-			if (N) {
-				int port_override = N->get().to_int();
-				if (port_override < 0 || port_override > 65535) {
-					OS::get_singleton()->print("<port> argument for --dap-port <port> must be between 0 and 65535.\n");
-					goto error;
-				}
-				DebugAdapterServer::port_override = port_override;
-				N = N->next();
-			} else {
-				OS::get_singleton()->print("Missing <port> argument for --dap-port <port>.\n");
-				goto error;
-			}
-#endif // TOOLS_ENABLED
 		} else if (arg == "--wid") {
 			if (N) {
 				init_embed_parent_window_id = N->get().to_int();
@@ -2280,13 +2074,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "network/limits/debugger/max_warnings_per_second", PROPERTY_HINT_RANGE, "1,200,1,or_greater"), 400);
 
 #if defined(DEBUG_ENABLED) || defined(TOOLS_ENABLED)
-	EngineDebugger::initialize(debug_uri, skip_breakpoints, ignore_error_breaks, breakpoints, []() {
-#ifdef TOOLS_ENABLED
-		if (editor_pid) {
-			DisplayServer::get_singleton()->enable_for_stealing_focus(editor_pid);
-		}
-#endif
-	});
+	EngineDebugger::initialize(debug_uri);
 #endif
 
 #ifdef TOOLS_ENABLED
@@ -3793,7 +3581,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 	OS::get_singleton()->benchmark_begin_measure("Startup", "Scene");
 
 	// Initialize ThemeDB early so that scene types can register their theme items.
-	// Default theme will be initialized later, after modules and ScriptServer are ready.
+	// Default theme will be initialized later, after modules are ready.
 	initialize_theme_db();
 
 #if !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
@@ -3885,9 +3673,6 @@ Error Main::setup2(bool p_show_boot_logo) {
 
 	register_server_singletons();
 
-	// This loads global classes, so it must happen before custom loaders and savers are registered
-	ScriptServer::init_languages();
-
 #if TOOLS_ENABLED
 
 	// Setting up the callback to execute a scan for UIDs on disk when a UID
@@ -3901,23 +3686,6 @@ Error Main::setup2(bool p_show_boot_logo) {
 
 	theme_db->initialize_theme();
 	audio_server->load_default_bus_layout();
-
-#if defined(MODULE_MONO_ENABLED) && defined(TOOLS_ENABLED)
-	// Hacky to have it here, but we don't have good facility yet to let modules
-	// register command line options to call at the right time. This needs to happen
-	// after init'ing the ScriptServer, but also after init'ing the ThemeDB,
-	// for the C# docs generation in the bindings.
-	List<String> cmdline_args = OS::get_singleton()->get_cmdline_args();
-	BindingsGenerator::handle_cmdline_args(cmdline_args);
-#endif
-
-#ifdef DEBUG_ENABLED
-	if (use_debug_profiler && EngineDebugger::is_active()) {
-		// Start the "scripts" profiler, used in local debugging.
-		// We could add more, and make the CLI arg require a comma-separated list of profilers.
-		EngineDebugger::get_singleton()->profiler_enable("scripts", true);
-	}
-#endif
 
 	if (!project_manager) {
 		// If not running the project manager, and now that the engine is
@@ -4043,9 +3811,7 @@ int Main::start() {
 	bool has_icon = false;
 	String positional_arg;
 	String game_path;
-	String script;
 	String main_loop_type;
-	bool check_only = false;
 
 #ifdef TOOLS_ENABLED
 	String doc_tool_path;
@@ -4057,13 +3823,6 @@ int Main::start() {
 	bool export_pack_only = false;
 	bool install_android_build_template = false;
 	bool export_patch = false;
-#ifdef MODULE_GDSCRIPT_ENABLED
-	String gdscript_docs_path;
-#endif
-#ifndef DISABLE_DEPRECATED
-	bool converting_project = false;
-	bool validating_converting_project = false;
-#endif // DISABLE_DEPRECATED
 #endif // TOOLS_ENABLED
 
 	main_timer_sync.init(OS::get_singleton()->get_ticks_usec());
@@ -4074,30 +3833,7 @@ int Main::start() {
 
 		// Doctest Unit Testing Handler
 		// Designed to override and pass arguments to the unit test handler.
-		if (E->get() == "--check-only") {
-			check_only = true;
-#ifdef TOOLS_ENABLED
-		} else if (E->get() == "--no-docbase") {
-			gen_flags.set_flag(DocTools::GENERATE_FLAG_SKIP_BASIC_TYPES);
-		} else if (E->get() == "--gdextension-docs") {
-			gen_flags.set_flag(DocTools::GENERATE_FLAG_SKIP_BASIC_TYPES);
-			gen_flags.set_flag(DocTools::GENERATE_FLAG_EXTENSION_CLASSES_ONLY);
-#ifndef DISABLE_DEPRECATED
-		} else if (E->get() == "--convert-3to4") {
-			converting_project = true;
-		} else if (E->get() == "--validate-conversion-3to4") {
-			validating_converting_project = true;
-#endif // DISABLE_DEPRECATED
-		} else if (E->get() == "-e" || E->get() == "--editor") {
-			editor = true;
-		} else if (E->get() == "-p" || E->get() == "--project-manager") {
-			project_manager = true;
-		} else if (E->get() == "--recovery-mode") {
-			recovery_mode = true;
-		} else if (E->get() == "--install-android-build-template") {
-			install_android_build_template = true;
-#endif // TOOLS_ENABLED
-		} else if (E->get() == "--scene") {
+		if (E->get() == "--scene") {
 #if defined(OVERRIDE_PATH_ENABLED)
 			E = E->next();
 			if (E) {
@@ -4111,6 +3847,21 @@ int Main::start() {
 					"To be able to use it, use the `disable_path_overrides=no` SCons option when compiling Godot.\n");
 			return EXIT_FAILURE;
 #endif // defined(OVERRIDE_PATH_ENABLED)
+#ifdef TOOLS_ENABLED
+		} else if (E->get() == "--no-docbase") {
+			gen_flags.set_flag(DocTools::GENERATE_FLAG_SKIP_BASIC_TYPES);
+		} else if (E->get() == "--gdextension-docs") {
+			gen_flags.set_flag(DocTools::GENERATE_FLAG_SKIP_BASIC_TYPES);
+			gen_flags.set_flag(DocTools::GENERATE_FLAG_EXTENSION_CLASSES_ONLY);
+		} else if (E->get() == "-e" || E->get() == "--editor") {
+			editor = true;
+		} else if (E->get() == "-p" || E->get() == "--project-manager") {
+			project_manager = true;
+		} else if (E->get() == "--recovery-mode") {
+			recovery_mode = true;
+		} else if (E->get() == "--install-android-build-template") {
+			install_android_build_template = true;
+#endif // TOOLS_ENABLED
 		} else if (E->get().length() && E->get()[0] != '-' && positional_arg.is_empty() && game_path.is_empty()) {
 			positional_arg = E->get();
 
@@ -4139,9 +3890,7 @@ int Main::start() {
 		// Then parameters that have an argument to the right.
 		else if (E->next()) {
 			bool parsed_pair = true;
-			if (E->get() == "-s" || E->get() == "--script") {
-				script = E->next()->get();
-			} else if (E->get() == "--main-loop") {
+			if (E->get() == "--main-loop") {
 				main_loop_type = E->next()->get();
 #ifdef TOOLS_ENABLED
 			} else if (E->get() == "--doctool") {
@@ -4152,10 +3901,6 @@ int Main::start() {
 					doc_tool_implicit_cwd = true;
 					parsed_pair = false;
 				}
-#ifdef MODULE_GDSCRIPT_ENABLED
-			} else if (E->get() == "--gdscript-docs") {
-				gdscript_docs_path = E->next()->get();
-#endif
 			} else if (E->get() == "--export-release") {
 				ERR_FAIL_COND_V_MSG(!editor && !found_project, EXIT_FAILURE, "Please provide a valid project path when exporting, aborting.");
 				editor = true; //needs editor
@@ -4204,11 +3949,7 @@ int Main::start() {
 	}
 
 #ifdef TOOLS_ENABLED
-#ifdef MODULE_GDSCRIPT_ENABLED
-	if (!doc_tool_path.is_empty() && gdscript_docs_path.is_empty()) {
-#else
 	if (!doc_tool_path.is_empty()) {
-#endif
 		// Needed to instance editor-only classes for their default values
 		Engine::get_singleton()->set_editor_hint(true);
 
@@ -4226,15 +3967,6 @@ int Main::start() {
 				ERR_FAIL_COND_V_MSG(!da->dir_exists("doc"), EXIT_FAILURE, "--doctool must be run from the Godot repository's root folder, or specify a path that points there.");
 			}
 		}
-
-#ifndef MODULE_MONO_ENABLED
-		// Hack to define .NET-specific project settings even on non-.NET builds,
-		// so that we don't lose their descriptions and default values in DocTools.
-		// Default values should be synced with mono_gd/gd_mono.cpp.
-		GLOBAL_DEF("dotnet/project/assembly_name", "");
-		GLOBAL_DEF("dotnet/project/solution_directory", "");
-		GLOBAL_DEF(PropertyInfo(Variant::INT, "dotnet/project/assembly_reload_attempts", PROPERTY_HINT_RANGE, "1,16,1,or_greater"), 3);
-#endif
 
 		Error err;
 		DocTools doc;
@@ -4330,35 +4062,22 @@ int Main::start() {
 		}
 	}
 
-#ifndef DISABLE_DEPRECATED
-	if (converting_project) {
-		int ret = ProjectConverter3To4(converter_max_kb_file, converter_max_line_length).convert();
-		return ret ? EXIT_SUCCESS : EXIT_FAILURE;
-	}
-	if (validating_converting_project) {
-		bool ret = ProjectConverter3To4(converter_max_kb_file, converter_max_line_length).validate_conversion();
-		return ret ? EXIT_SUCCESS : EXIT_FAILURE;
-	}
-#endif // DISABLE_DEPRECATED
-
 #endif // TOOLS_ENABLED
 
 #if defined(OVERRIDE_PATH_ENABLED)
 #ifndef TOOLS_ENABLED
 	bool disable_override = GLOBAL_GET("application/config/disable_project_settings_override");
 	if (disable_override) {
-		script = String();
 		game_path = String();
 		main_loop_type = String();
 	}
 #endif // TOOLS_ENABLED
 #else
-	script = String();
 	game_path = String();
 	main_loop_type = String();
 #endif // defined(OVERRIDE_PATH_ENABLED)
 
-	if (script.is_empty() && game_path.is_empty()) {
+	if (game_path.is_empty()) {
 		const String main_scene = GLOBAL_GET("application/run/main_scene");
 		if (main_scene.begins_with("uid://")) {
 			ResourceUID::ID id = ResourceUID::get_singleton()->text_to_id(main_scene);
@@ -4373,7 +4092,7 @@ int Main::start() {
 	}
 
 #ifdef TOOLS_ENABLED
-	if (!editor && !project_manager && !cmdline_tool && script.is_empty() && game_path.is_empty()) {
+	if (!editor && !project_manager && !cmdline_tool && game_path.is_empty()) {
 		// If we end up here, it means we didn't manage to detect what we want to run.
 		// Let's throw an error gently. The code leading to this is pretty brittle so
 		// this might end up triggered by valid usage, in which case we'll have to
@@ -4389,50 +4108,6 @@ int Main::start() {
 	}
 	if (main_loop_type.is_empty()) {
 		main_loop_type = GLOBAL_GET("application/run/main_loop_type");
-	}
-
-	if (!script.is_empty()) {
-		Ref<Script> script_res = ResourceLoader::load(script);
-		ERR_FAIL_COND_V_MSG(script_res.is_null(), EXIT_FAILURE, "Can't load script: " + script);
-
-		if (check_only) {
-			return script_res->is_script_valid() ? EXIT_SUCCESS : EXIT_FAILURE;
-		}
-
-		if (script_res->can_instantiate()) {
-			StringName instance_type = script_res->get_instance_base_type();
-			Object *obj = ClassDB::instantiate(instance_type);
-			MainLoop *script_loop = Object::cast_to<MainLoop>(obj);
-			if (!script_loop) {
-				memdelete(obj);
-				OS::get_singleton()->alert(vformat("Can't load the script \"%s\" as it doesn't inherit from SceneTree or MainLoop.", script));
-				ERR_FAIL_V_MSG(EXIT_FAILURE, vformat("Can't load the script \"%s\" as it doesn't inherit from SceneTree or MainLoop.", script));
-			}
-
-			script_loop->set_script(script_res);
-			main_loop = script_loop;
-		} else {
-			return EXIT_FAILURE;
-		}
-	} else { // Not based on script path.
-		if (!editor && !ClassDB::class_exists(main_loop_type) && ScriptServer::is_global_class(main_loop_type)) {
-			String script_path = ScriptServer::get_global_class_path(main_loop_type);
-			Ref<Script> script_res = ResourceLoader::load(script_path);
-			if (script_res.is_null()) {
-				OS::get_singleton()->alert("Error: Could not load MainLoop script type: " + main_loop_type);
-				ERR_FAIL_V_MSG(EXIT_FAILURE, vformat("Could not load global class %s.", main_loop_type));
-			}
-			StringName script_base = script_res->get_instance_base_type();
-			Object *obj = ClassDB::instantiate(script_base);
-			MainLoop *script_loop = Object::cast_to<MainLoop>(obj);
-			if (!script_loop) {
-				memdelete(obj);
-				OS::get_singleton()->alert("Error: Invalid MainLoop script base type: " + script_base);
-				ERR_FAIL_V_MSG(EXIT_FAILURE, vformat("The global class %s does not inherit from SceneTree or MainLoop.", main_loop_type));
-			}
-			script_loop->set_script(script_res);
-			main_loop = script_loop;
-		}
 	}
 
 	if (!main_loop && main_loop_type.is_empty()) {
@@ -4518,27 +4193,12 @@ int Main::start() {
 			sml->get_root()->set_embedding_subwindows(true);
 		}
 
-		ResourceLoader::add_custom_loaders();
-		ResourceSaver::add_custom_savers();
-
 		if (!project_manager && !editor) { // game
-			if (!game_path.is_empty() || !script.is_empty()) {
+			if (!game_path.is_empty()) {
 				//autoload
 				OS::get_singleton()->benchmark_begin_measure("Startup", "Load Autoloads");
 				HashMap<StringName, ProjectSettings::AutoloadInfo> autoloads(ProjectSettings::get_singleton()->get_autoload_list());
 
-				//first pass, add the constants so they exist before any script is loaded
-				for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &E : autoloads) {
-					const ProjectSettings::AutoloadInfo &info = E.value;
-
-					if (info.is_singleton) {
-						for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-							ScriptServer::get_language(i)->add_global_constant(info.name, Variant());
-						}
-					}
-				}
-
-				//second pass, load into global constants
 				List<Node *> to_add;
 				for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &E : autoloads) {
 					const ProjectSettings::AutoloadInfo &info = E.value;
@@ -4555,35 +4215,13 @@ int Main::start() {
 						if (scn.is_valid()) {
 							n = scn->instantiate();
 						}
-					} else {
-						Ref<Resource> res = ResourceLoader::load(info.path);
-						ERR_CONTINUE_MSG(res.is_null(), vformat("Failed to instantiate an autoload, can't load from path: %s.", info.path));
-
-						Ref<Script> script_res = res;
-						if (script_res.is_valid()) {
-							StringName ibt = script_res->get_instance_base_type();
-							bool valid_type = ClassDB::is_parent_class(ibt, "Node");
-							ERR_CONTINUE_MSG(!valid_type, vformat("Failed to instantiate an autoload, script '%s' does not inherit from 'Node'.", info.path));
-
-							Object *obj = ClassDB::instantiate(ibt);
-							ERR_CONTINUE_MSG(!obj, vformat("Failed to instantiate an autoload, cannot instantiate '%s'.", ibt));
-
-							n = Object::cast_to<Node>(obj);
-							n->set_script(script_res);
-						}
 					}
 
-					ERR_CONTINUE_MSG(!n, vformat("Failed to instantiate an autoload, path is not pointing to a scene or a script: %s.", info.path));
+					ERR_CONTINUE_MSG(!n, vformat("Failed to instantiate an autoload, path is not pointing to a scene: %s.", info.path));
 					n->set_name(info.name);
 
 					//defer so references are all valid on _ready()
 					to_add.push_back(n);
-
-					if (info.is_singleton) {
-						for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-							ScriptServer::get_language(i)->add_global_constant(info.name, n);
-						}
-					}
 				}
 
 				for (Node *E : to_add) {
@@ -4594,37 +4232,6 @@ int Main::start() {
 		}
 
 #ifdef TOOLS_ENABLED
-#ifdef MODULE_GDSCRIPT_ENABLED
-		if (!doc_tool_path.is_empty() && !gdscript_docs_path.is_empty()) {
-			DocTools docs;
-			Error err;
-
-			Vector<String> paths = get_files_with_extension(gdscript_docs_path, "gd");
-			ERR_FAIL_COND_V_MSG(paths.is_empty(), EXIT_FAILURE, "Couldn't find any GDScript files under the given directory: " + gdscript_docs_path);
-
-			for (const String &path : paths) {
-				Ref<GDScript> gdscript = ResourceLoader::load(path);
-				for (const DocData::ClassDoc &class_doc : gdscript->get_documentation()) {
-					docs.add_doc(class_doc);
-				}
-			}
-
-			if (doc_tool_implicit_cwd) {
-				doc_tool_path = "./docs";
-			}
-
-			Ref<DirAccess> da = DirAccess::create_for_path(doc_tool_path);
-			err = da->make_dir_recursive(doc_tool_path);
-			ERR_FAIL_COND_V_MSG(err != OK, EXIT_FAILURE, "Error: Can't create GDScript docs directory: " + doc_tool_path + ": " + itos(err));
-
-			HashMap<String, String> doc_data_classes;
-			err = docs.save_classes(doc_tool_path, doc_data_classes, false);
-			ERR_FAIL_COND_V_MSG(err != OK, EXIT_FAILURE, "Error saving GDScript docs:" + itos(err));
-
-			return EXIT_SUCCESS;
-		}
-#endif // MODULE_GDSCRIPT_ENABLED
-
 		EditorNode *editor_node = nullptr;
 		if (editor) {
 			OS::get_singleton()->benchmark_begin_measure("Startup", "Editor");
@@ -5134,11 +4741,6 @@ bool Main::iteration() {
 	GodotProfileZoneGrouped(_profile_zone, "GDExtensionManager::frame");
 	GDExtensionManager::get_singleton()->frame();
 
-	GodotProfileZoneGrouped(_profile_zone, "ScriptServer::frame");
-	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-		ScriptServer::get_language(i)->frame();
-	}
-
 	GodotProfileZoneGrouped(_profile_zone, "AudioServer::update");
 	AudioServer::get_singleton()->update();
 
@@ -5182,13 +4784,7 @@ bool Main::iteration() {
 		movie_writer->add_frame();
 	}
 
-#ifdef TOOLS_ENABLED
-	bool quit_after_timeout = false;
-#endif
 	if ((quit_after > 0) && (Engine::get_singleton()->_process_frames >= quit_after)) {
-#ifdef TOOLS_ENABLED
-		quit_after_timeout = true;
-#endif
 		exit = true;
 	}
 
@@ -5207,29 +4803,6 @@ bool Main::iteration() {
 
 	GodotProfileZoneGrouped(_profile_zone, "OS::add_frame_delay");
 	OS::get_singleton()->add_frame_delay(DisplayServer::get_singleton()->window_can_draw(), wake_for_events);
-
-#ifdef TOOLS_ENABLED
-	if (auto_build_solutions) {
-		auto_build_solutions = false;
-		// Only relevant when running the editor.
-		if (!editor) {
-			OS::get_singleton()->set_exit_code(EXIT_FAILURE);
-			ERR_FAIL_V_MSG(true,
-					"Command line option --build-solutions was passed, but no project is being edited. Aborting.");
-		}
-		if (!EditorNode::get_singleton()->call_build()) {
-			OS::get_singleton()->set_exit_code(EXIT_FAILURE);
-			ERR_FAIL_V_MSG(true,
-					"Command line option --build-solutions was passed, but the build callback failed. Aborting.");
-		}
-	}
-#endif
-
-#ifdef TOOLS_ENABLED
-	if (exit && quit_after_timeout && EditorNode::get_singleton()) {
-		EditorNode::get_singleton()->unload_editor_addons();
-	}
-#endif
 
 	return exit;
 }
@@ -5277,8 +4850,6 @@ void Main::cleanup(bool p_force) {
 
 	ResourceLoader::clear_thread_load_tasks();
 
-	ResourceLoader::remove_custom_loaders();
-	ResourceSaver::remove_custom_savers();
 	PropertyListHelper::clear_base_helpers();
 
 	// Remove the lock file if the engine exits successfully. Some automated processes such as
@@ -5301,10 +4872,8 @@ void Main::cleanup(bool p_force) {
 
 	WorkerThreadPool::get_singleton()->exit_languages_threads();
 
-	ScriptServer::finish_languages();
-
 	if (rendering_server) {
-		// Sync pending commands that may have been queued from a different thread during ScriptServer finalization
+		// Sync pending commands that may have been queued from a different thread
 		RenderingServer::get_singleton()->sync();
 
 		//clear global shader variables before scene and other graphics stuff are deinitialized.

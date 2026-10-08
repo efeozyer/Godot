@@ -71,8 +71,6 @@ private:
 	int err_count = 0;
 	int warn_count = 0;
 	int last_reset = 0;
-	bool reload_all_scripts = false;
-	Array script_paths_to_reload;
 
 	// Make handlers and send_message thread safe.
 	Mutex mutex;
@@ -85,7 +83,6 @@ private:
 	};
 
 	HashMap<Thread::ID, List<Message>> messages;
-	HashSet<Thread::ID> threads_in_break;
 
 	void _poll_messages();
 	bool _has_messages();
@@ -102,18 +99,13 @@ private:
 	bool is_peer_connected() { return peer->is_peer_connected(); }
 	void flush_output();
 
-	void _send_stack_vars(List<String> &p_names, List<Variant> &p_vals, int p_type);
-
 	Error _profiler_capture(const String &p_cmd, const Array &p_data, bool &r_captured);
-	Error _core_capture(const String &p_cmd, const Array &p_data, bool &r_captured);
-	Error _try_capture(const String &p_name, const Array &p_data, bool &r_captured);
 
 public:
 	// Overrides
 	void poll_events(bool p_is_idle);
 	void send_message(const String &p_message, const Array &p_args);
 	void send_error(const String &p_func, const String &p_file, int p_line, const String &p_err, const String &p_descr, bool p_editor_notify, ErrorHandlerType p_type);
-	void debug(bool p_can_continue = true, bool p_is_error_breakpoint = false);
 
 	explicit RemoteDebugger(Ref<RemoteDebuggerPeer> p_peer);
 	~RemoteDebugger();

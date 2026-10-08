@@ -347,7 +347,6 @@ void GDExtensionSpecialCompatHashes::initialize() {
 		{ "popup_dialog_centered_ratio", 1310934579, 2093669136 },
 		{ "popup_dialog_centered_clamped", 3433759678, 3763385571 },
 		{ "inspect_object", 2564140749, 127962172 },
-		{ "edit_script", 3664508569, 219829402 },
 		{ "save_scene_as", 1168363258, 3647332257 },
 	});
 	mappings.insert("EditorNode3DGizmo", {
@@ -819,9 +818,6 @@ void GDExtensionSpecialCompatHashes::initialize() {
 	});
 	mappings.insert("SceneTree", {
 		{ "create_timer", 1780978058, 2709170273 },
-	});
-	mappings.insert("ScriptCreateDialog", {
-		{ "config", 4210001628, 869314288 },
 	});
 	mappings.insert("Shader", {
 		{ "set_default_texture_parameter", 1628453603, 2750740428 },

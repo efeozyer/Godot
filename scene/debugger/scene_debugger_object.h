@@ -38,12 +38,8 @@
 #include "core/templates/pair.h"
 
 class Node;
-class Script;
 
 class SceneDebuggerObject {
-private:
-	void _parse_script_properties(Script *p_script, ScriptInstance *p_instance);
-
 public:
 	typedef Pair<PropertyInfo, Variant> SceneDebuggerProperty;
 	ObjectID id;

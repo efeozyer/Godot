@@ -63,7 +63,6 @@ from platform_methods import architecture_aliases, architectures, compatibility_
 
 if ARGUMENTS.get("target", "editor") == "editor":
     _helper_module("editor.editor_builders", "editor/editor_builders.py")
-    _helper_module("editor.template_builders", "editor/template_builders.py")
 
 # Scan possible build platforms
 

@@ -393,7 +393,7 @@ void ShaderGlobalsEditor::_variable_added() {
 	List<String> keywords;
 	ShaderLanguage::get_keyword_list(&keywords);
 
-	if (keywords.find(var) != nullptr || var == "script") {
+	if (keywords.find(var) != nullptr) {
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Name '%s' is a reserved shader language keyword."), var));
 		return;
 	}

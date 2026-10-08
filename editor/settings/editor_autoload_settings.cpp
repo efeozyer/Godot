@@ -36,7 +36,6 @@
 #include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "editor/docks/filesystem_dock.h"
 #include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_file_dialog.h"
@@ -47,6 +46,7 @@
 #include "scene/gui/button.h"
 #include "scene/gui/dialogs.h"
 #include "scene/gui/line_edit.h"
+#include "scene/gui/margin_container.h"
 #include "scene/gui/tree.h"
 #include "scene/main/scene_tree.h"
 #include "scene/resources/packed_scene.h"
@@ -61,18 +61,12 @@ void EditorAutoloadSettings::_notification(int p_what) {
 
 			for (const String &E : afn) {
 				scene_file_dialog->add_filter("*." + E);
-			}
-
-			ResourceLoader::get_recognized_extensions_for_type("Script", &afn);
-
-			for (const String &E : afn) {
 				autoload_file_dialog->add_filter("*." + E);
 			}
 		} break;
 
 		case NOTIFICATION_THEME_CHANGED: {
 			browse_button->set_button_icon(get_editor_theme_icon(SNAME("FileBrowse")));
-			create_script_autoload->set_button_icon(get_editor_theme_icon(SNAME("Add")));
 			create_scene_autoload->set_button_icon(get_editor_theme_icon(SNAME("Add")));
 		} break;
 	}
@@ -95,14 +89,6 @@ bool EditorAutoloadSettings::_autoload_name_is_valid(const String &p_name, Strin
 		return false;
 	}
 
-	if (ScriptServer::is_global_class(p_name)) {
-		if (r_error) {
-			*r_error = TTR("Must not collide with an existing global script class name.");
-		}
-
-		return false;
-	}
-
 	if (Variant::get_type_by_name(p_name) < Variant::VARIANT_MAX) {
 		if (r_error) {
 			*r_error = TTR("Must not collide with an existing built-in type name.");
@@ -118,18 +104,6 @@ bool EditorAutoloadSettings::_autoload_name_is_valid(const String &p_name, Strin
 			}
 
 			return false;
-		}
-	}
-
-	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-		for (const String &keyword : ScriptServer::get_language(i)->get_reserved_words()) {
-			if (keyword == p_name) {
-				if (r_error) {
-					*r_error = TTR("Keyword cannot be used as an Autoload name.");
-				}
-
-				return false;
-			}
 		}
 	}
 
@@ -211,39 +185,6 @@ void EditorAutoloadSettings::_autoload_edited() {
 		undo_redo->commit_action();
 
 		selected_autoload = name;
-	} else if (column == 2) {
-		updating_autoload = true;
-
-		bool checked = ti->is_checked(2);
-		String base = "autoload/" + ti->get_text(0);
-
-		int order = ProjectSettings::get_singleton()->get_order(base);
-		String scr_path = GLOBAL_GET(base);
-
-		if (scr_path.begins_with("*")) {
-			scr_path = scr_path.substr(1);
-		}
-
-		// Singleton autoloads are represented with a leading "*" in their path.
-		if (checked) {
-			scr_path = "*" + scr_path;
-		}
-
-		undo_redo->create_action(TTR("Toggle Autoload Globals"));
-
-		undo_redo->add_do_property(ProjectSettings::get_singleton(), base, scr_path);
-		undo_redo->add_undo_property(ProjectSettings::get_singleton(), base, GLOBAL_GET(base));
-
-		undo_redo->add_do_method(ProjectSettings::get_singleton(), "set_order", base, order);
-		undo_redo->add_undo_method(ProjectSettings::get_singleton(), "set_order", base, order);
-
-		undo_redo->add_do_method(this, CoreStringName(call_deferred), "update_autoload");
-		undo_redo->add_undo_method(this, CoreStringName(call_deferred), "update_autoload");
-
-		undo_redo->add_do_method(this, "emit_signal", autoload_changed);
-		undo_redo->add_undo_method(this, "emit_signal", autoload_changed);
-
-		undo_redo->commit_action();
 	}
 
 	updating_autoload = false;
@@ -329,85 +270,12 @@ void EditorAutoloadSettings::_autoload_open(const String &fpath) {
 	ProjectSettingsEditor::get_singleton()->hide();
 }
 
-Node *EditorAutoloadSettings::_create_autoload(const String &p_path) {
-	Node *n = nullptr;
-	if (ResourceLoader::get_resource_type(p_path) == "PackedScene") {
-		Ref<PackedScene> scn = ResourceLoader::load(p_path);
-		ERR_FAIL_COND_V_MSG(scn.is_null(), nullptr, vformat("Failed to create an autoload, can't load from UID or path: %s.", p_path));
-
-		n = scn->instantiate();
-	} else {
-		Ref<Resource> res = ResourceLoader::load(p_path);
-		ERR_FAIL_COND_V_MSG(res.is_null(), nullptr, vformat("Failed to create an autoload, can't load from UID or path: %s.", p_path));
-
-		Ref<Script> scr = res;
-		if (scr.is_valid()) {
-			ERR_FAIL_COND_V_MSG(!scr->is_script_valid(), nullptr, vformat("Failed to create an autoload, script '%s' is not compiling.", p_path));
-
-			StringName ibt = scr->get_instance_base_type();
-			bool valid_type = ClassDB::is_parent_class(ibt, "Node");
-			ERR_FAIL_COND_V_MSG(!valid_type, nullptr, vformat("Failed to create an autoload, script '%s' does not inherit from 'Node'.", p_path));
-
-			Object *obj = ClassDB::instantiate(ibt);
-			ERR_FAIL_NULL_V_MSG(obj, nullptr, vformat("Failed to create an autoload, cannot instantiate '%s'.", ibt));
-
-			n = Object::cast_to<Node>(obj);
-			n->set_script(scr);
-		}
-	}
-
-	ERR_FAIL_NULL_V_MSG(n, nullptr, vformat("Failed to create an autoload, path is not pointing to a scene or a script: %s.", p_path));
-
-	return n;
-}
-void EditorAutoloadSettings::_create_script_autoload() {
-	if (!script_create_dialog) {
-		script_create_dialog = memnew(ScriptCreateDialog);
-		add_child(script_create_dialog);
-		script_create_dialog->connect("script_created", callable_mp(this, &EditorAutoloadSettings::_script_created));
-	}
-	script_create_dialog->config("Node", "res://new_autoload_script.gd", false, false);
-	script_create_dialog->popup_centered();
-}
-
 void EditorAutoloadSettings::_create_scene_autoload() {
 	scene_file_dialog->set_current_file("new_autoload_scene.tscn");
 	scene_file_dialog->popup_file_dialog();
 }
 
-void EditorAutoloadSettings::init_autoloads() {
-	for (AutoloadInfo &info : autoload_cache) {
-		info.node = _create_autoload(ResourceUID::ensure_path(info.path));
-
-		if (info.node) {
-			Ref<Script> scr = info.node->get_script();
-			info.in_editor = scr.is_valid() && scr->is_tool();
-			info.node->set_name(info.name);
-		}
-
-		if (info.is_singleton) {
-			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-				ScriptServer::get_language(i)->add_named_global_constant(info.name, info.node);
-			}
-		}
-
-		if (!info.is_singleton && !info.in_editor && info.node != nullptr) {
-			memdelete(info.node);
-			info.node = nullptr;
-		}
-	}
-
-	for (const AutoloadInfo &info : autoload_cache) {
-		if (info.node && info.in_editor) {
-			// It's important to add the node without deferring because code in plugins or tool scripts
-			// could use the autoload node when they are enabled.
-			get_tree()->get_root()->add_child(info.node);
-		}
-	}
-}
-
 void EditorAutoloadSettings::_autoload_file_selected(const String &p_path) {
-	// Convert the file name to PascalCase, which is the convention for classes in GDScript.
 	_try_add_autoload(p_path.get_file().get_basename().to_pascal_case(), p_path);
 }
 
@@ -419,12 +287,6 @@ void EditorAutoloadSettings::_scene_file_selected(const String &p_path) {
 	}
 	scene_create_dialog->config(p_path.get_base_dir(), p_path.get_file().get_basename());
 	scene_create_dialog->popup_centered();
-}
-
-void EditorAutoloadSettings::_script_created(Ref<Script> p_script) {
-	FileSystemDock::get_singleton()->get_script_create_dialog()->hide();
-	path = p_script->get_path().get_base_dir();
-	_try_add_autoload(p_script->get_path().get_file().get_basename().to_pascal_case(), p_script->get_path());
 }
 
 void EditorAutoloadSettings::_scene_created() {
@@ -472,13 +334,6 @@ void EditorAutoloadSettings::update_autoload() {
 
 	updating_autoload = true;
 
-	HashMap<String, AutoloadInfo> to_remove;
-	List<AutoloadInfo *> to_add;
-
-	for (const AutoloadInfo &info : autoload_cache) {
-		to_remove.insert(info.name, info);
-	}
-
 	autoload_cache.clear();
 
 	tree->clear();
@@ -500,9 +355,8 @@ void EditorAutoloadSettings::update_autoload() {
 		}
 
 		AutoloadInfo info;
-		info.is_singleton = scr_path.begins_with("*");
 
-		if (info.is_singleton) {
+		if (scr_path.begins_with("*")) {
 			scr_path = scr_path.substr(1);
 		}
 
@@ -510,30 +364,7 @@ void EditorAutoloadSettings::update_autoload() {
 		info.path = ResourceUID::get_singleton()->path_to_uid(scr_path);
 		info.order = ProjectSettings::get_singleton()->get_order(pi.name);
 
-		bool need_to_add = true;
-		if (to_remove.has(name)) {
-			AutoloadInfo &old_info = to_remove[name];
-			if (old_info.path == info.path) {
-				// Still the same resource, check status
-				info.node = old_info.node;
-				if (info.node && info.node->is_inside_tree()) {
-					Ref<Script> scr = info.node->get_script();
-					info.in_editor = scr.is_valid() && scr->is_tool();
-					if (info.is_singleton == old_info.is_singleton && info.in_editor == old_info.in_editor) {
-						to_remove.erase(name);
-						need_to_add = false;
-					} else {
-						info.node = nullptr;
-					}
-				}
-			}
-		}
-
 		autoload_cache.push_back(info);
-
-		if (need_to_add) {
-			to_add.push_back(&(autoload_cache.back()->get()));
-		}
 
 		TreeItem *item = tree->create_item(root);
 		item->set_text(0, name);
@@ -543,66 +374,10 @@ void EditorAutoloadSettings::update_autoload() {
 		item->set_text(1, ResourceUID::ensure_path(scr_path));
 		item->set_selectable(1, true);
 
-		item->set_cell_mode(2, TreeItem::CELL_MODE_CHECK);
-		item->set_editable(2, true);
-		item->set_text(2, TTRC("Enable"));
-		item->set_checked(2, info.is_singleton);
-		item->add_button(3, get_editor_theme_icon(SNAME("MoveUp")), BUTTON_MOVE_UP);
-		item->add_button(3, get_editor_theme_icon(SNAME("MoveDown")), BUTTON_MOVE_DOWN);
-		item->add_button(3, get_editor_theme_icon(SNAME("Remove")), BUTTON_DELETE);
-		item->set_selectable(3, false);
-	}
-
-	// Remove deleted/changed autoloads
-	for (KeyValue<String, AutoloadInfo> &E : to_remove) {
-		AutoloadInfo &info = E.value;
-		if (info.is_singleton) {
-			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-				ScriptServer::get_language(i)->remove_named_global_constant(info.name);
-			}
-		}
-		if (info.in_editor) {
-			ERR_CONTINUE(!info.node);
-			callable_mp((Node *)get_tree()->get_root(), &Node::remove_child).call_deferred(info.node);
-		}
-
-		if (info.node) {
-			info.node->queue_free();
-			info.node = nullptr;
-		}
-	}
-
-	// Load new/changed autoloads
-	List<Node *> nodes_to_add;
-	for (AutoloadInfo *info : to_add) {
-		info->node = _create_autoload(info->path);
-
-		ERR_CONTINUE(!info->node);
-		info->node->set_name(info->name);
-
-		Ref<Script> scr = info->node->get_script();
-		info->in_editor = scr.is_valid() && scr->is_tool();
-
-		if (info->in_editor) {
-			//defer so references are all valid on _ready()
-			nodes_to_add.push_back(info->node);
-		}
-
-		if (info->is_singleton) {
-			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-				ScriptServer::get_language(i)->add_named_global_constant(info->name, info->node);
-			}
-		}
-
-		if (!info->in_editor && !info->is_singleton) {
-			// No reason to keep this node
-			memdelete(info->node);
-			info->node = nullptr;
-		}
-	}
-
-	for (Node *E : nodes_to_add) {
-		get_tree()->get_root()->add_child(E);
+		item->add_button(2, get_editor_theme_icon(SNAME("MoveUp")), BUTTON_MOVE_UP);
+		item->add_button(2, get_editor_theme_icon(SNAME("MoveDown")), BUTTON_MOVE_DOWN);
+		item->add_button(2, get_editor_theme_icon(SNAME("Remove")), BUTTON_DELETE);
+		item->set_selectable(2, false);
 	}
 
 	updating_autoload = false;
@@ -855,22 +630,14 @@ EditorAutoloadSettings::EditorAutoloadSettings() {
 		}
 
 		AutoloadInfo info;
-		info.is_singleton = scr_path.begins_with("*");
 
-		if (info.is_singleton) {
+		if (scr_path.begins_with("*")) {
 			scr_path = scr_path.substr(1);
 		}
 
 		info.name = name;
 		info.path = ResourceUID::get_singleton()->path_to_uid(scr_path);
 		info.order = ProjectSettings::get_singleton()->get_order(pi.name);
-
-		if (info.is_singleton) {
-			// Make sure name references work before parsing scripts
-			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-				ScriptServer::get_language(i)->add_named_global_constant(info.name, Variant());
-			}
-		}
 
 		autoload_cache.push_back(info);
 	}
@@ -889,14 +656,9 @@ EditorAutoloadSettings::EditorAutoloadSettings() {
 	scene_file_dialog->connect("file_selected", callable_mp(this, &EditorAutoloadSettings::_scene_file_selected));
 
 	browse_button = memnew(Button);
-	browse_button->set_text(TTRC("Select Script/Scene"));
+	browse_button->set_text(TTRC("Select Scene"));
 	hbc->add_child(browse_button);
 	browse_button->connect(SceneStringName(pressed), callable_mp(autoload_file_dialog, &FileDialog::popup_file_dialog));
-
-	create_script_autoload = memnew(Button);
-	create_script_autoload->set_text(TTRC("Create Script"));
-	hbc->add_child(create_script_autoload);
-	create_script_autoload->connect(SceneStringName(pressed), callable_mp(this, &EditorAutoloadSettings::_create_script_autoload));
 
 	create_scene_autoload = memnew(Button);
 	create_scene_autoload->set_text(TTRC("Create Scene"));
@@ -918,7 +680,7 @@ EditorAutoloadSettings::EditorAutoloadSettings() {
 
 	tree->set_theme_type_variation("TreeTable");
 	tree->set_hide_folding(true);
-	tree->set_columns(4);
+	tree->set_columns(3);
 	tree->set_column_titles_visible(true);
 
 	tree->set_column_title(0, TTRC("Name"));
@@ -934,11 +696,7 @@ EditorAutoloadSettings::EditorAutoloadSettings() {
 	tree->set_column_clip_content(1, true);
 	tree->set_column_expand_ratio(1, 2);
 
-	tree->set_column_title(2, TTRC("Global Variable"));
-	tree->set_column_title_tooltip_text(2, TTRC("If enabled, this autoload can be accessed in scripts using its name."));
 	tree->set_column_expand(2, false);
-
-	tree->set_column_expand(3, false);
 
 	tree->connect("cell_selected", callable_mp(this, &EditorAutoloadSettings::_autoload_selected));
 	tree->connect("item_edited", callable_mp(this, &EditorAutoloadSettings::_autoload_edited));
@@ -965,12 +723,4 @@ EditorAutoloadSettings::EditorAutoloadSettings() {
 	name_validator->add_line(0, TTRC("Autoload name is valid."));
 	name_vbox->add_child(name_validator);
 	name_edit->connect(SceneStringName(text_changed), callable_mp(name_validator, &EditorValidationPanel::update).unbind(1));
-}
-
-EditorAutoloadSettings::~EditorAutoloadSettings() {
-	for (const AutoloadInfo &info : autoload_cache) {
-		if (info.node && !info.in_editor) {
-			memdelete(info.node);
-		}
-	}
 }

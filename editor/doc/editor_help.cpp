@@ -40,7 +40,6 @@
 #include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "core/string/regex.h"
@@ -48,69 +47,21 @@
 #include "core/version.h"
 #include "editor/doc/doc_data_compressed.gen.h"
 #include "editor/docks/filesystem_dock.h"
+#include "editor/document/document_editor_plugin.h"
+#include "editor/document/document_navigation_marker.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/gui/editor_toaster.h"
 #include "editor/inspector/editor_property_name_processor.h"
-#include "editor/script/script_editor_navigation_marker.h"
-#include "editor/script/script_editor_plugin.h"
-#include "editor/script/syntax_highlighters.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "editor/themes/editor_theme_manager.h"
 #include "scene/gui/line_edit.h"
 #include "servers/display/display_server.h"
 
-#include "modules/modules_enabled.gen.h" // For gdscript, mono.
-
-// For syntax highlighting.
-#ifdef MODULE_GDSCRIPT_ENABLED
-#include "modules/gdscript/editor/gdscript_highlighter.h"
-#include "modules/gdscript/gdscript.h"
-#endif
-
-// For syntax highlighting.
-#ifdef MODULE_MONO_ENABLED
-#include "modules/mono/csharp_script.h"
-#endif
-
 #define CONTRIBUTE_URL "https://contributing.godotengine.org/en/latest/development/documentation/class_reference.html"
-
-#ifdef MODULE_MONO_ENABLED
-// Sync with the types mentioned in https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/c_sharp_differences.html
-const Vector<String> classes_with_csharp_differences = {
-	"@GlobalScope",
-	"String",
-	"NodePath",
-	"Signal",
-	"Callable",
-	"RID",
-	"Basis",
-	"Transform2D",
-	"Transform3D",
-	"Rect2",
-	"Rect2i",
-	"AABB",
-	"Quaternion",
-	"Projection",
-	"Color",
-	"Array",
-	"Dictionary",
-	"PackedByteArray",
-	"PackedColorArray",
-	"PackedFloat32Array",
-	"PackedFloat64Array",
-	"PackedInt32Array",
-	"PackedInt64Array",
-	"PackedStringArray",
-	"PackedVector2Array",
-	"PackedVector3Array",
-	"PackedVector4Array",
-	"Variant",
-};
-#endif
 
 const Vector<String> packed_array_types = {
 	"PackedByteArray",
@@ -345,14 +296,14 @@ void EditorHelp::_class_desc_select(const String &p_select) {
 		// Case order is important here to correctly handle edge cases like `Variant.Type` in `@GlobalScope`.
 		if (table->has(link)) {
 			// Found in the current page.
-			ScriptEditorNavigationMarker::get_singleton()->locate_begin();
+			DocumentNavigationMarker::get_singleton()->locate_begin();
 			if (class_desc->is_finished()) {
 				_class_desc_scroll_to_paragraph((*table)[link], _need_save_new_history());
 			} else {
 				scroll_to = (*table)[link];
 				need_save_new_history = _need_save_new_history();
 			}
-			ScriptEditorNavigationMarker::get_singleton()->locate_end();
+			DocumentNavigationMarker::get_singleton()->locate_end();
 		} else {
 			// Look for link in `@GlobalScope`.
 			if (topic == "class_enum") {
@@ -647,21 +598,15 @@ void EditorHelp::_add_method(const DocData::MethodDoc &p_method, bool p_overview
 		class_desc->add_text("...");
 		class_desc->pop(); // color
 
-		const DocData::ArgumentDoc &rest_argument = p_method.rest_argument;
-
 		class_desc->push_color(theme_cache.text_color);
-		class_desc->add_text(rest_argument.name.is_empty() ? "args" : rest_argument.name);
+		class_desc->add_text("args");
 		class_desc->pop(); // color
 
 		class_desc->push_color(theme_cache.symbol_color);
 		class_desc->add_text(colon_nbsp);
 		class_desc->pop(); // color
 
-		if (rest_argument.type.is_empty()) {
-			_add_type("Array");
-		} else {
-			_add_type(rest_argument.type, rest_argument.enumeration, rest_argument.is_bitfield);
-		}
+		_add_type("Array");
 	}
 
 	class_desc->push_color(theme_cache.symbol_color);
@@ -824,7 +769,7 @@ void EditorHelp::_update_method_list(MethodType p_method_type, const Vector<DocD
 }
 
 void EditorHelp::_update_method_descriptions(const DocData::ClassDoc &p_classdoc, MethodType p_method_type, const Vector<DocData::MethodDoc> &p_methods) {
-#define HANDLE_DOC(m_string) ((p_classdoc.is_script_doc ? (m_string) : DTR(m_string)).strip_edges())
+#define HANDLE_DOC(m_string) (DTR(m_string).strip_edges())
 
 	class_desc->add_newline();
 	class_desc->add_hr(100, 2, theme_cache.primary_hr_color);
@@ -950,21 +895,12 @@ void EditorHelp::_update_method_descriptions(const DocData::ClassDoc &p_classdoc
 				has_prev_text = true;
 
 				String message;
-				if (p_classdoc.is_script_doc) {
-					static const char *messages_by_type[METHOD_TYPE_MAX] = {
-						TTRC("There is currently no description for this method."),
-						TTRC("There is currently no description for this constructor."),
-						TTRC("There is currently no description for this operator."),
-					};
-					message = TTR(messages_by_type[p_method_type]);
-				} else {
-					static const char *messages_by_type[METHOD_TYPE_MAX] = {
-						TTRC("There is currently no description for this method. Please help us by [color=$color][url=$url]contributing one[/url][/color]!"),
-						TTRC("There is currently no description for this constructor. Please help us by [color=$color][url=$url]contributing one[/url][/color]!"),
-						TTRC("There is currently no description for this operator. Please help us by [color=$color][url=$url]contributing one[/url][/color]!"),
-					};
-					message = TTR(messages_by_type[p_method_type]).replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text);
-				}
+				static const char *messages_by_type[METHOD_TYPE_MAX] = {
+					TTRC("There is currently no description for this method. Please help us by [color=$color][url=$url]contributing one[/url][/color]!"),
+					TTRC("There is currently no description for this constructor. Please help us by [color=$color][url=$url]contributing one[/url][/color]!"),
+					TTRC("There is currently no description for this operator. Please help us by [color=$color][url=$url]contributing one[/url][/color]!"),
+				};
+				message = TTR(messages_by_type[p_method_type]).replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text);
 
 				class_desc->add_image(get_editor_theme_icon(SNAME("Error")));
 				class_desc->add_text(" ");
@@ -998,7 +934,7 @@ void EditorHelp::_update_doc() {
 
 	DocData::ClassDoc cd = doc->class_list[edited_class]; // Make a copy, so we can sort without worrying.
 
-#define HANDLE_DOC(m_string) ((cd.is_script_doc ? (m_string) : DTR(m_string)).strip_edges())
+#define HANDLE_DOC(m_string) (DTR(m_string).strip_edges())
 
 	// Class name
 
@@ -1054,7 +990,7 @@ void EditorHelp::_update_doc() {
 	}
 
 	// Descendants
-	if ((cd.is_script_doc || ClassDB::class_exists(cd.name)) && doc->inheriting.has(cd.name)) {
+	if (ClassDB::class_exists(cd.name) && doc->inheriting.has(cd.name)) {
 		class_desc->add_newline();
 
 		_push_normal_font();
@@ -1120,31 +1056,11 @@ void EditorHelp::_update_doc() {
 		class_desc->add_text(" ");
 
 		class_desc->push_color(theme_cache.comment_color);
-		if (cd.is_script_doc) {
-			class_desc->add_text(TTR("There is currently no description for this class."));
-		} else {
-			class_desc->append_text(TTR("There is currently no description for this class. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
-		}
+		class_desc->append_text(TTR("There is currently no description for this class. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
 		class_desc->pop(); // color
 
 		_pop_normal_font();
 	}
-
-#ifdef MODULE_MONO_ENABLED
-	if (classes_with_csharp_differences.has(cd.name)) {
-		class_desc->add_newline();
-
-		const String &csharp_differences_url = vformat("%s/tutorials/scripting/c_sharp/c_sharp_differences.html", GODOT_VERSION_DOCS_URL);
-
-		_push_normal_font();
-		class_desc->push_color(theme_cache.text_color);
-
-		class_desc->append_text("[b]" + TTR("Note:") + "[/b] " + vformat(TTR("There are notable differences when using this API with C#. See [url=%s]C# API differences to GDScript[/url] for more information."), csharp_differences_url));
-
-		class_desc->pop(); // color
-		_pop_normal_font();
-	}
-#endif
 
 	// Online tutorials
 	if (!cd.tutorials.is_empty()) {
@@ -1331,34 +1247,6 @@ void EditorHelp::_update_doc() {
 
 			bool has_prev_text = false;
 
-			if (cd.is_script_doc && (!prop.setter.is_empty() || !prop.getter.is_empty())) {
-				has_prev_text = true;
-
-				class_desc->push_color(theme_cache.symbol_color);
-				class_desc->add_text("[" + TTR("property:") + " ");
-				class_desc->pop(); // color
-
-				if (!prop.setter.is_empty()) {
-					class_desc->push_color(theme_cache.value_color);
-					class_desc->add_text("setter");
-					class_desc->pop(); // color
-				}
-				if (!prop.getter.is_empty()) {
-					if (!prop.setter.is_empty()) {
-						class_desc->push_color(theme_cache.symbol_color);
-						class_desc->add_text(", ");
-						class_desc->pop(); // color
-					}
-					class_desc->push_color(theme_cache.value_color);
-					class_desc->add_text("getter");
-					class_desc->pop(); // color
-				}
-
-				class_desc->push_color(theme_cache.symbol_color);
-				class_desc->add_text("]");
-				class_desc->pop(); // color
-			}
-
 			if (prop.is_deprecated) {
 				if (has_prev_text) {
 					class_desc->add_text(" ");
@@ -1529,11 +1417,7 @@ void EditorHelp::_update_doc() {
 				class_desc->add_image(get_editor_theme_icon(SNAME("Error")));
 				class_desc->add_text(" ");
 				class_desc->push_color(theme_cache.comment_color);
-				if (cd.is_script_doc) {
-					class_desc->add_text(TTR("There is currently no description for this theme property."));
-				} else {
-					class_desc->append_text(TTR("There is currently no description for this theme property. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
-				}
+				class_desc->append_text(TTR("There is currently no description for this theme property. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
 				class_desc->pop(); // color
 			}
 
@@ -1613,7 +1497,7 @@ void EditorHelp::_update_doc() {
 
 				_add_type(argument.type, argument.enumeration, argument.is_bitfield);
 
-				// Signals currently do not support default argument values, neither the core nor GDScript.
+				// Signals currently do not support default argument values.
 				// This code is just for completeness.
 				if (!argument.default_value.is_empty()) {
 					class_desc->push_color(theme_cache.symbol_color);
@@ -1665,11 +1549,7 @@ void EditorHelp::_update_doc() {
 				class_desc->add_image(get_editor_theme_icon(SNAME("Error")));
 				class_desc->add_text(" ");
 				class_desc->push_color(theme_cache.comment_color);
-				if (cd.is_script_doc) {
-					class_desc->add_text(TTR("There is currently no description for this signal."));
-				} else {
-					class_desc->append_text(TTR("There is currently no description for this signal. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
-				}
+				class_desc->append_text(TTR("There is currently no description for this signal. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
 				class_desc->pop(); // color
 			}
 
@@ -1701,18 +1581,7 @@ void EditorHelp::_update_doc() {
 		}
 
 		// Enums
-		bool has_enums = enums.size() && !cd.is_script_doc;
-		if (enums.size() && !has_enums) {
-			for (KeyValue<String, DocData::EnumDoc> &E : cd.enums) {
-				const bool is_documented = E.value.is_deprecated || E.value.is_experimental || !E.value.description.strip_edges().is_empty();
-				if (!is_documented && E.key.begins_with("_")) {
-					continue;
-				}
-				has_enums = true;
-				break;
-			}
-		}
-		if (has_enums) {
+		if (enums.size()) {
 			class_desc->add_newline();
 			class_desc->add_hr(100, 2, theme_cache.primary_hr_color);
 			class_desc->add_newline();
@@ -1727,12 +1596,6 @@ void EditorHelp::_update_doc() {
 				String key = E.key;
 				if ((key.get_slice_count(".") > 1) && (key.get_slicec('.', 0) == edited_class)) {
 					key = key.get_slicec('.', 1);
-				}
-				if (cd.enums.has(key)) {
-					const bool is_documented = cd.enums[key].is_deprecated || cd.enums[key].is_experimental || !cd.enums[key].description.strip_edges().is_empty();
-					if (!is_documented && cd.is_script_doc && E.key.begins_with("_")) {
-						continue;
-					}
 				}
 
 				class_desc->add_newline();
@@ -2058,21 +1921,15 @@ void EditorHelp::_update_doc() {
 					class_desc->add_text("...");
 					class_desc->pop(); // color
 
-					const DocData::ArgumentDoc &rest_argument = annotation.rest_argument;
-
 					class_desc->push_color(theme_cache.text_color);
-					class_desc->add_text(rest_argument.name.is_empty() ? "args" : rest_argument.name);
+					class_desc->add_text("args");
 					class_desc->pop(); // color
 
 					class_desc->push_color(theme_cache.symbol_color);
 					class_desc->add_text(colon_nbsp);
 					class_desc->pop(); // color
 
-					if (rest_argument.type.is_empty()) {
-						_add_type("Array");
-					} else {
-						_add_type(rest_argument.type, rest_argument.enumeration, rest_argument.is_bitfield);
-					}
+					_add_type("Array");
 				}
 
 				class_desc->push_color(theme_cache.symbol_color);
@@ -2102,11 +1959,7 @@ void EditorHelp::_update_doc() {
 				class_desc->add_image(get_editor_theme_icon(SNAME("Error")));
 				class_desc->add_text(" ");
 				class_desc->push_color(theme_cache.comment_color);
-				if (cd.is_script_doc) {
-					class_desc->add_text(TTR("There is currently no description for this annotation."));
-				} else {
-					class_desc->append_text(TTR("There is currently no description for this annotation. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
-				}
+				class_desc->append_text(TTR("There is currently no description for this annotation. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
 				class_desc->pop(); // color
 			}
 
@@ -2179,96 +2032,67 @@ void EditorHelp::_update_doc() {
 				class_desc->pop(); // color
 			}
 
-			if (cd.is_script_doc && (!prop.setter.is_empty() || !prop.getter.is_empty())) {
-				class_desc->push_color(theme_cache.symbol_color);
-				class_desc->add_text(" [" + TTR("property:") + " ");
-				class_desc->pop(); // color
-
-				if (!prop.setter.is_empty()) {
-					class_desc->push_color(theme_cache.value_color);
-					class_desc->add_text("setter");
-					class_desc->pop(); // color
-				}
-				if (!prop.getter.is_empty()) {
-					if (!prop.setter.is_empty()) {
-						class_desc->push_color(theme_cache.symbol_color);
-						class_desc->add_text(", ");
-						class_desc->pop(); // color
-					}
-					class_desc->push_color(theme_cache.value_color);
-					class_desc->add_text("getter");
-					class_desc->pop(); // color
-				}
-
-				class_desc->push_color(theme_cache.symbol_color);
-				class_desc->add_text("]");
-				class_desc->pop(); // color
-			}
-
 			_pop_code_font();
 			class_desc->pop(); // cell
 
-			// Script doc doesn't have setter, getter.
 			if (EDITOR_GET("text_editor/help/show_property_setters_and_getters")) {
-				if (!cd.is_script_doc) {
-					HashMap<String, DocData::MethodDoc> method_map;
-					for (int j = 0; j < methods.size(); j++) {
-						method_map[methods[j].name] = methods[j];
+				HashMap<String, DocData::MethodDoc> method_map;
+				for (int j = 0; j < methods.size(); j++) {
+					method_map[methods[j].name] = methods[j];
+				}
+
+				if (!prop.setter.is_empty()) {
+					class_desc->push_cell();
+					class_desc->pop(); // cell
+
+					class_desc->push_cell();
+					_push_code_font();
+					class_desc->push_color(theme_cache.text_color);
+
+					if (method_map[prop.setter].arguments.size() > 1) {
+						// Setters with additional arguments are exposed in the method list, so we link them here for quick access.
+						class_desc->push_meta("@method " + prop.setter);
+						class_desc->add_text(prop.setter + TTR("(value)"));
+						class_desc->pop(); // meta
+					} else {
+						class_desc->add_text(prop.setter + TTR("(value)"));
 					}
 
-					if (!prop.setter.is_empty()) {
-						class_desc->push_cell();
-						class_desc->pop(); // cell
+					class_desc->pop(); // color
+					class_desc->push_color(theme_cache.comment_color);
+					class_desc->add_text(" setter");
+					class_desc->pop(); // color
+					_pop_code_font();
+					class_desc->pop(); // cell
 
-						class_desc->push_cell();
-						_push_code_font();
-						class_desc->push_color(theme_cache.text_color);
+					method_line[prop.setter] = property_line[prop.name];
+				}
 
-						if (method_map[prop.setter].arguments.size() > 1) {
-							// Setters with additional arguments are exposed in the method list, so we link them here for quick access.
-							class_desc->push_meta("@method " + prop.setter);
-							class_desc->add_text(prop.setter + TTR("(value)"));
-							class_desc->pop(); // meta
-						} else {
-							class_desc->add_text(prop.setter + TTR("(value)"));
-						}
+				if (!prop.getter.is_empty()) {
+					class_desc->push_cell();
+					class_desc->pop(); // cell
 
-						class_desc->pop(); // color
-						class_desc->push_color(theme_cache.comment_color);
-						class_desc->add_text(" setter");
-						class_desc->pop(); // color
-						_pop_code_font();
-						class_desc->pop(); // cell
+					class_desc->push_cell();
+					_push_code_font();
+					class_desc->push_color(theme_cache.text_color);
 
-						method_line[prop.setter] = property_line[prop.name];
+					if (!method_map[prop.getter].arguments.is_empty()) {
+						// Getters with additional arguments are exposed in the method list, so we link them here for quick access.
+						class_desc->push_meta("@method " + prop.getter);
+						class_desc->add_text(prop.getter + "()");
+						class_desc->pop(); // meta
+					} else {
+						class_desc->add_text(prop.getter + "()");
 					}
 
-					if (!prop.getter.is_empty()) {
-						class_desc->push_cell();
-						class_desc->pop(); // cell
+					class_desc->pop(); // color
+					class_desc->push_color(theme_cache.comment_color);
+					class_desc->add_text(" getter");
+					class_desc->pop(); // color
+					_pop_code_font();
+					class_desc->pop(); // cell
 
-						class_desc->push_cell();
-						_push_code_font();
-						class_desc->push_color(theme_cache.text_color);
-
-						if (!method_map[prop.getter].arguments.is_empty()) {
-							// Getters with additional arguments are exposed in the method list, so we link them here for quick access.
-							class_desc->push_meta("@method " + prop.getter);
-							class_desc->add_text(prop.getter + "()");
-							class_desc->pop(); // meta
-						} else {
-							class_desc->add_text(prop.getter + "()");
-						}
-
-						class_desc->pop(); // color
-						class_desc->push_color(theme_cache.comment_color);
-						class_desc->add_text(" getter");
-						class_desc->pop(); // color
-						_pop_code_font();
-						class_desc->pop(); // cell
-
-						method_line[prop.getter] = property_line[prop.name];
-					}
+					method_line[prop.getter] = property_line[prop.name];
 				}
 			}
 
@@ -2306,16 +2130,12 @@ void EditorHelp::_update_doc() {
 				class_desc->add_image(get_editor_theme_icon(SNAME("Error")));
 				class_desc->add_text(" ");
 				class_desc->push_color(theme_cache.comment_color);
-				if (cd.is_script_doc) {
-					class_desc->add_text(TTR("There is currently no description for this property."));
-				} else {
-					class_desc->append_text(TTR("There is currently no description for this property. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
-				}
+				class_desc->append_text(TTR("There is currently no description for this property. Please help us by [color=$color][url=$url]contributing one[/url][/color]!").replace("$url", CONTRIBUTE_URL).replace("$color", link_color_text));
 				class_desc->pop(); // color
 			}
 
 			// Add copy note to built-in properties returning `Packed*Array`.
-			if (!cd.is_script_doc && packed_array_types.has(prop.type)) {
+			if (packed_array_types.has(prop.type)) {
 				class_desc->add_newline();
 				// See also `EditorHelpBit::parse_symbol()` and `doc/tools/make_rst.py`.
 				_add_text(vformat(TTR("[b]Note:[/b] The returned array is [i]copied[/i] and any changes to it will not update the original property value. See [%s] for more details."), prop.type));
@@ -2354,7 +2174,7 @@ void EditorHelp::_update_doc() {
 void EditorHelp::_request_help(const String &p_string) {
 	Error err = _goto_desc(p_string, false);
 	if (err == OK) {
-		ScriptEditor::get_singleton()->focus_editor();
+		DocumentEditor::get_singleton()->focus_editor();
 	}
 }
 
@@ -2371,7 +2191,7 @@ void EditorHelp::_help_callback(const String &p_topic) {
 			}
 
 			if (pos + 1 < p_topic.length() && p_topic[pos + 1] == ':') {
-				// `::` used in built-in scripts.
+				// `::` used in built-in resources.
 				from = pos + 2;
 			} else {
 				parts.push_back(p_topic.substr(buffer_start, pos - buffer_start));
@@ -2460,25 +2280,17 @@ void EditorHelp::_class_desc_scroll_to_paragraph(int p_line, bool p_save_history
 	// Save history after scrolling.
 	if (p_save_history) {
 		emit_signal(SNAME("_request_save_new_history"), get_state());
-		if (ScriptEditorNavigationMarker::get_singleton()->is_locating()) {
-			ScriptEditorNavigationMarker::get_singleton()->locate_end();
+		if (DocumentNavigationMarker::get_singleton()->is_locating()) {
+			DocumentNavigationMarker::get_singleton()->locate_end();
 		}
 	}
 }
 
 bool EditorHelp::_need_save_new_history() const {
-	return !ScriptEditorNavigationMarker::get_singleton()->is_initializing() && ScriptEditorNavigationMarker::get_singleton()->is_locating();
+	return !DocumentNavigationMarker::get_singleton()->is_initializing() && DocumentNavigationMarker::get_singleton()->is_locating();
 }
 
 static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt, const Control *p_owner_node, const String &p_class) {
-	bool is_native = false;
-	{
-		const DocData::ClassDoc *E = EditorHelp::get_doc(p_class);
-		if (E && !E->is_script_doc) {
-			is_native = true;
-		}
-	}
-
 	const bool using_space_indent = int(EDITOR_GET("text_editor/behavior/indent/type")) == 1;
 	const int indent_size = MAX(1, int(EDITOR_GET("text_editor/behavior/indent/size")));
 
@@ -2517,50 +2329,12 @@ static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt, const C
 
 	String bbcode = p_bbcode.dedent().remove_chars("\r").strip_edges();
 
-	// Select the correct code examples.
-	switch ((int)EDITOR_GET("text_editor/help/class_reference_examples")) {
-		case 0: // GDScript
-			bbcode = bbcode.replace("[gdscript", "[codeblock lang=gdscript"); // Tag can have extra arguments.
-			bbcode = bbcode.replace("[/gdscript]", "[/codeblock]");
+	// Show the code examples of every language.
+	bbcode = bbcode.replace("[csharp", "[b]C#:[/b]\n[codeblock lang=csharp"); // Tag can have extra arguments.
+	bbcode = bbcode.replace("[gdscript", "[b]GDScript:[/b]\n[codeblock lang=gdscript"); // Tag can have extra arguments.
 
-			for (int pos = bbcode.find("[csharp"); pos != -1; pos = bbcode.find("[csharp")) {
-				int end_pos = bbcode.find("[/csharp]");
-				if (end_pos == -1) {
-					WARN_PRINT("Unclosed [csharp] block or parse fail in code (search for tag errors)");
-					break;
-				}
-
-				bbcode = bbcode.left(pos) + bbcode.substr(end_pos + 9); // 9 is length of "[/csharp]".
-				while (bbcode[pos] == '\n') {
-					bbcode = bbcode.left(pos) + bbcode.substr(pos + 1);
-				}
-			}
-			break;
-		case 1: // C#
-			bbcode = bbcode.replace("[csharp", "[codeblock lang=csharp"); // Tag can have extra arguments.
-			bbcode = bbcode.replace("[/csharp]", "[/codeblock]");
-
-			for (int pos = bbcode.find("[gdscript"); pos != -1; pos = bbcode.find("[gdscript")) {
-				int end_pos = bbcode.find("[/gdscript]");
-				if (end_pos == -1) {
-					WARN_PRINT("Unclosed [gdscript] block or parse fail in code (search for tag errors)");
-					break;
-				}
-
-				bbcode = bbcode.left(pos) + bbcode.substr(end_pos + 11); // 11 is length of "[/gdscript]".
-				while (bbcode[pos] == '\n') {
-					bbcode = bbcode.left(pos) + bbcode.substr(pos + 1);
-				}
-			}
-			break;
-		case 2: // GDScript and C#
-			bbcode = bbcode.replace("[csharp", "[b]C#:[/b]\n[codeblock lang=csharp"); // Tag can have extra arguments.
-			bbcode = bbcode.replace("[gdscript", "[b]GDScript:[/b]\n[codeblock lang=gdscript"); // Tag can have extra arguments.
-
-			bbcode = bbcode.replace("[/csharp]", "[/codeblock]");
-			bbcode = bbcode.replace("[/gdscript]", "[/codeblock]");
-			break;
-	}
+	bbcode = bbcode.replace("[/csharp]", "[/codeblock]");
+	bbcode = bbcode.replace("[/gdscript]", "[/codeblock]");
 
 	// Remove codeblocks (they would be printed otherwise).
 	bbcode = bbcode.replace("[codeblocks]\n", "");
@@ -2775,15 +2549,6 @@ static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt, const C
 				codeblock_copy_text = builder.as_string();
 			}
 
-			String lang;
-			const PackedStringArray args = tag.trim_prefix("codeblock").split(" ", false);
-			for (int i = args.size() - 1; i >= 0; i--) {
-				if (args[i].begins_with("lang=")) {
-					lang = args[i].trim_prefix("lang=");
-					break;
-				}
-			}
-
 			// Use monospace font with darkened background color to make code easier to distinguish from other text.
 			// Use a single-column table with cell row background color instead of `[bgcolor]`.
 			// This makes the background color highlight cover the entire block, rather than individual lines.
@@ -2797,26 +2562,7 @@ static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt, const C
 			p_rt->set_cell_padding(Rect2(10 * EDSCALE, 10 * EDSCALE, 10 * EDSCALE, 10 * EDSCALE));
 			p_rt->push_color(code_dark_color);
 
-			bool codeblock_printed = false;
-
-#ifdef MODULE_GDSCRIPT_ENABLED
-			if (!codeblock_printed && (lang.is_empty() || lang == "gdscript")) {
-				EditorHelpHighlighter::get_singleton()->highlight(p_rt, EditorHelpHighlighter::LANGUAGE_GDSCRIPT, codeblock_text, is_native);
-				codeblock_printed = true;
-			}
-#endif
-
-#ifdef MODULE_MONO_ENABLED
-			if (!codeblock_printed && lang == "csharp") {
-				EditorHelpHighlighter::get_singleton()->highlight(p_rt, EditorHelpHighlighter::LANGUAGE_CSHARP, codeblock_text, is_native);
-				codeblock_printed = true;
-			}
-#endif
-
-			if (!codeblock_printed) {
-				p_rt->add_text(_fix_newlines(codeblock_text));
-				codeblock_printed = true;
-			}
+			p_rt->add_text(_fix_newlines(codeblock_text));
 
 			p_rt->pop(); // color
 			p_rt->pop(); // cell
@@ -3029,10 +2775,6 @@ String EditorHelp::get_cache_full_path() {
 	return EditorPaths::get_singleton()->get_cache_dir().path_join(vformat("editor_doc_cache-%d.%d.res", GODOT_VERSION_MAJOR, GODOT_VERSION_MINOR));
 }
 
-String EditorHelp::get_script_doc_cache_full_path() {
-	return EditorPaths::get_singleton()->get_project_settings_dir().path_join("editor_script_doc_cache.res");
-}
-
 DocTools *EditorHelp::get_doc_data() {
 	_wait_for_thread();
 	return doc;
@@ -3047,32 +2789,14 @@ DocData::ClassDoc *EditorHelp::get_doc(const String &p_class_name) {
 }
 
 void EditorHelp::add_doc(const DocData::ClassDoc &p_class_doc) {
-	if (!_script_docs_loaded.is_set()) {
-		_docs_to_add.push_back(p_class_doc);
-		return;
-	}
-
 	get_doc_data()->add_doc(p_class_doc);
 }
 
 void EditorHelp::remove_doc(const String &p_class_name) {
-	if (!_script_docs_loaded.is_set()) {
-		_docs_to_remove.push_back(p_class_name);
-		return;
-	}
-
 	DocTools *dt = get_doc_data();
 	if (dt->has_doc(p_class_name)) {
 		dt->remove_doc(p_class_name);
 	}
-}
-
-void EditorHelp::remove_script_doc_by_path(const String &p_path) {
-	if (!_script_docs_loaded.is_set()) {
-		_docs_to_remove_by_path.push_back(p_path);
-		return;
-	}
-	get_doc_data()->remove_script_doc_by_path(p_path);
 }
 
 void EditorHelp::load_xml_buffer(const uint8_t *p_buffer, int p_size) {
@@ -3098,21 +2822,17 @@ void EditorHelp::remove_class(const String &p_class) {
 }
 
 void EditorHelp::_load_doc_thread(void *p_udata) {
-	bool use_script_cache = (bool)p_udata;
 	Ref<Resource> cache_res = ResourceLoader::load(get_cache_full_path());
 	if (cache_res.is_valid() && cache_res->get_meta("version_hash", "") == doc_version_hash) {
 		Array classes = cache_res->get_meta("classes", Array());
 		for (int i = 0; i < classes.size(); i++) {
 			doc->add_doc(DocData::ClassDoc::from_dict(classes[i]));
 		}
-		if (use_script_cache) {
-			callable_mp_static(&EditorHelp::load_script_doc_cache).call_deferred();
-		}
 		// Extensions' docs are not cached. Generate them now (on the main thread).
 		callable_mp_static(&EditorHelp::_gen_extensions_docs).call_deferred();
 	} else {
 		// We have to go back to the main thread to start from scratch, bypassing any possibly existing cache.
-		callable_mp_static(&EditorHelp::generate_doc).call_deferred(false, use_script_cache);
+		callable_mp_static(&EditorHelp::generate_doc).call_deferred(false);
 	}
 
 	OS::get_singleton()->benchmark_end_measure("EditorHelp", vformat("Generate Documentation (Run %d)", doc_generation_count));
@@ -3142,12 +2862,6 @@ void EditorHelp::_gen_doc_thread(void *p_udata) {
 		ERR_PRINT("Cannot save editor help cache (" + get_cache_full_path() + ").");
 	}
 
-	// Load script docs after native ones are cached so native cache doesn't contain script docs.
-	bool use_script_cache = (bool)p_udata;
-	if (use_script_cache) {
-		callable_mp_static(&EditorHelp::load_script_doc_cache).call_deferred();
-	}
-
 	OS::get_singleton()->benchmark_end_measure("EditorHelp", vformat("Generate Documentation (Run %d)", doc_generation_count));
 }
 
@@ -3159,170 +2873,8 @@ void EditorHelp::_gen_extensions_docs() {
 		doc->merge_from(*ext_doc);
 	}
 }
-static void _load_script_doc_cache(bool p_changes) {
-	EditorHelp::load_script_doc_cache();
-}
 
-void EditorHelp::load_script_doc_cache() {
-	if (!ProjectSettings::get_singleton()->is_project_loaded()) {
-		print_verbose("Skipping loading script doc cache since no project is open.");
-		return;
-	}
-
-	if (EditorNode::is_cmdline_mode()) {
-		return;
-	}
-
-	_wait_for_thread();
-
-	if (!ResourceLoader::exists(get_script_doc_cache_full_path())) {
-		print_verbose("Script documentation cache not found. Regenerating it may take a while for projects with many scripts.");
-		regenerate_script_doc_cache();
-		return;
-	}
-
-	if (EditorFileSystem::get_singleton()->is_scanning()) {
-		// This is assuming EditorFileSystem is performing first scan. We must wait until it is done.
-		EditorFileSystem::get_singleton()->connect(SNAME("sources_changed"), callable_mp_static(_load_script_doc_cache), CONNECT_ONE_SHOT);
-		return;
-	}
-
-	worker_thread.start(_load_script_doc_cache_thread, nullptr);
-}
-
-void EditorHelp::_process_postponed_docs() {
-	for (const String &class_name : _docs_to_remove) {
-		doc->remove_doc(class_name);
-	}
-	for (const String &path : _docs_to_remove_by_path) {
-		doc->remove_script_doc_by_path(path);
-	}
-	for (const DocData::ClassDoc &cd : _docs_to_add) {
-		doc->add_doc(cd);
-	}
-	_docs_to_add.clear();
-	_docs_to_remove.clear();
-	_docs_to_remove_by_path.clear();
-}
-
-void EditorHelp::_load_script_doc_cache_thread(void *p_udata) {
-	ERR_FAIL_COND_MSG(!ProjectSettings::get_singleton()->is_project_loaded(), "Error: cannot load script doc cache without a project.");
-	ERR_FAIL_COND_MSG(!ResourceLoader::exists(get_script_doc_cache_full_path()), "Error: cannot load script doc cache from inexistent file.");
-
-	Ref<Resource> script_doc_cache_res = ResourceLoader::load(get_script_doc_cache_full_path(), "", ResourceFormatLoader::CACHE_MODE_IGNORE);
-	if (script_doc_cache_res.is_null()) {
-		print_verbose("Script doc cache is corrupted. Regenerating it instead.");
-		_delete_script_doc_cache();
-		callable_mp_static(EditorHelp::regenerate_script_doc_cache).call_deferred();
-		return;
-	}
-
-	Array classes = script_doc_cache_res->get_meta("classes", Array());
-	for (const Dictionary dict : classes) {
-		doc->add_doc(DocData::ClassDoc::from_dict(dict));
-	}
-
-	// Protect from race condition in other threads reading / this thread writing to _docs_to_add/remove/etc.
-	_script_docs_loaded.set();
-
-	// Deal with docs likely added from EditorFileSystem's scans while the cache was loading in EditorHelp::worker_thread.
-	_process_postponed_docs();
-
-	// Always delete the doc cache after successful load since most uses of editor will change a script, invalidating cache.
-	_delete_script_doc_cache();
-}
-
-// Helper method to deal with "sources_changed" signal having a parameter.
-static void _regenerate_script_doc_cache(bool p_changes) {
-	EditorHelp::regenerate_script_doc_cache();
-}
-
-void EditorHelp::regenerate_script_doc_cache() {
-	if (EditorFileSystem::get_singleton()->is_scanning()) {
-		// Wait until EditorFileSystem scanning is complete to use updated filesystem structure.
-		EditorFileSystem::get_singleton()->connect(SNAME("sources_changed"), callable_mp_static(_regenerate_script_doc_cache), CONNECT_ONE_SHOT);
-		return;
-	}
-
-	_wait_for_thread(worker_thread);
-	_wait_for_thread(loader_thread);
-	loader_thread.start(_regen_script_doc_thread, EditorFileSystem::get_singleton()->get_filesystem());
-}
-
-// Runs on worker_thread since it writes to DocData.
-void EditorHelp::_finish_regen_script_doc_thread(void *p_udata) {
-	loader_thread.wait_to_finish();
-	_process_postponed_docs();
-	_script_docs_loaded.set();
-
-	OS::get_singleton()->benchmark_end_measure("EditorHelp", "Generate Script Documentation");
-}
-
-// Runs on loader_thread since _reload_scripts_documentation calls ResourceLoader::load().
-// Avoids deadlocks of worker_thread needing main thread for load task dispatching, but main thread waiting on worker_thread.
-void EditorHelp::_regen_script_doc_thread(void *p_udata) {
-	OS::get_singleton()->benchmark_begin_measure("EditorHelp", "Generate Script Documentation");
-
-	EditorFileSystemDirectory *dir = static_cast<EditorFileSystemDirectory *>(p_udata);
-	_script_docs_loaded.set_to(false);
-
-	// Ignore changes from filesystem scan since script docs will be now.
-	_docs_to_add.clear();
-	_docs_to_remove.clear();
-	_docs_to_remove_by_path.clear();
-
-	_reload_scripts_documentation(dir);
-
-	// All ResourceLoader::load() calls are done, so we can no longer deadlock with main thread.
-	// Switch to back to worker_thread from loader_thread to resynchronize access to DocData.
-	worker_thread.start(_finish_regen_script_doc_thread, nullptr);
-}
-
-void EditorHelp::_reload_scripts_documentation(EditorFileSystemDirectory *p_dir) {
-	// Recursively force compile all scripts, which should generate their documentation.
-	for (int i = 0; i < p_dir->get_subdir_count(); i++) {
-		_reload_scripts_documentation(p_dir->get_subdir(i));
-	}
-
-	for (int i = 0; i < p_dir->get_file_count(); i++) {
-		if (ClassDB::is_parent_class(p_dir->get_file_type(i), SNAME("Script"))) {
-			Ref<Script> scr = ResourceLoader::load(p_dir->get_file_path(i));
-			if (scr.is_valid()) {
-				for (const DocData::ClassDoc &cd : scr->get_documentation()) {
-					_docs_to_add.push_back(cd);
-				}
-			}
-		}
-	}
-}
-
-void EditorHelp::_delete_script_doc_cache() {
-	if (FileAccess::exists(get_script_doc_cache_full_path())) {
-		DirAccess::remove_file_or_error(ProjectSettings::get_singleton()->globalize_path(get_script_doc_cache_full_path()));
-	}
-}
-
-void EditorHelp::save_script_doc_cache() {
-	if (!_script_docs_loaded.is_set()) {
-		print_verbose("Script docs haven't been properly loaded or regenerated, so don't save them to disk.");
-		return;
-	}
-
-	Ref<Resource> cache_res;
-	cache_res.instantiate();
-	Array classes;
-	for (const KeyValue<String, DocData::ClassDoc> &E : doc->class_list) {
-		if (E.value.is_script_doc) {
-			classes.push_back(DocData::ClassDoc::to_dict(E.value));
-		}
-	}
-
-	cache_res->set_meta("classes", classes);
-	Error err = ResourceSaver::save(cache_res, get_script_doc_cache_full_path(), ResourceSaver::FLAG_COMPRESS);
-	ERR_FAIL_COND_MSG(err != OK, vformat("Cannot save script documentation cache in %s.", get_script_doc_cache_full_path()));
-}
-
-void EditorHelp::generate_doc(bool p_use_cache, bool p_use_script_cache) {
+void EditorHelp::generate_doc(bool p_use_cache) {
 	doc_generation_count++;
 	OS::get_singleton()->benchmark_begin_measure("EditorHelp", vformat("Generate Documentation (Run %d)", doc_generation_count));
 
@@ -3338,11 +2890,11 @@ void EditorHelp::generate_doc(bool p_use_cache, bool p_use_script_cache) {
 	}
 
 	if (p_use_cache && FileAccess::exists(get_cache_full_path())) {
-		worker_thread.start(_load_doc_thread, (void *)p_use_script_cache);
+		worker_thread.start(_load_doc_thread, nullptr);
 	} else {
 		print_verbose("Regenerating editor help cache");
 		doc->generate();
-		worker_thread.start(_gen_doc_thread, (void *)p_use_script_cache);
+		worker_thread.start(_gen_doc_thread, nullptr);
 	}
 }
 
@@ -3358,11 +2910,6 @@ void EditorHelp::_notification(int p_what) {
 			if (EditorSettings::get_singleton()->check_changed_settings_in_group("text_editor/help")) {
 				need_update = true;
 			}
-#if defined(MODULE_GDSCRIPT_ENABLED) || defined(MODULE_MONO_ENABLED)
-			if (!need_update && EditorSettings::get_singleton()->check_changed_settings_in_group("text_editor/theme/highlighting")) {
-				need_update = true;
-			}
-#endif
 			if (!need_update && EditorSettings::get_singleton()->check_changed_settings_in_group("text_editor/help/show_property_setters_and_getters")) {
 				need_update = true;
 			}
@@ -3418,18 +2965,11 @@ void EditorHelp::go_to_class(const String &p_class) {
 	_goto_desc(p_class, true);
 }
 
-void EditorHelp::update_doc() {
-	_wait_for_thread();
-	ERR_FAIL_COND(!doc->class_list.has(edited_class));
-	ERR_FAIL_COND(!doc->class_list[edited_class].is_script_doc);
-	_update_doc();
-}
-
 void EditorHelp::trigger_history_save_on_navigate() {
 	if (_need_save_new_history()) {
 		emit_signal(SNAME("_request_save_new_history"), get_state());
-		if (ScriptEditorNavigationMarker::get_singleton()->is_locating()) {
-			ScriptEditorNavigationMarker::get_singleton()->locate_end();
+		if (DocumentNavigationMarker::get_singleton()->is_locating()) {
+			DocumentNavigationMarker::get_singleton()->locate_end();
 		}
 	}
 }
@@ -3458,7 +2998,7 @@ Vector<Pair<String, int>> EditorHelp::get_sections() {
 
 void EditorHelp::scroll_to_section(int p_section_index) {
 	_wait_for_thread();
-	ScriptEditorNavigationMarker::get_singleton()->locate_begin();
+	DocumentNavigationMarker::get_singleton()->locate_begin();
 	int line = section_line[p_section_index].second;
 	if (class_desc->is_finished()) {
 		_class_desc_scroll_to_paragraph(line, _need_save_new_history());
@@ -3466,7 +3006,7 @@ void EditorHelp::scroll_to_section(int p_section_index) {
 		scroll_to = line;
 		need_save_new_history = _need_save_new_history();
 	}
-	ScriptEditorNavigationMarker::get_singleton()->locate_end();
+	DocumentNavigationMarker::get_singleton()->locate_end();
 }
 
 void EditorHelp::popup_search() {
@@ -3535,7 +3075,7 @@ EditorHelp::EditorHelp() {
 
 /// EditorHelpBit ///
 
-#define HANDLE_DOC(m_string) ((is_native ? DTR(m_string) : (m_string)).strip_edges())
+#define HANDLE_DOC(m_string) (DTR(m_string).strip_edges())
 
 EditorHelpBit::HelpData EditorHelpBit::_get_class_help_data(const StringName &p_class_name) {
 	if (doc_class_cache.has(p_class_name)) {
@@ -3546,9 +3086,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_class_help_data(const StringName &p_
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native class shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		const String brief_description = HANDLE_DOC(class_doc->brief_description);
 		const String long_description = HANDLE_DOC(class_doc->description);
 
@@ -3576,9 +3113,7 @@ EditorHelpBit::HelpData EditorHelpBit::_get_class_help_data(const StringName &p_
 			}
 		}
 
-		if (is_native) {
-			doc_class_cache[p_class_name] = result;
-		}
+		doc_class_cache[p_class_name] = result;
 	}
 
 	return result;
@@ -3593,9 +3128,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_enum_help_data(const StringName &p_c
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native enums shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const KeyValue<String, DocData::EnumDoc> &kv : class_doc->enums) {
 			const StringName enum_name = kv.key;
 			const DocData::EnumDoc &enum_doc = kv.value;
@@ -3619,15 +3151,9 @@ EditorHelpBit::HelpData EditorHelpBit::_get_enum_help_data(const StringName &p_c
 
 			if (enum_name == p_enum_name) {
 				result = current;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
-			if (is_native) {
-				doc_enum_cache[p_class_name][enum_name] = current;
-			}
+			doc_enum_cache[p_class_name][enum_name] = current;
 		}
 	}
 
@@ -3643,9 +3169,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_constant_help_data(const StringName 
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native constants shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const DocData::ConstantDoc &constant : class_doc->constants) {
 			HelpData current;
 			current.description = HANDLE_DOC(constant.description);
@@ -3670,15 +3193,9 @@ EditorHelpBit::HelpData EditorHelpBit::_get_constant_help_data(const StringName 
 
 			if (constant.name == p_constant_name) {
 				result = current;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
-			if (is_native) {
-				doc_constant_cache[p_class_name][constant.name] = current;
-			}
+			doc_constant_cache[p_class_name][constant.name] = current;
 		}
 	}
 
@@ -3694,9 +3211,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_property_help_data(const StringName 
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native properties shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const DocData::PropertyDoc &property : class_doc->properties) {
 			HelpData current;
 			current.description = HANDLE_DOC(property.description);
@@ -3753,10 +3267,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_property_help_data(const StringName 
 
 			if (property.name == p_property_name) {
 				result = current;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
 			if (property.name.contains("{index}")) {
@@ -3764,16 +3274,10 @@ EditorHelpBit::HelpData EditorHelpBit::_get_property_help_data(const StringName 
 				Ref<RegExMatch> match = reg_index.search(p_property_name);
 				if (match.is_valid()) {
 					result = current;
-
-					if (!is_native) {
-						break;
-					}
 				}
 			}
 
-			if (is_native) {
-				doc_property_cache[p_class_name][property.name] = current;
-			}
+			doc_property_cache[p_class_name][property.name] = current;
 		}
 	}
 
@@ -3790,9 +3294,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_theme_item_help_data(const StringNam
 	bool found = false;
 	DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	while (class_doc) {
-		// Non-native theme items shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const DocData::ThemeItemDoc &theme_item : class_doc->theme_properties) {
 			HelpData current;
 			current.description = HANDLE_DOC(theme_item.description);
@@ -3816,15 +3317,9 @@ EditorHelpBit::HelpData EditorHelpBit::_get_theme_item_help_data(const StringNam
 			if (theme_item.name == p_theme_item_name) {
 				result = current;
 				found = true;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
-			if (is_native) {
-				doc_theme_item_cache[p_class_name][theme_item.name] = current;
-			}
+			doc_theme_item_cache[p_class_name][theme_item.name] = current;
 		}
 
 		if (found || class_doc->inherits.is_empty()) {
@@ -3847,9 +3342,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_method_help_data(const StringName &p
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native methods shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const DocData::MethodDoc &method : class_doc->methods) {
 			HelpData current;
 			current.description = HANDLE_DOC(method.description);
@@ -3873,21 +3365,12 @@ EditorHelpBit::HelpData EditorHelpBit::_get_method_help_data(const StringName &p
 				current.arguments.push_back({ argument.name, argument_doc_type, argument.default_value });
 			}
 			current.qualifiers = method.qualifiers;
-			const DocData::ArgumentDoc &rest_argument = method.rest_argument;
-			const DocType rest_argument_doc_type = { rest_argument.type, rest_argument.enumeration, rest_argument.is_bitfield };
-			current.rest_argument = { rest_argument.name, rest_argument_doc_type, rest_argument.default_value };
 
 			if (method.name == p_method_name) {
 				result = current;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
-			if (is_native) {
-				doc_method_cache[p_class_name][method.name] = current;
-			}
+			doc_method_cache[p_class_name][method.name] = current;
 		}
 	}
 
@@ -3903,9 +3386,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_signal_help_data(const StringName &p
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native signals shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const DocData::MethodDoc &signal : class_doc->signals) {
 			HelpData current;
 			current.description = HANDLE_DOC(signal.description);
@@ -3931,15 +3411,9 @@ EditorHelpBit::HelpData EditorHelpBit::_get_signal_help_data(const StringName &p
 
 			if (signal.name == p_signal_name) {
 				result = current;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
-			if (is_native) {
-				doc_signal_cache[p_class_name][signal.name] = current;
-			}
+			doc_signal_cache[p_class_name][signal.name] = current;
 		}
 	}
 
@@ -3955,9 +3429,6 @@ EditorHelpBit::HelpData EditorHelpBit::_get_annotation_help_data(const StringNam
 
 	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(p_class_name);
 	if (class_doc) {
-		// Non-native annotations shouldn't be cached, nor translated.
-		const bool is_native = !class_doc->is_script_doc;
-
 		for (const DocData::MethodDoc &annotation : class_doc->annotations) {
 			HelpData current;
 			current.description = HANDLE_DOC(annotation.description);
@@ -3983,15 +3454,9 @@ EditorHelpBit::HelpData EditorHelpBit::_get_annotation_help_data(const StringNam
 
 			if (annotation.name == p_annotation_name) {
 				result = current;
-
-				if (!is_native) {
-					break;
-				}
 			}
 
-			if (is_native) {
-				doc_annotation_cache[p_class_name][annotation.name] = current;
-			}
+			doc_annotation_cache[p_class_name][annotation.name] = current;
 		}
 	}
 
@@ -4150,21 +3615,15 @@ void EditorHelpBit::_update_labels() {
 					title->add_text("...");
 					title->pop(); // color
 
-					const ArgumentData &rest_argument = help_data.rest_argument;
-
 					title->push_color(text_color);
-					title->add_text(rest_argument.name.is_empty() ? "args" : rest_argument.name);
+					title->add_text("args");
 					title->pop(); // color
 
 					title->push_color(symbol_color);
 					title->add_text(colon_nbsp);
 					title->pop(); // color
 
-					if (rest_argument.doc_type.type.is_empty()) {
-						_add_type_to_title({ "Array", "", false });
-					} else {
-						_add_type_to_title(rest_argument.doc_type);
-					}
+					_add_type_to_title({ "Array", "", false });
 				}
 
 				title->push_color(symbol_color);
@@ -4290,7 +3749,7 @@ void EditorHelpBit::_go_to_url(const String &p_what) {
 			}
 
 			if (pos + 1 < p_what.length() && p_what[pos + 1] == ':') {
-				// `::` used in built-in scripts.
+				// `::` used in built-in resources.
 				from = pos + 2;
 			} else {
 				parts.push_back(p_what.substr(buffer_start, pos - buffer_start));
@@ -4328,9 +3787,9 @@ void EditorHelpBit::_go_to_url(const String &p_what) {
 }
 
 void EditorHelpBit::_go_to_help(const String &p_what) {
-	if (ScriptEditor::get_singleton()) {
-		ScriptEditor::get_singleton()->focus_editor();
-		ScriptEditor::get_singleton()->goto_help(p_what);
+	if (DocumentEditor::get_singleton()) {
+		DocumentEditor::get_singleton()->focus_editor();
+		DocumentEditor::get_singleton()->goto_help(p_what);
 	} else {
 		_go_to_url(p_what);
 	}
@@ -4463,16 +3922,11 @@ void EditorHelpBit::clear_cache() {
 
 String EditorHelpBit::get_as_plain_text(const String &p_symbol, const String &p_prologue) {
 	const PackedStringArray slices = p_symbol.split("|", true, 3);
-	ERR_FAIL_COND_V_MSG(slices.size() < 3, String(), R"(Invalid doc id: The expected format is "item_type|class_name|item_name[|item_data]".)");
+	ERR_FAIL_COND_V_MSG(slices.size() < 3, String(), R"(Invalid doc id: The expected format is "item_type|class_name|item_name".)");
 
 	const String &item_type = slices[0];
 	const String &class_name = slices[1];
 	const String &item_name = slices[2];
-
-	Dictionary item_data;
-	if (slices.size() > 3) {
-		item_data = JSON::parse_string(slices[3]);
-	}
 
 	HelpData new_help_data = HelpData();
 
@@ -4487,7 +3941,7 @@ String EditorHelpBit::get_as_plain_text(const String &p_symbol, const String &p_
 
 		// Add copy note to built-in properties returning `Packed*Array`.
 		const DocData::ClassDoc *cd = EditorHelp::get_doc(class_name);
-		if (cd && !cd->is_script_doc && packed_array_types.has(new_help_data.doc_type.type)) {
+		if (cd && packed_array_types.has(new_help_data.doc_type.type)) {
 			if (!new_help_data.description.is_empty()) {
 				new_help_data.description += "\n";
 			}
@@ -4504,32 +3958,6 @@ String EditorHelpBit::get_as_plain_text(const String &p_symbol, const String &p_
 		new_help_data = _get_signal_help_data(class_name, item_name);
 	} else if (item_type == "annotation") {
 		new_help_data = _get_annotation_help_data(class_name, item_name);
-	} else if (item_type == "local_constant" || item_type == "local_variable") {
-		new_help_data.description = item_data.get("description", "").operator String().strip_edges();
-		if (item_data.get("is_deprecated", false)) {
-			const String deprecated_message = item_data.get("deprecated_message", "").operator String().strip_edges();
-			if (deprecated_message.is_empty()) {
-				if (item_type == "local_constant") {
-					new_help_data.deprecated_message = TTR("This constant may be changed or removed in future versions.");
-				} else {
-					new_help_data.deprecated_message = TTR("This variable may be changed or removed in future versions.");
-				}
-			} else {
-				new_help_data.deprecated_message = deprecated_message;
-			}
-		}
-		if (item_data.get("is_experimental", false)) {
-			const String experimental_message = item_data.get("experimental_message", "").operator String().strip_edges();
-			if (experimental_message.is_empty()) {
-				if (item_type == "local_constant") {
-					new_help_data.experimental_message = TTR("This constant may be changed or removed in future versions.");
-				} else {
-					new_help_data.experimental_message = TTR("This variable may be changed or removed in future versions.");
-				}
-			} else {
-				new_help_data.experimental_message = experimental_message;
-			}
-		}
 	}
 
 	if (!p_prologue.is_empty()) {
@@ -4695,16 +4123,11 @@ String EditorHelpBit::get_as_plain_text(const String &p_symbol, const String &p_
 
 void EditorHelpBit::parse_symbol(const String &p_symbol, const String &p_prologue) {
 	const PackedStringArray slices = p_symbol.split("|", true, 3);
-	ERR_FAIL_COND_MSG(slices.size() < 3, R"(Invalid doc id: The expected format is "item_type|class_name|item_name[|item_data]".)");
+	ERR_FAIL_COND_MSG(slices.size() < 3, R"(Invalid doc id: The expected format is "item_type|class_name|item_name".)");
 
 	const String &item_type = slices[0];
 	const String &class_name = slices[1];
 	const String &item_name = slices[2];
-
-	Dictionary item_data;
-	if (slices.size() > 3) {
-		item_data = JSON::parse_string(slices[3]);
-	}
 
 	current_symbol = p_symbol;
 	current_prologue = p_prologue;
@@ -4749,7 +4172,7 @@ void EditorHelpBit::parse_symbol(const String &p_symbol, const String &p_prologu
 
 		// Add copy note to built-in properties returning `Packed*Array`.
 		const DocData::ClassDoc *cd = EditorHelp::get_doc(class_name);
-		if (cd && !cd->is_script_doc && packed_array_types.has(help_data.doc_type.type)) {
+		if (cd && packed_array_types.has(help_data.doc_type.type)) {
 			if (!help_data.description.is_empty()) {
 				help_data.description += "\n";
 			}
@@ -4779,38 +4202,6 @@ void EditorHelpBit::parse_symbol(const String &p_symbol, const String &p_prologu
 		symbol_type = TTR("Annotation");
 		symbol_hint = SYMBOL_HINT_SIGNATURE;
 		help_data = _get_annotation_help_data(class_name, item_name);
-	} else if (item_type == "local_constant" || item_type == "local_variable") {
-		symbol_type = (item_type == "local_constant") ? TTR("Local Constant") : TTR("Local Variable");
-		symbol_hint = SYMBOL_HINT_ASSIGNABLE;
-		help_data.description = item_data.get("description", "").operator String().strip_edges();
-		if (item_data.get("is_deprecated", false)) {
-			const String deprecated_message = item_data.get("deprecated_message", "").operator String().strip_edges();
-			if (deprecated_message.is_empty()) {
-				if (item_type == "local_constant") {
-					help_data.deprecated_message = TTR("This constant may be changed or removed in future versions.");
-				} else {
-					help_data.deprecated_message = TTR("This variable may be changed or removed in future versions.");
-				}
-			} else {
-				help_data.deprecated_message = deprecated_message;
-			}
-		}
-		if (item_data.get("is_experimental", false)) {
-			const String experimental_message = item_data.get("experimental_message", "").operator String().strip_edges();
-			if (experimental_message.is_empty()) {
-				if (item_type == "local_constant") {
-					help_data.experimental_message = TTR("This constant may be changed or removed in future versions.");
-				} else {
-					help_data.experimental_message = TTR("This variable may be changed or removed in future versions.");
-				}
-			} else {
-				help_data.experimental_message = experimental_message;
-			}
-		}
-		help_data.doc_type.type = item_data.get("doc_type", "");
-		help_data.doc_type.enumeration = item_data.get("enumeration", "");
-		help_data.doc_type.is_bitfield = item_data.get("is_bitfield", false);
-		help_data.value = item_data.get("value", "");
 	} else if (item_type == "resource") {
 		String path = item_name.simplify_path();
 		const bool is_uid = path.begins_with("uid://");
@@ -5169,171 +4560,6 @@ EditorHelpBitTooltip::EditorHelpBitTooltip(Control *p_target, bool p_shortcut) {
 	p_target->connect(SceneStringName(gui_input), callable_mp(this, &EditorHelpBitTooltip::_target_gui_input));
 
 	set_process_internal(true);
-}
-
-/// EditorHelpHighlighter ///
-
-EditorHelpHighlighter *EditorHelpHighlighter::singleton = nullptr;
-
-void EditorHelpHighlighter::create_singleton() {
-	ERR_FAIL_COND(singleton != nullptr);
-	singleton = memnew(EditorHelpHighlighter);
-}
-
-void EditorHelpHighlighter::free_singleton() {
-	ERR_FAIL_NULL(singleton);
-	memdelete(singleton);
-	singleton = nullptr;
-}
-
-EditorHelpHighlighter *EditorHelpHighlighter::get_singleton() {
-	return singleton;
-}
-
-EditorHelpHighlighter::HighlightData EditorHelpHighlighter::_get_highlight_data(Language p_language, const String &p_source, bool p_use_cache) {
-	switch (p_language) {
-		case LANGUAGE_GDSCRIPT:
-#ifndef MODULE_GDSCRIPT_ENABLED
-			ERR_FAIL_V_MSG(HighlightData(), "GDScript module is disabled.");
-#endif
-			break;
-		case LANGUAGE_CSHARP:
-#ifndef MODULE_MONO_ENABLED
-			ERR_FAIL_V_MSG(HighlightData(), "Mono module is disabled.");
-#endif
-			break;
-		default:
-			ERR_FAIL_V_MSG(HighlightData(), "Invalid parameter \"p_language\".");
-	}
-
-	if (p_use_cache) {
-		const HashMap<String, HighlightData>::ConstIterator E = highlight_data_caches[p_language].find(p_source);
-		if (E) {
-			return E->value;
-		}
-	}
-
-	text_edits[p_language]->set_text(p_source);
-	if (scripts[p_language].is_valid()) { // See GH-89610.
-		scripts[p_language]->set_source_code(p_source);
-	}
-	highlighters[p_language]->_update_cache();
-
-	HighlightData result;
-
-	int source_offset = 0;
-	int result_index = 0;
-	for (int i = 0; i < text_edits[p_language]->get_line_count(); i++) {
-		const Dictionary dict = highlighters[p_language]->_get_line_syntax_highlighting_impl(i);
-
-		result.resize(result.size() + dict.size());
-
-		const Variant *key = nullptr;
-		int prev_column = -1;
-		while ((key = dict.next(key)) != nullptr) {
-			const int column = *key;
-			ERR_FAIL_COND_V(column <= prev_column, HighlightData());
-			prev_column = column;
-
-			const Color color = dict[*key].operator Dictionary().get("color", Color());
-
-			result.write[result_index] = { source_offset + column, color };
-			result_index++;
-		}
-
-		source_offset += text_edits[p_language]->get_line(i).length() + 1; // Plus newline.
-	}
-
-	if (p_use_cache) {
-		highlight_data_caches[p_language][p_source] = result;
-	}
-
-	return result;
-}
-
-void EditorHelpHighlighter::highlight(RichTextLabel *p_rich_text_label, Language p_language, const String &p_source, bool p_use_cache) {
-	ERR_FAIL_NULL(p_rich_text_label);
-
-	const HighlightData highlight_data = _get_highlight_data(p_language, p_source, p_use_cache);
-
-	if (!highlight_data.is_empty()) {
-		for (int i = 1; i < highlight_data.size(); i++) {
-			const Pair<int, Color> &prev = highlight_data[i - 1];
-			const Pair<int, Color> &curr = highlight_data[i];
-			p_rich_text_label->push_color(prev.second);
-			p_rich_text_label->add_text(_fix_newlines(p_source.substr(prev.first, curr.first - prev.first)));
-			p_rich_text_label->pop(); // color
-		}
-
-		const Pair<int, Color> &last = highlight_data[highlight_data.size() - 1];
-		p_rich_text_label->push_color(last.second);
-		p_rich_text_label->add_text(p_source.substr(last.first));
-		p_rich_text_label->pop(); // color
-	}
-}
-
-void EditorHelpHighlighter::clear_cache() {
-	const Color text_color = EDITOR_GET("text_editor/theme/highlighting/text_color");
-
-#ifdef MODULE_GDSCRIPT_ENABLED
-	highlight_data_caches[LANGUAGE_GDSCRIPT].clear();
-	text_edits[LANGUAGE_GDSCRIPT]->add_theme_color_override(SceneStringName(font_color), text_color);
-#endif
-
-#ifdef MODULE_MONO_ENABLED
-	highlight_data_caches[LANGUAGE_CSHARP].clear();
-	text_edits[LANGUAGE_CSHARP]->add_theme_color_override(SceneStringName(font_color), text_color);
-#endif
-}
-
-EditorHelpHighlighter::EditorHelpHighlighter() {
-	const Color text_color = EDITOR_GET("text_editor/theme/highlighting/text_color");
-
-#ifdef MODULE_GDSCRIPT_ENABLED
-	TextEdit *gdscript_text_edit = memnew(TextEdit);
-	gdscript_text_edit->add_theme_color_override(SceneStringName(font_color), text_color);
-
-	Ref<GDScript> gdscript;
-	gdscript.instantiate();
-
-	Ref<GDScriptSyntaxHighlighter> gdscript_highlighter;
-	gdscript_highlighter.instantiate();
-	gdscript_highlighter->set_text_edit(gdscript_text_edit);
-	gdscript_highlighter->_set_edited_resource(gdscript);
-
-	text_edits[LANGUAGE_GDSCRIPT] = gdscript_text_edit;
-	scripts[LANGUAGE_GDSCRIPT] = gdscript;
-	highlighters[LANGUAGE_GDSCRIPT] = gdscript_highlighter;
-#endif
-
-#ifdef MODULE_MONO_ENABLED
-	TextEdit *csharp_text_edit = memnew(TextEdit);
-	csharp_text_edit->add_theme_color_override(SceneStringName(font_color), text_color);
-
-	// See GH-89610.
-	//Ref<CSharpScript> csharp;
-	//csharp.instantiate();
-
-	Ref<EditorStandardSyntaxHighlighter> csharp_highlighter;
-	csharp_highlighter.instantiate();
-	csharp_highlighter->set_text_edit(csharp_text_edit);
-	//csharp_highlighter->_set_edited_resource(csharp);
-	csharp_highlighter->_set_script_language(CSharpLanguage::get_singleton());
-
-	text_edits[LANGUAGE_CSHARP] = csharp_text_edit;
-	//scripts[LANGUAGE_CSHARP] = csharp;
-	highlighters[LANGUAGE_CSHARP] = csharp_highlighter;
-#endif
-}
-
-EditorHelpHighlighter::~EditorHelpHighlighter() {
-#ifdef MODULE_GDSCRIPT_ENABLED
-	memdelete(text_edits[LANGUAGE_GDSCRIPT]);
-#endif
-
-#ifdef MODULE_MONO_ENABLED
-	memdelete(text_edits[LANGUAGE_CSHARP]);
-#endif
 }
 
 /// FindBar ///

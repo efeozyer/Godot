@@ -343,7 +343,7 @@ void EmbeddedProcess::_check_mouse_over() {
 	}
 
 	// Before checking whether the mouse is truly inside the embedded process, ensure
-	// the editor has enough time to re-render. When a breakpoint is hit in the script editor,
+	// the editor has enough time to re-render. When the editor takes focus from the game,
 	// `_check_mouse_over` may be triggered before the editor hides the game workspace.
 	// This prevents the embedded process from regaining focus immediately after the editor has taken it.
 	if (OS::get_singleton()->get_ticks_msec() - last_application_focus_time < 500) {

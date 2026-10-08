@@ -33,7 +33,6 @@
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
 #include "core/object/ref_counted.h"
-#include "core/object/script_language.h"
 #include "core/variant/container_type_validate.h"
 
 #include <climits>
@@ -83,7 +82,6 @@ enum ContainerTypeKind {
 	CONTAINER_TYPE_KIND_NONE = 0b00,
 	CONTAINER_TYPE_KIND_BUILTIN = 0b01,
 	CONTAINER_TYPE_KIND_CLASS_NAME = 0b10,
-	CONTAINER_TYPE_KIND_SCRIPT = 0b11,
 };
 
 #define GET_CONTAINER_TYPE_KIND(m_header, m_field) \
@@ -153,21 +151,6 @@ static Error _decode_container_type(const uint8_t *&p_buffer, int &r_left, int *
 			r_type.variant_type = Variant::OBJECT;
 			if (p_allow_objects) {
 				r_type.class_name = str;
-			} else {
-				r_type.class_name = EncodedObjectAsID::get_class_static();
-			}
-			return OK;
-		} break;
-		case CONTAINER_TYPE_KIND_SCRIPT: {
-			String path;
-			RETURN_IF_ERROR(_decode_string(p_buffer, r_left, r_len, path));
-
-			r_type.variant_type = Variant::OBJECT;
-			if (p_allow_objects) {
-				ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://") || !ResourceLoader::exists(path, "Script"), ERR_INVALID_DATA, vformat("Invalid script path \"%s\".", path));
-				r_type.script = ResourceLoader::load(path, "Script");
-				ERR_FAIL_COND_V_MSG(r_type.script.is_null(), ERR_INVALID_DATA, vformat("Can't load script at path \"%s\".", path));
-				r_type.class_name = r_type.script->get_instance_base_type();
 			} else {
 				r_type.class_name = EncodedObjectAsID::get_class_static();
 			}
@@ -714,7 +697,7 @@ Error decode_variant(Variant &r_variant, const uint8_t *p_buffer, int p_len, int
 					ERR_FAIL_NULL_V(obj, ERR_UNAVAILABLE);
 
 					// Avoid premature free `RefCounted`. This must be done before properties are initialized,
-					// since script functions (setters, implicit initializer) may be called. See GH-68666.
+					// since extension functions (setters, implicit initializer) may be called. See GH-68666.
 					Variant variant;
 					if (Object::cast_to<RefCounted>(obj)) {
 						Ref<RefCounted> ref = Ref<RefCounted>(Object::cast_to<RefCounted>(obj));
@@ -745,16 +728,7 @@ Error decode_variant(Variant &r_variant, const uint8_t *p_buffer, int p_len, int
 							(*r_len) += used;
 						}
 
-						if (str == "script" && value.get_type() != Variant::NIL) {
-							ERR_FAIL_COND_V_MSG(value.get_type() != Variant::STRING, ERR_INVALID_DATA, "Invalid value for \"script\" property, expected script path as String.");
-							String path = value;
-							ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://") || !ResourceLoader::exists(path, "Script"), ERR_INVALID_DATA, vformat("Invalid script path \"%s\".", path));
-							Ref<Script> script = ResourceLoader::load(path, "Script");
-							ERR_FAIL_COND_V_MSG(script.is_null(), ERR_INVALID_DATA, vformat("Can't load script at path \"%s\".", path));
-							obj->set_script(script);
-						} else {
-							obj->set(str, value);
-						}
+						obj->set(str, value);
 					}
 
 					r_variant = variant;
@@ -1285,9 +1259,7 @@ static void _encode_string(const String &p_string, uint8_t *&p_buffer, int &r_le
 
 static void _encode_container_type_header(const ContainerType &p_type, uint32_t &r_header, uint32_t p_shift, bool p_full_objects) {
 	if (p_type.variant_type != Variant::NIL) {
-		if (p_type.script.is_valid()) {
-			r_header |= (p_full_objects ? CONTAINER_TYPE_KIND_SCRIPT : CONTAINER_TYPE_KIND_CLASS_NAME) << p_shift;
-		} else if (p_type.class_name != StringName()) {
+		if (p_type.class_name != StringName()) {
 			r_header |= CONTAINER_TYPE_KIND_CLASS_NAME << p_shift;
 		} else {
 			// No need to check `p_full_objects` since `class_name` should be non-empty for `builtin_type == Variant::OBJECT`.
@@ -1298,15 +1270,7 @@ static void _encode_container_type_header(const ContainerType &p_type, uint32_t 
 
 static Error _encode_container_type(const ContainerType &p_type, uint8_t *&p_buffer, int &r_len, bool p_full_objects) {
 	if (p_type.variant_type != Variant::NIL) {
-		if (p_type.script.is_valid()) {
-			if (p_full_objects) {
-				String path = p_type.script->get_path();
-				ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://"), ERR_UNAVAILABLE, "Failed to encode a path to a custom script for a container type.");
-				_encode_string(path, p_buffer, r_len);
-			} else {
-				_encode_string(EncodedObjectAsID::get_class_static(), p_buffer, r_len);
-			}
-		} else if (p_type.class_name != StringName()) {
+		if (p_type.class_name != StringName()) {
 			_encode_string(p_full_objects ? p_type.class_name : EncodedObjectAsID::get_class_static(), p_buffer, r_len);
 		} else {
 			// No need to check `p_full_objects` since `class_name` should be non-empty for `builtin_type == Variant::OBJECT`.
@@ -1740,18 +1704,7 @@ Error encode_variant(const Variant &p_variant, uint8_t *p_buffer, int &r_len, bo
 
 						_encode_string(E.name, buf, r_len);
 
-						Variant value;
-
-						if (E.name == CoreStringName(script)) {
-							Ref<Script> script = obj->get_script();
-							if (script.is_valid()) {
-								String path = script->get_path();
-								ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://"), ERR_UNAVAILABLE, "Failed to encode a path to a custom script.");
-								value = path;
-							}
-						} else {
-							value = obj->get(E.name);
-						}
+						Variant value = obj->get(E.name);
 
 						int len;
 						Error err = encode_variant(value, buf, len, p_full_objects, p_depth + 1);

@@ -35,7 +35,7 @@ TEST_FORCE_LINK(test_object)
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/object/object.h"
-#include "core/object/script_language.h"
+#include "core/object/ref_counted.h"
 #include "tests/signal_watcher.h"
 
 namespace TestObject {
@@ -55,63 +55,6 @@ protected:
 public:
 	void set_property(int value) { property_value = value; }
 	int get_property() const { return property_value; }
-};
-
-class _MockScriptInstance : public ScriptInstance {
-	StringName property_name = "NO_NAME";
-	Variant property_value;
-
-public:
-	bool set(const StringName &p_name, const Variant &p_value) override {
-		property_name = p_name;
-		property_value = p_value;
-		return true;
-	}
-	bool get(const StringName &p_name, Variant &r_ret) const override {
-		if (property_name == p_name) {
-			r_ret = property_value;
-			return true;
-		}
-		return false;
-	}
-	void get_property_list(List<PropertyInfo> *r_properties) const override {
-	}
-	Variant::Type get_property_type(const StringName &p_name, bool *r_is_valid) const override {
-		return Variant::PACKED_FLOAT32_ARRAY;
-	}
-	virtual void validate_property(PropertyInfo &p_property) const override {
-	}
-	bool property_can_revert(const StringName &p_name) const override {
-		return false;
-	}
-	bool property_get_revert(const StringName &p_name, Variant &r_ret) const override {
-		return false;
-	}
-	void get_method_list(List<MethodInfo> *r_list) const override {
-	}
-	bool has_method(const StringName &p_method) const override {
-		return false;
-	}
-	int get_method_argument_count(const StringName &p_method, bool *r_is_valid = nullptr) const override {
-		if (r_is_valid) {
-			*r_is_valid = false;
-		}
-		return 0;
-	}
-	Variant callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) override {
-		return Variant();
-	}
-	void notification(int p_notification, bool p_reversed = false) override {
-	}
-	Script *get_script() const override {
-		return nullptr;
-	}
-	const Variant get_rpc_config() const override {
-		return Variant();
-	}
-	ScriptLanguage *get_language() override {
-		return nullptr;
-	}
 };
 
 TEST_CASE("[Object] Core getters") {
@@ -203,39 +146,6 @@ TEST_CASE("[Object] Construction") {
 			"The database pointer returned by the object id should reference same object.");
 }
 
-TEST_CASE("[Object] Script instance property setter") {
-	Object *object = memnew(Object);
-	_MockScriptInstance *script_instance = memnew(_MockScriptInstance);
-	object->set_script_instance(script_instance);
-
-	bool valid = false;
-	object->set("some_name", 100, &valid);
-	CHECK(valid);
-	Variant actual_value;
-	CHECK_MESSAGE(
-			script_instance->get("some_name", actual_value),
-			"The assigned script instance should successfully retrieve value by name.");
-	CHECK_MESSAGE(
-			actual_value == Variant(100),
-			"The returned value should equal the one which was set by the object.");
-	memdelete(object);
-}
-
-TEST_CASE("[Object] Script instance property getter") {
-	Object *object = memnew(Object);
-	_MockScriptInstance *script_instance = memnew(_MockScriptInstance);
-	script_instance->set("some_name", 100); // Make sure script instance has the property
-	object->set_script_instance(script_instance);
-
-	bool valid = false;
-	const Variant &actual_value = object->get("some_name", &valid);
-	CHECK(valid);
-	CHECK_MESSAGE(
-			actual_value == Variant(100),
-			"The returned value should equal the one which was set by the script instance.");
-	memdelete(object);
-}
-
 TEST_CASE("[Object] Built-in property setter") {
 	GDREGISTER_CLASS(_TestDerivedObject);
 	_TestDerivedObject derived_object;
@@ -259,31 +169,6 @@ TEST_CASE("[Object] Built-in property getter") {
 	CHECK_MESSAGE(
 			actual_value == Variant(100),
 			"The returned value should equal the one which was set with built-in setter.");
-}
-
-TEST_CASE("[Object] Script property setter") {
-	Object object;
-	Variant script;
-
-	bool valid = false;
-	object.set(CoreStringName(script), script, &valid);
-	CHECK(valid);
-	CHECK_MESSAGE(
-			object.get_script() == script,
-			"The object script should be equal to the assigned one.");
-}
-
-TEST_CASE("[Object] Script property getter") {
-	Object object;
-	Variant script;
-	object.set_script(script);
-
-	bool valid = false;
-	const Variant &actual_value = object.get(CoreStringName(script), &valid);
-	CHECK(valid);
-	CHECK_MESSAGE(
-			actual_value == script,
-			"The returned value should be equal to the assigned script.");
 }
 
 TEST_CASE("[Object] Absent name setter") {
@@ -360,11 +245,11 @@ TEST_CASE("[Object] Signals") {
 	}
 
 	SUBCASE("Trying to add a preexisting signal should not have any effect") {
-		CHECK(object.has_signal("script_changed"));
+		CHECK(object.has_signal("property_list_changed"));
 		ERR_PRINT_OFF;
-		object.add_user_signal(MethodInfo("script_changed"));
+		object.add_user_signal(MethodInfo("property_list_changed"));
 		ERR_PRINT_ON;
-		CHECK(object.has_signal("script_changed"));
+		CHECK(object.has_signal("property_list_changed"));
 
 		List<MethodInfo> signals_after_existing_added;
 		object.get_signal_list(&signals_after_existing_added);
@@ -539,118 +424,34 @@ public:
 	int order_subclass = -1;
 };
 
-class NotificationScriptInstance : public _MockScriptInstance {
-	void notification(int p_notification, bool p_reversed) override {
-		order_script = ++NotificationObjectSuperclass::order_global;
-	}
-
-public:
-	int order_script = -1;
-};
-
 TEST_CASE("[Object] Notification order") { // GH-52325
 	NotificationObjectSubclass *object = memnew(NotificationObjectSubclass);
-
-	NotificationScriptInstance *script = memnew(NotificationScriptInstance);
-	object->set_script_instance(script);
 
 	SUBCASE("regular order") {
 		NotificationObjectSubclass::order_global = 0;
 		object->order_superclass = -1;
 		object->order_subclass = -1;
-		script->order_script = -1;
 		object->notification(12345, false);
 
 		CHECK_EQ(object->order_superclass, 1);
 		CHECK_EQ(object->order_subclass, 2);
 		// TODO If an extension is attached, it should come here.
-		CHECK_EQ(script->order_script, 3);
-		CHECK_EQ(NotificationObjectSubclass::order_global, 3);
+		CHECK_EQ(NotificationObjectSubclass::order_global, 2);
 	}
 
 	SUBCASE("reverse order") {
 		NotificationObjectSubclass::order_global = 0;
 		object->order_superclass = -1;
 		object->order_subclass = -1;
-		script->order_script = -1;
 		object->notification(12345, true);
 
-		CHECK_EQ(script->order_script, 1);
 		// TODO If an extension is attached, it should come here.
-		CHECK_EQ(object->order_subclass, 2);
-		CHECK_EQ(object->order_superclass, 3);
-		CHECK_EQ(NotificationObjectSubclass::order_global, 3);
+		CHECK_EQ(object->order_subclass, 1);
+		CHECK_EQ(object->order_superclass, 2);
+		CHECK_EQ(NotificationObjectSubclass::order_global, 2);
 	}
 
 	memdelete(object);
-}
-
-TEST_CASE("[Object] Destruction at the end of the call chain is safe") {
-	Object *object = memnew(Object);
-	ObjectID obj_id = object->get_instance_id();
-
-	class _SelfDestroyingScriptInstance : public _MockScriptInstance {
-		Object *self = nullptr;
-
-		// This has to be static because ~Object() also destroys the script instance.
-		static void free_self(Object *p_self) {
-#if defined(ASAN_ENABLED) || defined(TSAN_ENABLED)
-			// Regular deletion is enough becausa asan/tsan will catch a potential heap-after-use.
-			memdelete(p_self);
-#else
-			// Without asan/tsan, try at least to force a crash by replacing the otherwise seemingly good data with garbage.
-			// Operations such as dereferencing pointers or decreasing a refcount would fail.
-			// Unfortunately, we may not poison the memory after the deletion, because the memory would no longer belong to us
-			// and on doing so we may cause a more generalized crash on some platforms (allocator implementations).
-			p_self->~Object();
-			memset((void *)p_self, 0, sizeof(Object));
-			Memory::free_static(p_self, false);
-#endif
-		}
-
-	public:
-		Variant callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) override {
-			free_self(self);
-			return Variant();
-		}
-		Variant call_const(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) override {
-			free_self(self);
-			return Variant();
-		}
-		bool has_method(const StringName &p_method) const override {
-			return p_method == "some_method";
-		}
-
-	public:
-		_SelfDestroyingScriptInstance(Object *p_self) :
-				self(p_self) {}
-	};
-
-	_SelfDestroyingScriptInstance *script_instance = memnew(_SelfDestroyingScriptInstance(object));
-	object->set_script_instance(script_instance);
-
-	SUBCASE("Within callp()") {
-		SUBCASE("Through call()") {
-			object->call("some_method");
-		}
-		SUBCASE("Through callv()") {
-			object->callv("some_method", Array());
-		}
-	}
-	SUBCASE("Within call_const()") {
-		Callable::CallError call_error;
-		object->call_const("some_method", nullptr, 0, call_error);
-	}
-	SUBCASE("Within signal handling (from emit_signalp(), through emit_signal())") {
-		Object emitter;
-		emitter.add_user_signal(MethodInfo("some_signal"));
-		emitter.connect("some_signal", Callable(object, "some_method"));
-		emitter.emit_signal("some_signal");
-	}
-
-	CHECK_MESSAGE(
-			ObjectDB::get_instance(obj_id) == nullptr,
-			"Object was tail-deleted without crashes.");
 }
 
 int required_param_compare(const Ref<RefCounted> &p_ref, const RequiredParam<RefCounted> &p_required) {

@@ -34,12 +34,7 @@
 #include "core/io/compression.h"
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "scene/debugger/scene_debugger_object.h"
-
-#if defined(MODULE_GDSCRIPT_ENABLED) && defined(DEBUG_ENABLED)
-#include "modules/gdscript/gdscript.h"
-#endif
 
 #include <zlib.h>
 
@@ -94,19 +89,6 @@ SnapshotDataObject::SnapshotDataObject(SceneDebuggerObject &p_obj, GameStateSnap
 				resource_cache.hits++;
 			}
 			pvalue = resource_cache.cache[path];
-
-			if (pinfo.hint_string == "Script") {
-				if (get_script() != pvalue) {
-					set_script(Ref<RefCounted>());
-					Ref<Script> scr(pvalue);
-					if (scr.is_valid()) {
-						ScriptInstance *scr_instance = scr->placeholder_instance_create(this);
-						if (scr_instance) {
-							set_script_instance(scr_instance);
-						}
-					}
-				}
-			}
 		}
 		prop_list.push_back(pinfo);
 		prop_values[pinfo.name] = pvalue;
@@ -130,11 +112,6 @@ bool SnapshotDataObject::_get(const StringName &p_name, Variant &r_ret) const {
 void SnapshotDataObject::_get_property_list(List<PropertyInfo> *p_list) const {
 	p_list->clear(); // Sorry, don't want any categories.
 	for (const PropertyInfo &prop : prop_list) {
-		if (prop.name == "script") {
-			// Skip the script property, it's always added by the non-virtual method.
-			continue;
-		}
-
 		p_list->push_back(prop);
 	}
 }
@@ -167,42 +144,12 @@ String SnapshotDataObject::get_node_path() {
 	return path;
 }
 
-String SnapshotDataObject::_get_script_name(Ref<Script> p_script) {
-#if defined(MODULE_GDSCRIPT_ENABLED) && defined(DEBUG_ENABLED)
-	// GDScripts have more specific names than base scripts, so use those names if possible.
-	return GDScript::debug_get_script_name(p_script);
-#else
-	// Otherwise fallback to the base script's name.
-	return p_script->get_global_name();
-#endif
-}
-
 String SnapshotDataObject::get_name() {
 	if (!remote_name.is_empty()) {
 		return remote_name;
 	}
-	String found_type_name = type_name;
 
-	// Ideally, we will name it after the script attached to it.
-	Ref<Script> maybe_script = get_script();
-	if (maybe_script.is_valid()) {
-		String full_name;
-		while (maybe_script.is_valid()) {
-			String global_name = _get_script_name(maybe_script);
-			if (global_name != "") {
-				if (full_name != "") {
-					full_name = global_name + "/" + full_name;
-				} else {
-					full_name = global_name;
-				}
-			}
-			maybe_script = maybe_script->get_base_script().ptr();
-		}
-
-		found_type_name = type_name + "/" + full_name;
-	}
-
-	return found_type_name + "_" + uitos(remote_object_id);
+	return type_name + "_" + uitos(remote_object_id);
 }
 
 bool SnapshotDataObject::is_refcounted() {

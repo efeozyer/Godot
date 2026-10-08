@@ -38,7 +38,6 @@
 #include "core/io/file_access.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 
 GDExtensionManager::LoadStatus GDExtensionManager::_load_extension_internal(const Ref<GDExtension> &p_extension, bool p_first_load) {
@@ -65,7 +64,7 @@ GDExtensionManager::LoadStatus GDExtensionManager::_load_extension_internal(cons
 
 void GDExtensionManager::_finish_load_extension(const Ref<GDExtension> &p_extension) {
 #ifdef TOOLS_ENABLED
-	// Signals that a new extension is loaded so GDScript can register new class names.
+	// Signals that a new extension is loaded.
 	emit_signal("extension_loaded", p_extension);
 #endif
 
@@ -80,7 +79,7 @@ void GDExtensionManager::_finish_load_extension(const Ref<GDExtension> &p_extens
 
 GDExtensionManager::LoadStatus GDExtensionManager::_unload_extension_internal(const Ref<GDExtension> &p_extension) {
 #ifdef TOOLS_ENABLED
-	// Signals that a new extension is unloading so GDScript can unregister class names.
+	// Signals that a new extension is unloading.
 	emit_signal("extension_unloading", p_extension);
 #endif
 
@@ -318,12 +317,6 @@ void GDExtensionManager::untrack_instance_binding(void *p_token, Object *p_objec
 		}
 	}
 }
-
-void GDExtensionManager::_reload_all_scripts() {
-	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
-		ScriptServer::get_language(i)->reload_all_scripts();
-	}
-}
 #endif // TOOLS_ENABLED
 
 void GDExtensionManager::load_extensions() {
@@ -362,9 +355,6 @@ void GDExtensionManager::reload_extensions() {
 
 	if (reloaded) {
 		emit_signal("extensions_reloaded");
-
-		// Reload all scripts to clear out old references.
-		callable_mp_static(&GDExtensionManager::_reload_all_scripts).call_deferred();
 	}
 #endif
 }
@@ -439,9 +429,6 @@ bool GDExtensionManager::ensure_extensions_loaded(const HashSet<String> &p_exten
 	if (trigger_reload) {
 		// Emitting extensions_reloaded so EditorNode can reload Inspector and regenerate documentation.
 		emit_signal("extensions_reloaded");
-
-		// Reload all scripts to clear out old references.
-		callable_mp_static(&GDExtensionManager::_reload_all_scripts).call_deferred();
 	}
 #endif
 

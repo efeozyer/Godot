@@ -125,30 +125,6 @@ Error EditorRun::run(const String &p_scene, const String &p_write_movie, const V
 	}
 #endif
 
-	List<String> breakpoints;
-	EditorNode::get_editor_data().get_editor_breakpoints(&breakpoints);
-
-	if (!breakpoints.is_empty()) {
-		args.push_back("--breakpoints");
-		String bpoints;
-		for (const List<String>::Element *E = breakpoints.front(); E; E = E->next()) {
-			bpoints += E->get().replace(" ", "%20");
-			if (E->next()) {
-				bpoints += ",";
-			}
-		}
-
-		args.push_back(bpoints);
-	}
-
-	if (EditorDebuggerNode::get_singleton()->is_skip_breakpoints()) {
-		args.push_back("--skip-breakpoints");
-	}
-
-	if (EditorDebuggerNode::get_singleton()->is_ignore_error_breaks()) {
-		args.push_back("--ignore-error-breaks");
-	}
-
 	if (!p_scene.is_empty()) {
 		args.push_back("--scene");
 		args.push_back(p_scene);

@@ -181,7 +181,7 @@ public:
 	const void *id() const;
 
 	void set_typed(const ContainerType &p_element_type);
-	void set_typed(uint32_t p_type, const StringName &p_class_name, const Variant &p_script);
+	void set_typed(uint32_t p_type, const StringName &p_class_name);
 
 	bool is_typed() const;
 	bool is_same_typed(const Array &p_other) const;
@@ -190,7 +190,6 @@ public:
 	const ContainerType &get_element_type() const _LIFETIME_BOUND_;
 	uint32_t get_typed_builtin() const;
 	StringName get_typed_class_name() const;
-	Variant get_typed_script() const;
 
 	void make_read_only();
 	bool is_read_only() const;
@@ -202,7 +201,7 @@ public:
 	}
 
 	Array(const Array &p_base, const ContainerType &p_element_type);
-	Array(const Array &p_base, uint32_t p_type, const StringName &p_class_name, const Variant &p_script);
+	Array(const Array &p_base, uint32_t p_type, const StringName &p_class_name);
 	Array(const Array &p_from);
 	Array(std::initializer_list<Variant> p_init);
 	Array();

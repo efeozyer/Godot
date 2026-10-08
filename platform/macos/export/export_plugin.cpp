@@ -163,9 +163,6 @@ String EditorExportPlatformMacOS::get_export_option_warning(const EditorExportPr
 
 		if (p_name == "codesign/codesign") {
 			if (dist_type == 2) {
-				if (codesign_tool == 2 && ClassDB::class_exists("CSharpScript")) {
-					return TTR("'rcodesign' doesn't support signing applications with embedded dynamic libraries (GDExtension or .NET).");
-				}
 				if (codesign_tool == 0) {
 					return TTR("Code signing is required for App Store distribution.");
 				}
@@ -372,18 +369,6 @@ bool EditorExportPlatformMacOS::get_export_option_visibility(const EditorExportP
 				p_option == "xcode/xcode_version") {
 			return advanced_options_enabled;
 		}
-	}
-
-	// These entitlements are required to run managed code, and are always enabled in Mono builds.
-	if (ClassDB::class_exists("CSharpScript")) {
-		if (p_option == "codesign/entitlements/allow_jit_code_execution" || p_option == "codesign/entitlements/allow_unsigned_executable_memory" || p_option == "codesign/entitlements/allow_dyld_environment_variables") {
-			return false;
-		}
-	}
-
-	// Hide unsupported .NET embedding option.
-	if (p_option == "dotnet/embed_build_outputs") {
-		return false;
 	}
 
 	return true;
@@ -2126,27 +2111,17 @@ Error EditorExportPlatformMacOS::export_project(const Ref<EditorExportPreset> &p
 				ent_f->store_line("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">");
 				ent_f->store_line("<plist version=\"1.0\">");
 				ent_f->store_line("<dict>");
-				if (ClassDB::class_exists("CSharpScript")) {
-					// These entitlements are required to run managed code, and are always enabled in Mono builds.
+				if ((bool)p_preset->get("codesign/entitlements/allow_jit_code_execution")) {
 					ent_f->store_line("<key>com.apple.security.cs.allow-jit</key>");
 					ent_f->store_line("<true/>");
+				}
+				if ((bool)p_preset->get("codesign/entitlements/allow_unsigned_executable_memory")) {
 					ent_f->store_line("<key>com.apple.security.cs.allow-unsigned-executable-memory</key>");
 					ent_f->store_line("<true/>");
+				}
+				if ((bool)p_preset->get("codesign/entitlements/allow_dyld_environment_variables")) {
 					ent_f->store_line("<key>com.apple.security.cs.allow-dyld-environment-variables</key>");
 					ent_f->store_line("<true/>");
-				} else {
-					if ((bool)p_preset->get("codesign/entitlements/allow_jit_code_execution")) {
-						ent_f->store_line("<key>com.apple.security.cs.allow-jit</key>");
-						ent_f->store_line("<true/>");
-					}
-					if ((bool)p_preset->get("codesign/entitlements/allow_unsigned_executable_memory")) {
-						ent_f->store_line("<key>com.apple.security.cs.allow-unsigned-executable-memory</key>");
-						ent_f->store_line("<true/>");
-					}
-					if ((bool)p_preset->get("codesign/entitlements/allow_dyld_environment_variables")) {
-						ent_f->store_line("<key>com.apple.security.cs.allow-dyld-environment-variables</key>");
-						ent_f->store_line("<true/>");
-					}
 				}
 
 				if (lib_validation) {

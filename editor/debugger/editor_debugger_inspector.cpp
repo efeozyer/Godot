@@ -30,7 +30,6 @@
 
 #include "editor_debugger_inspector.h"
 
-#include "core/debugger/debugger_marshalls.h"
 #include "core/io/marshalls.h"
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
@@ -52,9 +51,7 @@ bool EditorDebuggerRemoteObjects::_set_impl(const StringName &p_name, const Vari
 	}
 
 	// Change it back to the real name when sending it.
-	if (name == "Script") {
-		name = "script";
-	} else if (name.begins_with("Metadata/")) {
+	if (name.begins_with("Metadata/")) {
 		name = name.replace_first("Metadata/", "metadata/");
 	}
 
@@ -123,7 +120,6 @@ void EditorDebuggerRemoteObjects::clear() {
 
 void EditorDebuggerRemoteObjects::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_title"), &EditorDebuggerRemoteObjects::get_title);
-	ClassDB::bind_method("_hide_script_from_inspector", &EditorDebuggerRemoteObjects::_hide_script_from_inspector);
 	ClassDB::bind_method("_hide_metadata_from_inspector", &EditorDebuggerRemoteObjects::_hide_metadata_from_inspector);
 
 	ADD_SIGNAL(MethodInfo("values_edited", PropertyInfo(Variant::STRING, "property"), PropertyInfo(Variant::DICTIONARY, "values", PROPERTY_HINT_DICTIONARY_TYPE, "uint64_t;Variant"), PropertyInfo(Variant::STRING, "field")));
@@ -131,41 +127,18 @@ void EditorDebuggerRemoteObjects::_bind_methods() {
 
 /// EditorDebuggerInspector
 
-EditorDebuggerInspector::EditorDebuggerInspector() {
-	variables = memnew(EditorDebuggerRemoteObjects);
-}
-
 EditorDebuggerInspector::~EditorDebuggerInspector() {
 	clear_cache();
-	memdelete(variables);
 }
 
 void EditorDebuggerInspector::_bind_methods() {
-	ADD_SIGNAL(MethodInfo("object_selected", PropertyInfo(Variant::INT, "id")));
 	ADD_SIGNAL(MethodInfo("objects_edited", PropertyInfo(Variant::STRING, "property"), PropertyInfo(Variant::DICTIONARY, "values", PROPERTY_HINT_DICTIONARY_TYPE, "int;Variant"), PropertyInfo(Variant::STRING, "field")));
 	ADD_SIGNAL(MethodInfo("object_property_updated", PropertyInfo(Variant::INT, "id"), PropertyInfo(Variant::STRING, "property")));
 	ADD_SIGNAL(MethodInfo("canvas_item_objects_changed", PropertyInfo(Variant::DICTIONARY, "states")));
 }
 
-void EditorDebuggerInspector::_notification(int p_what) {
-	switch (p_what) {
-		case NOTIFICATION_POSTINITIALIZE: {
-			connect("object_id_selected", callable_mp(this, &EditorDebuggerInspector::_object_selected));
-		} break;
-
-		case NOTIFICATION_ENTER_TREE: {
-			variables->remote_object_ids.append(0);
-			edit(variables);
-		} break;
-	}
-}
-
 void EditorDebuggerInspector::_objects_edited(const String &p_prop, const TypedDictionary<uint64_t, Variant> &p_values, const String &p_field) {
 	emit_signal(SNAME("objects_edited"), p_prop, p_values, p_field);
-}
-
-void EditorDebuggerInspector::_object_selected(ObjectID p_object) {
-	emit_signal(SNAME("object_selected"), p_object);
 }
 
 EditorDebuggerRemoteObjects *EditorDebuggerInspector::set_objects(const Array &p_array, int p_debugger_id) {
@@ -218,9 +191,7 @@ EditorDebuggerRemoteObjects *EditorDebuggerInspector::set_objects(const Array &p
 		for (const SceneDebuggerObject::SceneDebuggerProperty &prop : obj.properties) {
 			PropertyInfo pinfo = prop.first;
 			// Rename those variables, so they don't conflict with the ones from the resource itself.
-			if (pinfo.name == "script") {
-				pinfo.name = "Script";
-			} else if (pinfo.name.begins_with("metadata/")) {
+			if (pinfo.name.begins_with("metadata/")) {
 				pinfo.name = pinfo.name.replace_first("metadata/", "Metadata/");
 			}
 
@@ -314,45 +285,8 @@ EditorDebuggerRemoteObjects *EditorDebuggerInspector::set_objects(const Array &p
 	}
 
 	StringName class_name = objects[0].class_name;
-	bool has_custom_class = true;
 
-	if (usage.has("Script")) {
-		// Check if all objects have the same script.
-		Ref<Script> common_scr;
-		LocalVector<Variant> keys = usage["Script"].values.get_key_list();
-		for (const Variant &key : keys) {
-			Ref<Script> scr = usage["Script"].values[key];
-			if (scr.is_null()) {
-				has_custom_class = false;
-				break;
-			}
-
-			if (common_scr.is_null()) {
-				common_scr = scr;
-			} else if (scr != common_scr) {
-				has_custom_class = false;
-				break;
-			}
-		}
-
-		if (has_custom_class) {
-			// Now check if the script has a custom class.
-			if (common_scr.is_null()) {
-				has_custom_class = false;
-			} else {
-				const StringName scr_class = common_scr->get_global_name();
-				if (scr_class.is_empty()) {
-					has_custom_class = false;
-				} else {
-					class_name = scr_class;
-				}
-			}
-		}
-	} else {
-		has_custom_class = false;
-	}
-
-	if (!has_custom_class && class_name != SNAME("Object")) {
+	if (class_name != SNAME("Object")) {
 		// Search for the common class between all selected objects.
 		bool check_type_again = true;
 		while (check_type_again) {
@@ -469,84 +403,4 @@ void EditorDebuggerInspector::invalidate_selection_from_cache(const TypedArray<u
 			break;
 		}
 	}
-}
-
-void EditorDebuggerInspector::add_stack_variable(const Array &p_array, int p_offset) {
-	DebuggerMarshalls::ScriptStackVariable var;
-	var.deserialize(p_array);
-	String n = var.name;
-	Variant v = var.value;
-
-	PropertyHint h = PROPERTY_HINT_NONE;
-	String hs;
-
-	if (var.var_type == Variant::OBJECT && v) {
-		v = Object::cast_to<EncodedObjectAsID>(v)->get_object_id();
-		h = PROPERTY_HINT_OBJECT_ID;
-		hs = var.type_hint;
-
-		// Makes the call stack select the node in the remote tree.
-		// FIXME: Disabled until the feedback loop with breakpoints inside getters is fixed. See GH-122339.
-		//if (n == "self") {
-		//	_object_selected(v);
-		//}
-	}
-
-	String type;
-	switch (var.type) {
-		case 0:
-			type = "Locals/";
-			break;
-		case 1:
-			if (n.begins_with("@")) {
-				return; // Skip groups.
-			}
-
-			type = "Members/";
-			break;
-		case 2:
-			type = "Globals/";
-			break;
-		case 3:
-			type = "Evaluated/";
-			break;
-		default:
-			type = "Unknown/";
-	}
-
-	PropertyInfo pinfo;
-	// Encode special characters to avoid issues with expressions in Evaluator.
-	// Dots are skipped by uri_encode(), but uri_decode() process them correctly when replaced with "%2E".
-	pinfo.name = type + n.uri_encode().replace(".", "%2E");
-	pinfo.type = v.get_type();
-	pinfo.hint = h;
-	pinfo.hint_string = hs;
-
-	if ((p_offset == -1) || variables->prop_list.is_empty()) {
-		variables->prop_list.push_back(pinfo);
-	} else {
-		List<PropertyInfo>::Element *current = variables->prop_list.front();
-		for (int i = 0; i < p_offset; i++) {
-			current = current->next();
-		}
-		variables->prop_list.insert_before(current, pinfo);
-	}
-	variables->prop_values[pinfo.name][0] = v;
-	variables->update();
-	edit(variables);
-}
-
-void EditorDebuggerInspector::clear_stack_variables() {
-	variables->clear();
-	variables->update();
-}
-
-String EditorDebuggerInspector::get_stack_variable(const String &p_var) {
-	for (KeyValue<StringName, TypedDictionary<uint64_t, Variant>> &E : variables->prop_values) {
-		String v = E.key.string();
-		if (v.get_slicec('/', 1) == p_var) {
-			return variables->get_variant(v);
-		}
-	}
-	return String();
 }

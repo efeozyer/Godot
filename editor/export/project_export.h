@@ -203,8 +203,6 @@ class ProjectExportDialog : public ConfirmationDialog {
 	LineEdit *enc_ex_filters = nullptr;
 	LineEdit *seed_input = nullptr;
 
-	OptionButton *script_mode = nullptr;
-
 	void _open_export_template_manager();
 
 	void _export_pck_zip();
@@ -230,7 +228,6 @@ class ProjectExportDialog : public ConfirmationDialog {
 	void _script_encryption_key_visibility_changed(bool p_visible);
 	bool _validate_script_encryption_key(const String &p_key);
 
-	void _script_export_mode_changed(EditorExportPreset::ScriptExportMode p_mode);
 
 	void _open_key_help_link();
 

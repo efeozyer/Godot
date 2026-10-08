@@ -45,6 +45,7 @@
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/import_dock.h"
 #include "editor/docks/scene_tree_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -69,10 +70,12 @@
 #include "editor/themes/editor_scale.h"
 #include "editor/themes/editor_theme_manager.h"
 #include "scene/gui/box_container.h"
+#include "scene/gui/check_box.h"
 #include "scene/gui/item_list.h"
 #include "scene/gui/label.h"
 #include "scene/gui/line_edit.h"
 #include "scene/gui/progress_bar.h"
+#include "scene/gui/scroll_container.h"
 #include "scene/gui/slider.h"
 #include "scene/main/timer.h"
 #include "scene/resources/packed_scene.h"
@@ -221,14 +224,7 @@ FileSystemList::FileSystemList() {
 	popup_editor->connect("popup_hide", callable_mp(this, &FileSystemList::_text_editor_popup_modal_close));
 }
 
-Ref<Texture2D> FileSystemDock::_get_tree_item_icon(bool p_is_valid, const String &p_file_type, const String &p_icon_path) {
-	if (!p_icon_path.is_empty()) {
-		Ref<Texture2D> icon = ResourceLoader::load(p_icon_path);
-		if (icon.is_valid()) {
-			return icon;
-		}
-	}
-
+Ref<Texture2D> FileSystemDock::_get_tree_item_icon(bool p_is_valid, const String &p_file_type) {
 	if (!p_is_valid) {
 		return get_editor_theme_icon(SNAME("ImportFail"));
 	} else if (has_theme_icon(p_file_type, EditorStringName(EditorIcons))) {
@@ -310,7 +306,6 @@ void FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory 
 			FileInfo file_info;
 			file_info.name = p_dir->get_file(i);
 			file_info.type = p_dir->get_file_type(i);
-			file_info.icon_path = p_dir->get_file_icon_path(i);
 			file_info.import_broken = !p_dir->get_file_import_is_valid(i);
 			file_info.modified_time = p_dir->get_file_modified_time(i);
 
@@ -328,7 +323,7 @@ void FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory 
 			const String file_metadata = lpath.path_join(file_info.name);
 			file_item->set_text(0, file_info.name);
 			file_item->set_structured_text_bidi_override(0, TextServer::STRUCTURED_TEXT_FILE);
-			file_item->set_icon(0, _get_tree_item_icon(!file_info.import_broken, file_info.type, file_info.icon_path));
+			file_item->set_icon(0, _get_tree_item_icon(!file_info.import_broken, file_info.type));
 			if (da->is_link(file_metadata)) {
 				file_item->set_icon_overlay(0, get_editor_theme_icon(SNAME("LinkOverlay")));
 				// TRANSLATORS: This is a tooltip for a file that is a symbolic link to another file.
@@ -449,7 +444,7 @@ void FileSystemDock::_update_tree(const Vector<String> &p_uncollapsed_paths, boo
 			int index;
 			EditorFileSystemDirectory *dir = EditorFileSystem::get_singleton()->find_file(favorite, &index);
 			if (dir) {
-				icon = _get_tree_item_icon(dir->get_file_import_is_valid(index), dir->get_file_type(index), dir->get_file_icon_path(index));
+				icon = _get_tree_item_icon(dir->get_file_import_is_valid(index), dir->get_file_type(index));
 			} else {
 				icon = get_editor_theme_icon(SNAME("File"));
 			}
@@ -1123,7 +1118,6 @@ void FileSystemDock::_update_file_list(bool p_keep_selection, const Vector<Strin
 				file_info.path = favorite;
 				if (efd) {
 					file_info.type = efd->get_file_type(index);
-					file_info.icon_path = efd->get_file_icon_path(index);
 					file_info.import_broken = !efd->get_file_import_is_valid(index);
 					file_info.modified_time = efd->get_file_modified_time(index);
 				} else {
@@ -1211,7 +1205,6 @@ void FileSystemDock::_update_file_list(bool p_keep_selection, const Vector<Strin
 				file_info.name = efd->get_file(i);
 				file_info.path = directory.path_join(file_info.name);
 				file_info.type = efd->get_file_type(i);
-				file_info.icon_path = efd->get_file_icon_path(i);
 				file_info.import_broken = !efd->get_file_import_is_valid(i);
 				file_info.modified_time = efd->get_file_modified_time(i);
 
@@ -1235,7 +1228,7 @@ void FileSystemDock::_update_file_list(bool p_keep_selection, const Vector<Strin
 		String tooltip = fpath;
 
 		// Select the icons.
-		type_icon = _get_tree_item_icon(!finfo->import_broken, finfo->type, finfo->icon_path);
+		type_icon = _get_tree_item_icon(!finfo->import_broken, finfo->type);
 		if (!finfo->import_broken) {
 			big_icon = file_thumbnail;
 		} else {
@@ -1829,12 +1822,6 @@ void FileSystemDock::_make_scene_confirm() {
 }
 
 void FileSystemDock::_resource_removed(const Ref<Resource> &p_resource) {
-	const Ref<Script> &scr = p_resource;
-	if (scr.is_valid()) {
-		ScriptServer::remove_global_class_by_path(scr->get_path());
-		EditorNode::get_editor_data().script_class_save_global_classes();
-		EditorFileSystem::get_singleton()->emit_signal(SNAME("script_classes_updated"));
-	}
 	emit_signal(SNAME("resource_removed"), p_resource);
 }
 
@@ -2350,10 +2337,8 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 				const String resource_type = ResourceLoader::get_resource_type(fpath);
 				String external_program;
 
-				if (ClassDB::is_parent_class(resource_type, "Script") || extension == "tres" || extension == "tscn") {
-					external_program = EDITOR_GET("text_editor/external/exec_path");
-				} else if (extension == "res" || extension == "scn") {
-					// Binary resources have no meaningful editor outside Godot, so just fallback to something default.
+				if (extension == "tres" || extension == "tscn" || extension == "res" || extension == "scn") {
+					// Native resources have no meaningful editor outside Godot, so just fallback to something default.
 				} else if (resource_type == "CompressedTexture2D" || resource_type == "StreamedTexture2D" || resource_type == "Image") {
 					if (extension == "svg" || extension == "svgz") {
 						external_program = EDITOR_GET("filesystem/external_programs/vector_image_editor");
@@ -2735,15 +2720,6 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 			make_scene_dialog->popup_centered();
 		} break;
 
-		case FILE_MENU_NEW_SCRIPT: {
-			String fpath = current_path;
-			if (!fpath.ends_with("/")) {
-				fpath = fpath.get_base_dir();
-			}
-			make_script_dialog->config("Node", fpath.path_join("new_script.gd"), false, false);
-			make_script_dialog->popup_centered();
-		} break;
-
 		case FILE_MENU_COPY_PATH: {
 			if (!p_selected.is_empty()) {
 				const String &fpath = p_selected[0];
@@ -2778,15 +2754,7 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 				fpath = fpath.get_base_dir();
 			}
 			String dir = ProjectSettings::get_singleton()->globalize_path(fpath);
-			ScriptEditor::get_singleton()->open_text_file_create_dialog(dir);
-		} break;
-		case FILE_MENU_RUN_SCRIPT: {
-			if (p_selected.size() == 1) {
-				const String &fpath = p_selected[0];
-				Ref<Script> scr = ResourceLoader::load(fpath);
-				ERR_FAIL_COND(scr.is_null());
-				EditorNode::get_singleton()->run_editor_script(scr);
-			}
+			DocumentEditor::get_singleton()->open_text_file_create_dialog(dir);
 		} break;
 
 		case FILE_MENU_RUN_SCENE: {
@@ -2846,8 +2814,6 @@ int FileSystemDock::_get_menu_option_from_key(const Ref<InputEventKey> &p_key) {
 		return FILE_MENU_NEW_FOLDER;
 	} else if (ED_IS_SHORTCUT("filesystem_dock/new_scene", p_key)) {
 		return FILE_MENU_NEW_SCENE;
-	} else if (ED_IS_SHORTCUT("filesystem_dock/new_script", p_key)) {
-		return FILE_MENU_NEW_SCRIPT;
 	} else if (ED_IS_SHORTCUT("filesystem_dock/new_resource", p_key)) {
 		return FILE_MENU_NEW_RESOURCE;
 	} else if (ED_IS_SHORTCUT("filesystem_dock/new_textfile", p_key)) {
@@ -2893,10 +2859,6 @@ void FileSystemDock::_resource_created() {
 		make_shader_dialog->config(fpath.path_join("new_shader"), false, false, type_name);
 		make_shader_dialog->popup_centered();
 		return;
-	} else if (ClassDB::is_parent_class(type_name, "Script")) {
-		make_script_dialog->config("Node", fpath.path_join("new_script"), false, false);
-		make_script_dialog->popup_centered();
-		return;
 	}
 
 	Variant c = new_resource_dialog->instantiate_selected();
@@ -2917,10 +2879,7 @@ void FileSystemDock::_resource_created() {
 	EditorNode::get_singleton()->save_resource_as(Ref<Resource>(r), fpath);
 }
 
-void FileSystemDock::_script_or_shader_created(const Ref<Resource> &p_resource) {
-	if (Object::cast_to<Script>(p_resource.ptr()) && !EDITOR_GET("docks/filesystem/automatically_open_created_scripts").operator bool()) {
-		return;
-	}
+void FileSystemDock::_shader_created(const Ref<Resource> &p_resource) {
 	EditorNode::get_singleton()->push_item(p_resource.ptr());
 }
 
@@ -3044,10 +3003,6 @@ void FileSystemDock::create_directory(const String &p_path, const String &p_base
 	if (err != OK) {
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not create folder: %s"), TTR(error_names[err])));
 	}
-}
-
-ScriptCreateDialog *FileSystemDock::get_script_create_dialog() const {
-	return make_script_dialog;
 }
 
 void FileSystemDock::set_file_list_display_mode(FileListDisplayMode p_mode) {
@@ -3528,16 +3483,6 @@ void FileSystemDock::_file_and_folders_fill_popup(PopupMenu *p_popup, const Vect
 			p_popup->add_separator();
 		} else if (filenames.size() == 1) {
 			p_popup->add_icon_item(get_editor_theme_icon(SNAME("Load")), TTRC("Open"), FILE_MENU_OPEN);
-
-			String type = EditorFileSystem::get_singleton()->get_file_type(filenames[0]);
-			if (ClassDB::is_parent_class(type, "Script")) {
-				Ref<Script> scr = ResourceLoader::load(filenames[0]);
-				if (scr.is_valid()) {
-					if (ClassDB::is_parent_class(scr->get_instance_base_type(), "EditorScript")) {
-						p_popup->add_icon_item(get_editor_theme_icon(SNAME("MainPlay")), TTRC("Run"), FILE_MENU_RUN_SCRIPT);
-					}
-				}
-			}
 			p_popup->add_separator();
 		}
 
@@ -3780,8 +3725,6 @@ void FileSystemDock::_add_create_options(PopupMenu *p_popup, const String &p_bas
 	p_popup->set_item_shortcut(-1, ED_GET_SHORTCUT("filesystem_dock/new_folder"));
 	p_popup->add_icon_item(get_editor_theme_icon(SNAME("PackedScene")), prefix_new ? TTRC("New Scene...") : TTRC("Scene..."), FILE_MENU_NEW_SCENE);
 	p_popup->set_item_shortcut(-1, ED_GET_SHORTCUT("filesystem_dock/new_scene"));
-	p_popup->add_icon_item(get_editor_theme_icon(SNAME("Script")), prefix_new ? TTRC("New Script...") : TTRC("Script..."), FILE_MENU_NEW_SCRIPT);
-	p_popup->set_item_shortcut(-1, ED_GET_SHORTCUT("filesystem_dock/new_script"));
 	p_popup->add_icon_item(get_editor_theme_icon(SNAME("Object")), prefix_new ? TTRC("New Resource...") : TTRC("Resource..."), FILE_MENU_NEW_RESOURCE);
 	p_popup->set_item_shortcut(-1, ED_GET_SHORTCUT("filesystem_dock/new_resource"));
 	p_popup->add_icon_item(get_editor_theme_icon(SNAME("TextFile")), prefix_new ? TTRC("New TextFile...") : TTRC("TextFile..."), FILE_MENU_NEW_TEXTFILE);
@@ -4549,7 +4492,6 @@ FileSystemDock::FileSystemDock() {
 	ED_SHORTCUT("filesystem_dock/delete", TTRC("Delete"), Key::KEY_DELETE);
 	ED_SHORTCUT("filesystem_dock/new_folder", TTRC("New Folder..."), Key::NONE);
 	ED_SHORTCUT("filesystem_dock/new_scene", TTRC("New Scene..."), Key::NONE);
-	ED_SHORTCUT("filesystem_dock/new_script", TTRC("New Script..."), Key::NONE);
 	ED_SHORTCUT("filesystem_dock/new_resource", TTRC("New Resource..."), Key::NONE);
 	ED_SHORTCUT("filesystem_dock/new_textfile", TTRC("New TextFile..."), Key::NONE);
 	ED_SHORTCUT("filesystem_dock/rename", TTRC("Rename..."), Key::F2);
@@ -4800,15 +4742,10 @@ FileSystemDock::FileSystemDock() {
 	add_child(make_scene_dialog);
 	make_scene_dialog->connect(SceneStringName(confirmed), callable_mp(this, &FileSystemDock::_make_scene_confirm));
 
-	make_script_dialog = memnew(ScriptCreateDialog);
-	make_script_dialog->set_title(TTRC("Create Script"));
-	add_child(make_script_dialog);
-	make_script_dialog->connect("script_created", callable_mp(this, &FileSystemDock::_script_or_shader_created));
-
 	make_shader_dialog = memnew(ShaderCreateDialog);
 	add_child(make_shader_dialog);
-	make_shader_dialog->connect("shader_created", callable_mp(this, &FileSystemDock::_script_or_shader_created));
-	make_shader_dialog->connect("shader_include_created", callable_mp(this, &FileSystemDock::_script_or_shader_created));
+	make_shader_dialog->connect("shader_created", callable_mp(this, &FileSystemDock::_shader_created));
+	make_shader_dialog->connect("shader_include_created", callable_mp(this, &FileSystemDock::_shader_created));
 
 	new_resource_dialog = memnew(CreateDialog);
 	add_child(new_resource_dialog);

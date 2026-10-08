@@ -32,7 +32,6 @@
 
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/variant/container_type_validate.h"
 
 const char *JSON::tk_name[TK_MAX] = {
@@ -628,12 +627,7 @@ void JSON::_bind_methods() {
 
 static bool _encode_container_type(Dictionary &r_dict, const String &p_key, const ContainerType &p_type, bool p_full_objects) {
 	if (p_type.variant_type != Variant::NIL) {
-		if (p_type.script.is_valid()) {
-			ERR_FAIL_COND_V(!p_full_objects, false);
-			const String path = p_type.script->get_path();
-			ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://"), false, "Failed to encode a path to a custom script for a container type.");
-			r_dict[p_key] = path;
-		} else if (p_type.class_name != StringName()) {
+		if (p_type.class_name != StringName()) {
 			ERR_FAIL_COND_V(!p_full_objects, false);
 			r_dict[p_key] = String(p_type.class_name);
 		} else {
@@ -797,17 +791,7 @@ Variant JSON::_from_native(const Variant &p_variant, bool p_full_objects, int p_
 					continue;
 				}
 
-				Variant value;
-				if (pi.name == CoreStringName(script)) {
-					const Ref<Script> script = obj->get_script();
-					if (script.is_valid()) {
-						const String path = script->get_path();
-						ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://"), Variant(), "Failed to encode a path to a custom script.");
-						value = path;
-					}
-				} else {
-					value = obj->get(pi.name);
-				}
+				Variant value = obj->get(pi.name);
 
 				props.push_back(pi.name);
 				props.push_back(_from_native(value, p_full_objects, p_depth + 1));
@@ -1013,19 +997,6 @@ static bool _decode_container_type(const Dictionary &p_dict, const String &p_key
 
 		r_type.variant_type = Variant::OBJECT;
 		r_type.class_name = type_name;
-		return true;
-	}
-
-	if (type_name.begins_with("res://")) {
-		ERR_FAIL_COND_V(!p_allow_objects, false);
-
-		ERR_FAIL_COND_V_MSG(!ResourceLoader::exists(type_name, "Script"), false, vformat(R"(Invalid script path "%s".)", type_name));
-		const Ref<Script> script = ResourceLoader::load(type_name, "Script");
-		ERR_FAIL_COND_V_MSG(script.is_null(), false, vformat(R"(Can't load script at path "%s".)", type_name));
-
-		r_type.variant_type = Variant::OBJECT;
-		r_type.class_name = script->get_instance_base_type();
-		r_type.script = script;
 		return true;
 	}
 
@@ -1460,7 +1431,7 @@ Variant JSON::_to_native(const Variant &p_json, bool p_allow_objects, int p_dept
 				ERR_FAIL_NULL_V(obj, Variant());
 
 				// Avoid premature free `RefCounted`. This must be done before properties are initialized,
-				// since script functions (setters, implicit initializer) may be called. See GH-68666.
+				// since extension functions (setters, implicit initializer) may be called. See GH-68666.
 				Variant variant;
 				if (Object::cast_to<RefCounted>(obj)) {
 					const Ref<RefCounted> ref = Ref<RefCounted>(Object::cast_to<RefCounted>(obj));
@@ -1473,19 +1444,7 @@ Variant JSON::_to_native(const Variant &p_json, bool p_allow_objects, int p_dept
 					const StringName name = props[i * 2 + 0];
 					const Variant value = _to_native(props[i * 2 + 1], p_allow_objects, p_depth + 1);
 
-					if (name == CoreStringName(script) && value.get_type() != Variant::NIL) {
-						const String path = value;
-						ERR_FAIL_COND_V_MSG(path.is_empty() || !path.begins_with("res://") || !ResourceLoader::exists(path, "Script"),
-								Variant(),
-								vformat(R"(Invalid script path "%s".)", path));
-
-						const Ref<Script> script = ResourceLoader::load(path, "Script");
-						ERR_FAIL_COND_V_MSG(script.is_null(), Variant(), vformat(R"(Can't load script at path "%s".)", path));
-
-						obj->set_script(script);
-					} else {
-						obj->set(name, value);
-					}
+					obj->set(name, value);
 				}
 
 				return variant;

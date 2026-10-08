@@ -38,7 +38,6 @@ class SnapshotDataObject : public Object {
 	GDCLASS(SnapshotDataObject, Object);
 
 	HashSet<ObjectID> _unique_references(const HashMap<String, ObjectID> &p_refs);
-	String _get_script_name(Ref<Script> p_script);
 
 public:
 	GameStateSnapshot *snapshot = nullptr;

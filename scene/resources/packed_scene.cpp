@@ -36,7 +36,6 @@
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/templates/local_vector.h"
 #include "core/variant/callable_bind.h"
 #include "core/variant/container_type_validate.h"
@@ -470,105 +469,70 @@ Node *SceneState::_instantiate(GenEditState p_edit_state, LocalVector<DeferredNo
 
 					ERR_FAIL_INDEX_V(nprops[j].name, sname_count, nullptr);
 
-					if (snames[nprops[j].name] == CoreStringName(script)) {
-						//work around to avoid old script variables from disappearing, should be the proper fix to:
-						//https://github.com/godotengine/godot/issues/2958
+					Variant value = props[nprops[j].value];
 
-						//store old state
-						List<Pair<StringName, Variant>> old_state;
-						if (node->get_script_instance()) {
-							node->get_script_instance()->get_property_state(old_state);
-						}
-
-#ifdef TOOLS_ENABLED
-						const Ref<Script> value_as_script = props[nprops[j].value];
-						// It is possible that the user changed an existing script to abstract after it was attached to a node.
-						// When this happens, the user needs to fix it. See https://github.com/godotengine/godot/issues/109171
-						if (value_as_script.is_valid() && value_as_script->is_abstract()) {
-							const String global_class_name = value_as_script->get_global_name();
-							if (global_class_name.is_empty()) {
-								ERR_PRINT("Node \"" + snames[n.name] + "\" previously had a script, but that script is now abstract. Please assign a different script (right-click -> Attach Script...) or change the node to a different type (right-click -> Change Type...) to fix this, then re-save the scene.");
-							} else {
-								ERR_PRINT("Node \"" + snames[n.name] + "\" previously had a class of type \"" + global_class_name + "\", but that class is now abstract. Please assign a different script (right-click -> Attach Script...) or change the node to a different type (right-click -> Change Type...) to fix this, then re-save the scene.");
-							}
-							callable_mp((Object *)node, &Object::remove_meta).call_deferred(SceneStringName(_custom_type_script));
-						} else {
-							node->set_script(props[nprops[j].value]);
-						}
-#else
-						node->set_script(props[nprops[j].value]);
-#endif // TOOLS_ENABLED
-
-						//restore old state for new script, if exists
-						for (const Pair<StringName, Variant> &E : old_state) {
-							node->set(E.first, E.second);
+					if (value.get_type() == Variant::OBJECT) {
+						//handle resources that are local to scene by duplicating them if needed
+						Ref<Resource> res = value;
+						if (res.is_valid()) {
+							value = make_local_resource(value, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
 						}
 					} else {
-						Variant value = props[nprops[j].value];
-
-						if (value.get_type() == Variant::OBJECT) {
-							//handle resources that are local to scene by duplicating them if needed
-							Ref<Resource> res = value;
-							if (res.is_valid()) {
-								value = make_local_resource(value, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
-							}
-						} else {
-							// Making sure that instances of inherited scenes don't share the same
-							// reference between them.
-							if (is_inherited_scene) {
-								value = value.duplicate(true);
-							}
+						// Making sure that instances of inherited scenes don't share the same
+						// reference between them.
+						if (is_inherited_scene) {
+							value = value.duplicate(true);
 						}
+					}
 
-						if (value.get_type() == Variant::ARRAY) {
-							Array set_array = value;
-							bool is_get_valid = false;
-							Variant get_value = node->get(snames[nprops[j].name], &is_get_valid);
+					if (value.get_type() == Variant::ARRAY) {
+						Array set_array = value;
+						bool is_get_valid = false;
+						Variant get_value = node->get(snames[nprops[j].name], &is_get_valid);
 
-							if (is_get_valid && get_value.get_type() == Variant::ARRAY) {
-								Array get_array = get_value;
-								if (set_array.is_same_typed(get_array)) {
-									set_array = set_array.duplicate();
-								} else {
-									set_array = Array(set_array, get_array.get_element_type());
-								}
-							}
-
-							value = setup_resources_in_array(set_array, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
-						}
-
-						if (value.get_type() == Variant::DICTIONARY) {
-							Dictionary set_dict = value;
-							bool is_get_valid = false;
-							Variant get_value = node->get(snames[nprops[j].name], &is_get_valid);
-
-							if (is_get_valid && get_value.get_type() == Variant::DICTIONARY) {
-								Dictionary get_dict = get_value;
-								if (set_dict.is_same_typed(get_dict)) {
-									set_dict = set_dict.duplicate();
-								} else {
-									set_dict = Dictionary(set_dict, get_dict.get_key_type(), get_dict.get_value_type());
-								}
-							}
-
-							value = setup_resources_in_dictionary(set_dict, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
-						}
-
-						bool set_valid = true;
-						if (ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled() && value.get_type() == Variant::OBJECT) {
-							Ref<MissingResource> mr = value;
-							if (mr.is_valid()) {
-								missing_resource_properties[snames[nprops[j].name]] = mr;
-								set_valid = false;
+						if (is_get_valid && get_value.get_type() == Variant::ARRAY) {
+							Array get_array = get_value;
+							if (set_array.is_same_typed(get_array)) {
+								set_array = set_array.duplicate();
+							} else {
+								set_array = Array(set_array, get_array.get_element_type());
 							}
 						}
 
-						if (set_valid) {
-							node->set(snames[nprops[j].name], value, &valid);
+						value = setup_resources_in_array(set_array, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
+					}
+
+					if (value.get_type() == Variant::DICTIONARY) {
+						Dictionary set_dict = value;
+						bool is_get_valid = false;
+						Variant get_value = node->get(snames[nprops[j].name], &is_get_valid);
+
+						if (is_get_valid && get_value.get_type() == Variant::DICTIONARY) {
+							Dictionary get_dict = get_value;
+							if (set_dict.is_same_typed(get_dict)) {
+								set_dict = set_dict.duplicate();
+							} else {
+								set_dict = Dictionary(set_dict, get_dict.get_key_type(), get_dict.get_value_type());
+							}
 						}
-						if (p_edit_state == GEN_EDIT_STATE_INSTANCE && value.get_type() != Variant::OBJECT) {
-							value = value.duplicate(true); // Duplicate arrays and dictionaries for the editor.
+
+						value = setup_resources_in_dictionary(set_dict, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
+					}
+
+					bool set_valid = true;
+					if (ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled() && value.get_type() == Variant::OBJECT) {
+						Ref<MissingResource> mr = value;
+						if (mr.is_valid()) {
+							missing_resource_properties[snames[nprops[j].name]] = mr;
+							set_valid = false;
 						}
+					}
+
+					if (set_valid) {
+						node->set(snames[nprops[j].name], value, &valid);
+					}
+					if (p_edit_state == GEN_EDIT_STATE_INSTANCE && value.get_type() != Variant::OBJECT) {
+						value = value.duplicate(true); // Duplicate arrays and dictionaries for the editor.
 					}
 				}
 				if (!missing_resource_properties.is_empty()) {
@@ -1060,7 +1024,7 @@ Error SceneState::_parse_node(Node *p_owner, Node *p_node, int p_parent_idx, Has
 
 		if (!pinned_props.has(name)) {
 			bool is_valid_default = false;
-			Variant default_value = PropertyUtils::get_property_default_value(p_node, name, &is_valid_default, &states_stack, true);
+			Variant default_value = PropertyUtils::get_property_default_value(p_node, name, &is_valid_default, &states_stack);
 
 			if (is_valid_default && !PropertyUtils::is_property_value_different(p_node, value, default_value)) {
 				if (value.get_type() == Variant::ARRAY && has_local_resource(value)) {

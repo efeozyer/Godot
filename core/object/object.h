@@ -340,7 +340,6 @@ public: \
 private:
 
 class ClassDB;
-class ScriptInstance;
 
 /**
  * Base class for all OBJECT Variant types.
@@ -368,7 +367,6 @@ public:
 		REF_COUNTED = 1 << 0,
 		NODE = 1 << 1,
 		RESOURCE = 1 << 2,
-		SCRIPT = 1 << 3,
 
 		CANVAS_ITEM = 1 << 4,
 		CONTROL = 1 << 5,
@@ -448,7 +446,6 @@ private:
 	uint32_t _edited_version = 0;
 	HashSet<String> editor_section_folding;
 #endif
-	ScriptInstance *script_instance = nullptr;
 	HashMap<StringName, Variant> metadata;
 	mutable const GDType *_gdtype_ptr = nullptr;
 	void _reset_gdtype() const;
@@ -692,7 +689,7 @@ public:
 
 	void set(const StringName &p_name, const Variant &p_value, bool *r_valid = nullptr);
 	Variant get(const StringName &p_name, bool *r_valid = nullptr) const;
-	/// Like set/get but only uses the internal path. Used from ClassDB::set_property and for GDScript optimization.
+	/// Like set/get but only uses the internal path. Used from ClassDB::set_property.
 	bool set_native(const StringName &p_name, const Variant &p_value, bool *r_valid = nullptr);
 	bool get_native(const StringName &p_name, Variant &r_value, bool *r_valid = nullptr) const;
 
@@ -724,8 +721,8 @@ public:
 	}
 
 	// Depending on the boolean, we call either the virtual function _notification_backward or _notification_forward.
-	// - Forward calls subclasses in descending order (e.g. Object -> Node -> Node3D -> extension -> script).
-	//   Backward calls subclasses in descending order (e.g. script -> extension -> Node3D -> Node -> Object).
+	// - Forward calls subclasses in descending order (e.g. Object -> Node -> Node3D -> extension).
+	//   Backward calls subclasses in descending order (e.g. extension -> Node3D -> Node -> Object).
 	_FORCE_INLINE_ void notification(int p_notification, bool p_reversed = false) {
 		if (p_reversed) {
 			_notification_backward(p_notification);
@@ -736,11 +733,9 @@ public:
 
 	String to_string();
 
-	// Used mainly by script, get and set all INCLUDING string.
+	// Get and set all INCLUDING string.
 	virtual Variant getvar(const Variant &p_key, bool *r_valid = nullptr) const;
 	virtual void setvar(const Variant &p_key, const Variant &p_value, bool *r_valid = nullptr);
-
-	/* SCRIPT */
 
 // When in debug, some non-virtual functions can be overridden.
 #ifdef DEBUG_ENABLED
@@ -748,9 +743,6 @@ public:
 #else
 #define DEBUG_VIRTUAL
 #endif // DEBUG_ENABLED
-
-	DEBUG_VIRTUAL void set_script(const Variant &p_script);
-	DEBUG_VIRTUAL Variant get_script() const;
 
 	DEBUG_VIRTUAL bool has_meta(const StringName &p_name) const;
 	DEBUG_VIRTUAL void set_meta(const StringName &p_name, const Variant &p_value);
@@ -765,9 +757,6 @@ public:
 	// This function is used to check when something changed beyond a point, it's used mainly for generating previews.
 	uint32_t get_edited_version() const;
 #endif
-
-	void set_script_instance(ScriptInstance *p_instance);
-	_FORCE_INLINE_ ScriptInstance *get_script_instance() const { return script_instance; }
 
 	void add_user_signal(const MethodInfo &p_signal);
 
@@ -834,7 +823,7 @@ public:
 	void editor_clear_section_folding() { editor_section_folding.clear(); }
 #endif
 
-	// Used by script languages to store binding data.
+	// Used by language bindings to store binding data.
 	void *get_instance_binding(void *p_token, const GDExtensionInstanceBindingCallbacks *p_callbacks);
 	// Used on creation by binding only.
 	void set_instance_binding(void *p_token, void *p_binding, const GDExtensionInstanceBindingCallbacks *p_callbacks);

@@ -278,7 +278,7 @@
 		</method>
 		<method name="duplicate" qualifiers="const">
 			<return type="Node" />
-			<param index="0" name="flags" type="int" default="15" />
+			<param index="0" name="flags" type="int" default="11" />
 			<description>
 				Duplicates the node, returning a new node with all of its properties, signals, groups, and children copied from the original, recursively. The behavior can be tweaked through the [param flags] (see [enum DuplicateFlags]). Internal nodes are not duplicated.
 				[b]Note:[/b] For nodes with a [Script] attached, if [method Object._init] has been defined with required parameters, the duplicated node will not have a [Script].
@@ -1388,16 +1388,13 @@
 		<constant name="DUPLICATE_GROUPS" value="2" enum="DuplicateFlags">
 			Duplicate the node's groups.
 		</constant>
-		<constant name="DUPLICATE_SCRIPTS" value="4" enum="DuplicateFlags">
-			Duplicate the node's script (also overriding the duplicated children's scripts, if combined with [constant DUPLICATE_USE_INSTANTIATION]).
-		</constant>
 		<constant name="DUPLICATE_USE_INSTANTIATION" value="8" enum="DuplicateFlags">
 			Duplicate using [method PackedScene.instantiate]. If the node comes from a scene saved on disk, reuses [method PackedScene.instantiate] as the base for the duplicated node and its children.
 		</constant>
 		<constant name="DUPLICATE_INTERNAL_STATE" value="16" enum="DuplicateFlags">
 			Duplicate also non-serializable variables (i.e. without [constant @GlobalScope.PROPERTY_USAGE_STORAGE]).
 		</constant>
-		<constant name="DUPLICATE_DEFAULT" value="15" enum="DuplicateFlags">
+		<constant name="DUPLICATE_DEFAULT" value="11" enum="DuplicateFlags">
 			Duplicate using default flags. This constant is useful to add or remove a single flag.
 			[codeblock]
 			# Duplicate non-exported variables.

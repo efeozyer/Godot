@@ -32,7 +32,6 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/file_access.h"
-#include "core/object/script_language.h"
 #include "core/os/main_loop.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
@@ -234,14 +233,6 @@ static void handle_crash(int sig) {
 	}
 	print_error("-- END OF C++ BACKTRACE --");
 	print_error("================================================================");
-
-	for (const Ref<ScriptBacktrace> &backtrace : ScriptServer::capture_script_backtraces(false)) {
-		if (!backtrace->is_empty()) {
-			print_error(backtrace->format());
-			print_error(vformat("-- END OF %s BACKTRACE --", backtrace->get_language_name().to_upper()));
-			print_error("================================================================");
-		}
-	}
 
 	// Abort to pass the error to the OS
 	abort();

@@ -34,12 +34,12 @@
 #include "core/object/callable_mp.h"
 #include "core/string/regex.h"
 #include "editor/docks/inspector_dock.h"
+#include "editor/document/document_editor_base.h"
+#include "editor/document/document_editor_container.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/scene/material_editor_plugin.h"
-#include "editor/script/script_editor_base.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/script/syntax_highlighters.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -1349,7 +1349,7 @@ void ShaderTextEditor::apply_code() {
 	code_editor->get_text_editor()->get_syntax_highlighter()->update_cache();
 }
 
-ScriptEditorBase *ShaderTextEditor::create_editor(const Ref<Resource> &p_resource) {
+DocumentEditorBase *ShaderTextEditor::create_editor(const Ref<Resource> &p_resource) {
 	// Check class name for Shader to ensure it is not a VisualShader even when the visual shader module is disabled
 	if (p_resource->is_class("Shader") || Object::cast_to<ShaderInclude>(*p_resource)) {
 		return memnew(ShaderTextEditor);
@@ -1396,7 +1396,7 @@ void ShaderTextEditor::register_editor() {
 	ED_SHORTCUT("shader_text_editor/goto_next_shader_preview", TTRC("Go to Next Shader Preview"), KeyModifierMask::CTRL | Key::PERIOD);
 	ED_SHORTCUT("shader_text_editor/goto_previous_shader_preview", TTRC("Go to Previous Shader Preview"), KeyModifierMask::CTRL | Key::COMMA);
 
-	ScriptEditor::register_create_script_editor_function(create_editor);
+	DocumentEditorContainer::register_create_editor_function(create_editor);
 }
 
 ShaderTextEditor::ShaderTextEditor() {

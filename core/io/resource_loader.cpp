@@ -39,7 +39,6 @@
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
-#include "core/object/script_language.h"
 #include "core/os/condition_variable.h"
 #include "core/os/os.h"
 #include "core/os/safe_binary_mutex.h"
@@ -106,12 +105,6 @@ void ResourceFormatLoader::get_classes_used(const String &p_path, HashSet<String
 String ResourceFormatLoader::get_resource_type(const String &p_path) const {
 	String ret;
 	GDVIRTUAL_CALL(_get_resource_type, p_path, ret);
-	return ret;
-}
-
-String ResourceFormatLoader::get_resource_script_class(const String &p_path) const {
-	String ret;
-	GDVIRTUAL_CALL(_get_resource_script_class, p_path, ret);
 	return ret;
 }
 
@@ -213,7 +206,6 @@ void ResourceFormatLoader::_bind_methods() {
 	GDVIRTUAL_BIND(_recognize_path, "path", "type");
 	GDVIRTUAL_BIND(_handles_type, "type");
 	GDVIRTUAL_BIND(_get_resource_type, "path");
-	GDVIRTUAL_BIND(_get_resource_script_class, "path");
 	GDVIRTUAL_BIND(_get_resource_uid, "path");
 	GDVIRTUAL_BIND(_get_dependencies, "path", "add_types");
 	GDVIRTUAL_BIND(_rename_dependencies, "path", "renames");
@@ -1396,19 +1388,6 @@ String ResourceLoader::get_resource_type(const String &p_path) {
 	return "";
 }
 
-String ResourceLoader::get_resource_script_class(const String &p_path) {
-	String local_path = _validate_local_path(p_path);
-
-	for (int i = 0; i < loader_count; i++) {
-		String result = loader[i]->get_resource_script_class(local_path);
-		if (!result.is_empty()) {
-			return result;
-		}
-	}
-
-	return "";
-}
-
 ResourceUID::ID ResourceLoader::get_resource_uid(const String &p_path) {
 	const String local_path = _validate_local_path(p_path);
 	if (!Engine::get_singleton()->is_editor_hint()) {
@@ -1641,72 +1620,8 @@ void ResourceLoader::set_load_callback(ResourceLoadedCallback p_callback) {
 
 ResourceLoadedCallback ResourceLoader::_loaded_callback = nullptr;
 
-Ref<ResourceFormatLoader> ResourceLoader::_find_custom_resource_format_loader(const String &p_path) {
-	for (int i = 0; i < loader_count; ++i) {
-		if (loader[i]->get_script_instance() && loader[i]->get_script_instance()->get_script()->get_path() == p_path) {
-			return loader[i];
-		}
-	}
-	return Ref<ResourceFormatLoader>();
-}
-
-bool ResourceLoader::add_custom_resource_format_loader(const String &p_script_path) {
-	if (_find_custom_resource_format_loader(p_script_path).is_valid()) {
-		return false;
-	}
-
-	Ref<Resource> res = ResourceLoader::load(p_script_path);
-	ERR_FAIL_COND_V(res.is_null(), false);
-	ERR_FAIL_COND_V(!res->is_class("Script"), false);
-
-	Ref<Script> s = res;
-	StringName ibt = s->get_instance_base_type();
-	bool valid_type = ClassDB::is_parent_class(ibt, "ResourceFormatLoader");
-	ERR_FAIL_COND_V_MSG(!valid_type, false, vformat("Failed to add a custom resource loader, script '%s' does not inherit 'ResourceFormatLoader'.", p_script_path));
-
-	Object *obj = ClassDB::instantiate(ibt);
-	ERR_FAIL_NULL_V_MSG(obj, false, vformat("Failed to add a custom resource loader, cannot instantiate '%s'.", ibt));
-
-	Ref<ResourceFormatLoader> crl = Object::cast_to<ResourceFormatLoader>(obj);
-	crl->set_script(s);
-	ResourceLoader::add_resource_format_loader(crl);
-
-	return true;
-}
-
 void ResourceLoader::set_create_missing_resources_if_class_unavailable(bool p_enable) {
 	create_missing_resources_if_class_unavailable = p_enable;
-}
-
-void ResourceLoader::add_custom_loaders() {
-	// Custom loaders registration exploits global class names
-
-	String custom_loader_base_class = ResourceFormatLoader::get_class_static();
-
-	LocalVector<StringName> global_classes;
-	ScriptServer::get_global_class_list(global_classes);
-
-	for (const StringName &class_name : global_classes) {
-		StringName base_class = ScriptServer::get_global_class_native_base(class_name);
-
-		if (base_class == custom_loader_base_class) {
-			String path = ScriptServer::get_global_class_path(class_name);
-			add_custom_resource_format_loader(path);
-		}
-	}
-}
-
-void ResourceLoader::remove_custom_loaders() {
-	Vector<Ref<ResourceFormatLoader>> custom_loaders;
-	for (int i = 0; i < loader_count; ++i) {
-		if (loader[i]->get_script_instance()) {
-			custom_loaders.push_back(loader[i]);
-		}
-	}
-
-	for (int i = 0; i < custom_loaders.size(); ++i) {
-		remove_resource_format_loader(custom_loaders[i]);
-	}
 }
 
 bool ResourceLoader::is_cleaning_tasks() {

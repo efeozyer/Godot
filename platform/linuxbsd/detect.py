@@ -89,7 +89,7 @@ def get_doc_path():
 def get_flags():
     return {
         "arch": detect_arch(),
-        "supported": ["library", "mono"],
+        "supported": ["library"],
     }
 
 

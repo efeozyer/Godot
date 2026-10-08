@@ -33,7 +33,6 @@
 #ifdef UNIX_ENABLED
 
 #include "core/debugger/engine_debugger.h"
-#include "core/debugger/script_debugger.h"
 #include "core/string/char_utils.h"
 #include "drivers/unix/dir_access_unix.h"
 #include "drivers/unix/file_access_unix.h"
@@ -119,31 +118,6 @@ static void _setup_clock() {
 	_clock_start = ((uint64_t)tv_now.tv_nsec / 1000L) + (uint64_t)tv_now.tv_sec * 1000000L;
 }
 #endif
-
-struct sigaction old_action;
-
-static void handle_interrupt(int sig) {
-	if (!EngineDebugger::is_active()) {
-		return;
-	}
-
-	EngineDebugger::get_script_debugger()->set_depth(-1);
-	EngineDebugger::get_script_debugger()->set_lines_left(1);
-
-	// Ensure we call the old action if it was configured.
-	if (old_action.sa_handler && old_action.sa_handler != SIG_IGN && old_action.sa_handler != SIG_DFL) {
-		old_action.sa_handler(sig);
-	}
-}
-
-void OS_Unix::initialize_debugging() {
-	if (EngineDebugger::is_active()) {
-		struct sigaction action;
-		memset(&action, 0, sizeof(action));
-		action.sa_handler = handle_interrupt;
-		sigaction(SIGINT, &action, &old_action);
-	}
-}
 
 int OS_Unix::unix_initialize_audio(int p_audio_driver) {
 	return 0;
@@ -1222,7 +1196,7 @@ String OS_Unix::expand_path(const String &p_path) const {
 	return path;
 }
 
-void UnixTerminalLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
+void UnixTerminalLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type) {
 	if (!should_log(true)) {
 		return;
 	}
@@ -1273,12 +1247,6 @@ void UnixTerminalLogger::log_error(const char *p_function, const char *p_file, i
 
 	logf_error("%s%s:%s %s\n", bold_color, error_type_string(p_type), normal_color, err_details);
 	logf_error("%s%sat: %s (%s:%i)%s\n", gray, error_type_indent(p_type), p_function, p_file, p_line, reset);
-
-	for (const Ref<ScriptBacktrace> &backtrace : p_script_backtraces) {
-		if (!backtrace->is_empty()) {
-			logf_error("%s%s%s\n", gray, backtrace->format(strlen(error_type_indent(p_type))).utf8().get_data(), reset);
-		}
-	}
 }
 
 UnixTerminalLogger::~UnixTerminalLogger() {}

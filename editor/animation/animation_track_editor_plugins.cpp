@@ -114,7 +114,8 @@ void AnimationTrackEditColor::draw_key_link(int p_index_from, int p_index_to, fl
 
 	int y_from = (get_size().height - fh) / 2;
 
-	if (x_from > p_clip_right || x_to < p_clip_left) {
+	// Keys closer together than the key icon leave no room for a link.
+	if (x_from > p_clip_right || x_to < p_clip_left || x_to <= x_from) {
 		return;
 	}
 

@@ -103,14 +103,6 @@ String EditorPaths::get_text_editor_themes_dir() const {
 	return get_config_dir().path_join(text_editor_themes_folder);
 }
 
-String EditorPaths::get_script_templates_dir() const {
-	return get_config_dir().path_join(script_templates_folder);
-}
-
-String EditorPaths::get_project_script_templates_dir() const {
-	return GLOBAL_GET("editor/script/templates_search_path");
-}
-
 String EditorPaths::get_feature_profiles_dir() const {
 	return get_config_dir().path_join(feature_profiles_folder);
 }
@@ -230,9 +222,6 @@ EditorPaths::EditorPaths() {
 
 		if (!dir->dir_exists(text_editor_themes_folder)) {
 			dir->make_dir(text_editor_themes_folder);
-		}
-		if (!dir->dir_exists(script_templates_folder)) {
-			dir->make_dir(script_templates_folder);
 		}
 		if (!dir->dir_exists(feature_profiles_folder)) {
 			dir->make_dir(feature_profiles_folder);

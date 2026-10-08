@@ -39,7 +39,6 @@
 #include "editor/editor_node.h"
 #include "editor/gui/editor_title_bar.h"
 #include "editor/run/editor_run_bar.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "main/main.h"
 #endif
@@ -104,16 +103,6 @@ JNIEXPORT void JNICALL Java_org_godotengine_godot_editor_utils_EditorUtils_orien
 		if (EditorRunBar::get_singleton() != nullptr) {
 			// TODO: Enable for portrait once the title bar width is optimized.
 			EditorRunBar::get_singleton()->set_visible(!p_portrait);
-		}
-
-		if (ScriptEditor::get_singleton() != nullptr && EDITOR_GET("text_editor/appearance/minimap/show_minimap")) {
-			if (TextEditorBase *editor = Object::cast_to<TextEditorBase>(ScriptEditor::get_singleton()->get_current_editor())) {
-				if (CodeTextEditor *code_editor = editor->get_code_editor()) {
-					if (CodeEdit *text_editor = code_editor->get_text_editor()) {
-						text_editor->set_draw_minimap(!p_portrait);
-					}
-				}
-			}
 		}
 	}
 #endif

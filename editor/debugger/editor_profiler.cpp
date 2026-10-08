@@ -104,7 +104,6 @@ void EditorProfiler::clear() {
 	plot_sigs.clear();
 	plot_sigs.insert("physics_frame_time");
 	plot_sigs.insert("category_frame_time");
-	display_internal_profiles->set_visible(EDITOR_GET("debugger/profile_native_calls"));
 
 	updating_frame = true;
 	cursor_metric_edit->set_min(0);
@@ -227,7 +226,6 @@ void EditorProfiler::_update_plot() {
 
 	//find highest value
 
-	const bool use_self = display_time->get_selected() == DISPLAY_SELF_TIME;
 	float highest = 0;
 
 	for (int i = 0; i < total_metrics; i++) {
@@ -241,11 +239,7 @@ void EditorProfiler::_update_plot() {
 
 			HashMap<StringName, Metric::Category::Item *>::ConstIterator G = m.item_ptrs.find(E);
 			if (G) {
-				if (use_self) {
-					highest = MAX(G->value->self, highest);
-				} else {
-					highest = MAX(G->value->total, highest);
-				}
+				highest = MAX(G->value->total, highest);
 			}
 		}
 	}
@@ -286,11 +280,7 @@ void EditorProfiler::_update_plot() {
 
 				HashMap<StringName, Metric::Category::Item *>::ConstIterator G = m.item_ptrs.find(E);
 				if (G) {
-					if (use_self) {
-						value = G->value->self;
-					} else {
-						value = G->value->total;
-					}
+					value = G->value->total;
 				}
 
 				int plot_pos = CLAMP(int(value * h / highest), 0, h - 1);
@@ -368,8 +358,6 @@ void EditorProfiler::_update_frame() {
 	TreeItem *root = variables->create_item();
 	const Metric &m = _get_frame_metric(cursor_metric);
 
-	int dtime = display_time->get_selected();
-
 	for (int i = 0; i < m.categories.size(); i++) {
 		TreeItem *category = variables->create_item(root);
 		category->set_cell_mode(0, TreeItem::CELL_MODE_CHECK);
@@ -391,26 +379,15 @@ void EditorProfiler::_update_frame() {
 		for (int j = 0; j < m.categories[i].items.size(); j++) {
 			const Metric::Category::Item &it = m.categories[i].items[j];
 
-			if (it.internal == it.total && !display_internal_profiles->is_pressed() && m.categories[i].name == "Script Functions") {
-				continue;
-			}
 			TreeItem *item = variables->create_item(category);
 			item->set_cell_mode(0, TreeItem::CELL_MODE_CHECK);
 			item->set_editable(0, true);
 			item->set_text(0, it.name);
 			item->set_auto_translate_mode(0, AUTO_TRANSLATE_MODE_DISABLED);
 			item->set_metadata(0, it.signature);
-			item->set_metadata(1, it.script);
-			item->set_metadata(2, it.line);
 			item->set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT);
-			item->set_tooltip_text(0, it.name + "\n" + it.script + ":" + itos(it.line));
 
-			float time = dtime == DISPLAY_SELF_TIME ? it.self : it.total;
-			if (dtime == DISPLAY_SELF_TIME && !display_internal_profiles->is_pressed()) {
-				time += it.internal;
-			}
-
-			item->set_text(1, _get_time_as_text(m, time, it.calls));
+			item->set_text(1, _get_time_as_text(m, it.total, it.calls));
 
 			item->set_text(2, itos(it.calls));
 
@@ -448,10 +425,6 @@ void EditorProfiler::_clear_pressed() {
 	clear_button->set_disabled(true);
 	clear();
 	_update_plot();
-}
-
-void EditorProfiler::_internal_profiles_pressed() {
-	_combo_changed(0);
 }
 
 void EditorProfiler::_autostart_toggled(bool p_toggled_on) {
@@ -544,12 +517,6 @@ void EditorProfiler::_graph_tex_input(const Ref<InputEvent> &p_ev) {
 			}
 			updating_frame = false;
 
-			if (activate->is_pressed()) {
-				if (!seeking) {
-					emit_signal(SNAME("break_request"));
-				}
-			}
-
 			seeking = true;
 
 			if (!frame_delay->is_processing()) {
@@ -587,11 +554,6 @@ void EditorProfiler::_graph_tex_input(const Ref<InputEvent> &p_ev) {
 	graph->queue_redraw();
 }
 
-void EditorProfiler::disable_seeking() {
-	seeking = false;
-	graph->queue_redraw();
-}
-
 void EditorProfiler::_combo_changed(int) {
 	_update_frame();
 	_update_plot();
@@ -599,7 +561,6 @@ void EditorProfiler::_combo_changed(int) {
 
 void EditorProfiler::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("enable_profiling", PropertyInfo(Variant::BOOL, "enable")));
-	ADD_SIGNAL(MethodInfo("break_request"));
 }
 
 void EditorProfiler::set_enabled(bool p_enable, bool p_clear) {
@@ -733,28 +694,6 @@ EditorProfiler::EditorProfiler() {
 	display_mode->connect(SceneStringName(item_selected), callable_mp(this, &EditorProfiler::_combo_changed));
 
 	hb_measure->add_child(display_mode);
-
-	HBoxContainer *hb_time = memnew(HBoxContainer);
-	hb_time->add_theme_constant_override(SNAME("separation"), 2 * EDSCALE);
-	container->add_child(hb_time);
-
-	hb_time->add_child(memnew(Label(TTRC("Time:"))));
-
-	display_time = memnew(OptionButton);
-	display_time->set_accessibility_name(TTRC("Time:"));
-	// TRANSLATORS: This is an option in the profiler to display the time spent in a function, including the time spent in other functions called by that function.
-	display_time->add_item(TTRC("Inclusive"));
-	// TRANSLATORS: This is an option in the profiler to display the time spent in a function, exincluding the time spent in other functions called by that function.
-	display_time->add_item(TTRC("Self"));
-	display_time->set_tooltip_text(TTRC("Inclusive: Includes time from other functions called by this function.\nUse this to spot bottlenecks.\n\nSelf: Only count the time spent in the function itself, not in other functions called by that function.\nUse this to find individual functions to optimize."));
-	display_time->connect(SceneStringName(item_selected), callable_mp(this, &EditorProfiler::_combo_changed));
-	hb_time->add_child(display_time);
-
-	display_internal_profiles = memnew(CheckButton(TTRC("Display internal functions")));
-	display_internal_profiles->set_visible(EDITOR_GET("debugger/profile_native_calls"));
-	display_internal_profiles->set_pressed(false);
-	display_internal_profiles->connect(SceneStringName(pressed), callable_mp(this, &EditorProfiler::_internal_profiles_pressed));
-	container->add_child(display_internal_profiles);
 
 	HBoxContainer *hb_frame = memnew(HBoxContainer);
 	hb_frame->add_theme_constant_override(SNAME("separation"), 2 * EDSCALE);

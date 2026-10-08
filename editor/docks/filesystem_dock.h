@@ -34,8 +34,6 @@
 #include "editor/file_system/dependency_editor.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/file_info.h"
-#include "editor/script/script_create_dialog.h"
-#include "editor/script/script_editor_plugin.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/control.h"
 #include "scene/gui/dialogs.h"
@@ -45,15 +43,18 @@
 #include "scene/gui/tree.h"
 
 class AcceptDialog;
+class CheckBox;
 class CreateDialog;
 class DependencyEditor;
 class DependencyEditorOwners;
 class DependencyRemoveDialog;
 class EditorDirDialog;
 class HBoxContainer;
+class HSlider;
 class LineEdit;
 class ProgressBar;
 class SceneCreateDialog;
+class ScrollContainer;
 class ShaderCreateDialog;
 class Timer;
 class DirectoryCreateDialog;
@@ -136,9 +137,7 @@ private:
 		FILE_MENU_NEW_RESOURCE,
 		FILE_MENU_NEW_TEXTFILE,
 		FILE_MENU_NEW_FOLDER,
-		FILE_MENU_NEW_SCRIPT,
 		FILE_MENU_NEW_SCENE,
-		FILE_MENU_RUN_SCRIPT,
 		FILE_MENU_RUN_SCENE,
 		FILE_MENU_MAX,
 		// Extra shortcuts that don't exist in the menu.
@@ -216,7 +215,6 @@ private:
 	Label *move_confirm_dialog_label = nullptr;
 
 	SceneCreateDialog *make_scene_dialog = nullptr;
-	ScriptCreateDialog *make_script_dialog = nullptr;
 	ShaderCreateDialog *make_shader_dialog = nullptr;
 	CreateDialog *new_resource_dialog = nullptr;
 
@@ -283,7 +281,7 @@ private:
 	void _tree_mouse_exited();
 	void _reselect_items_selected_on_drag_begin(bool reset = false);
 
-	Ref<Texture2D> _get_tree_item_icon(bool p_is_valid, const String &p_file_type, const String &p_icon_path);
+	Ref<Texture2D> _get_tree_item_icon(bool p_is_valid, const String &p_file_type);
 	void _create_tree(TreeItem *p_parent, EditorFileSystemDirectory *p_dir, const Vector<String> &p_uncollapsed_paths, const Vector<String> &p_selected_paths);
 	void _update_tree(const Vector<String> &p_uncollapsed_paths = Vector<String>(), bool p_uncollapse_root = false, bool p_scroll_to_selected = true, const Vector<String> &p_override_selection = Vector<String>());
 	void _navigate_to_path(const String &p_path, bool p_select_in_favorites = false, bool p_grab_focus = false);
@@ -328,7 +326,7 @@ private:
 	void _folder_removed(const String &p_folder);
 
 	void _resource_created();
-	void _script_or_shader_created(const Ref<Resource> &p_resource);
+	void _shader_created(const Ref<Resource> &p_resource);
 	void _make_scene_confirm();
 	void _rename_operation_confirm(bool p_from_tree);
 	void _duplicate_operation_confirm(const String &p_path);
@@ -439,8 +437,6 @@ public:
 	void focus_on_path();
 	void focus_on_filter();
 	void create_directory(const String &p_path, const String &p_base_dir);
-
-	ScriptCreateDialog *get_script_create_dialog() const;
 
 	void fix_dependencies(const String &p_for_file);
 	void update_all();

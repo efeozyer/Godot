@@ -37,7 +37,6 @@
 #include "core/config/engine.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/templates/rb_map.h"
 #include "core/variant/variant_utility.h"
 #include "scene/gui/control.h"
@@ -1048,8 +1047,8 @@ int VisualShader::has_node_embeds() const {
 		for (const KeyValue<int, ShaderGraph::Node> &E : graph[i]->get_nodes()) {
 			List<PropertyInfo> props;
 			E.value.node->get_property_list(&props);
-			// For classes that inherit from VisualShaderNode, the class properties start at the 12th, and the last value is always 'script'
-			for (int j = 12; j < props.size() - 1; j++) {
+			// For classes that inherit from VisualShaderNode, the class properties start at the 12th.
+			for (int j = 12; j < props.size(); j++) {
 				// VisualShaderNodeCustom cannot have embeds
 				if (props.get(j).name == "VisualShaderNodeCustom") {
 					break;

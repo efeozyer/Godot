@@ -30,13 +30,9 @@
 
 #include "engine_debugger.h"
 
-#include "core/debugger/local_debugger.h"
 #include "core/debugger/remote_debugger.h"
 #include "core/debugger/remote_debugger_peer.h"
-#include "core/debugger/script_debugger.h"
 #include "core/os/os.h"
-
-void (*EngineDebugger::allow_focus_steal_fn)();
 
 void EngineDebugger::register_profiler(const StringName &p_name, const Profiler &p_func) {
 	ERR_FAIL_COND_MSG(profilers.has(p_name), vformat("Profiler already registered: '%s'.", p_name));
@@ -120,7 +116,7 @@ void EngineDebugger::iteration(uint64_t p_frame_ticks, uint64_t p_process_ticks,
 	singleton->poll_events(true);
 }
 
-void EngineDebugger::initialize(const String &p_uri, bool p_skip_breakpoints, bool p_ignore_error_breaks, const Vector<String> &p_breakpoints, void (*p_allow_focus_steal_fn)()) {
+void EngineDebugger::initialize(const String &p_uri) {
 	register_uri_handler("tcp://", RemoteDebuggerPeerTCP::create_tcp); // TCP is the default protocol. Platforms/modules can add more.
 #ifdef UNIX_ENABLED
 	register_uri_handler("unix://", RemoteDebuggerPeerTCP::create_unix);
@@ -128,12 +124,7 @@ void EngineDebugger::initialize(const String &p_uri, bool p_skip_breakpoints, bo
 	if (p_uri.is_empty()) {
 		return;
 	}
-	if (p_uri == "local://") {
-		singleton = memnew(LocalDebugger);
-		script_debugger = memnew(ScriptDebugger);
-		// Tell the OS that we want to handle termination signals.
-		OS::get_singleton()->initialize_debugging();
-	} else if (p_uri.contains("://")) {
+	if (p_uri.contains("://")) {
 		const String proto = p_uri.substr(0, p_uri.find("://") + 3);
 		CreatePeerFunc *create_fn = protocols.getptr(proto);
 		ERR_FAIL_NULL_MSG(create_fn, vformat("Invalid protocol: %s.", proto));
@@ -143,29 +134,10 @@ void EngineDebugger::initialize(const String &p_uri, bool p_skip_breakpoints, bo
 			return;
 		}
 		singleton = memnew(RemoteDebugger(Ref<RemoteDebuggerPeer>(peer)));
-		script_debugger = memnew(ScriptDebugger);
 		// Notify editor of our pid (to allow focus stealing).
 		Array msg = { OS::get_singleton()->get_process_id() };
 		singleton->send_message("set_pid", msg);
 	}
-	if (!singleton) {
-		return;
-	}
-
-	// There is a debugger, parse breakpoints.
-	ScriptDebugger *singleton_script_debugger = singleton->get_script_debugger();
-	singleton_script_debugger->set_skip_breakpoints(p_skip_breakpoints);
-	singleton_script_debugger->set_ignore_error_breaks(p_ignore_error_breaks);
-
-	for (int i = 0; i < p_breakpoints.size(); i++) {
-		const String &bp = p_breakpoints[i];
-		int sp = bp.rfind_char(':');
-		ERR_CONTINUE_MSG(sp == -1, vformat("Invalid breakpoint: '%s', expected file:line format.", bp));
-
-		singleton_script_debugger->insert_breakpoint(bp.substr(sp + 1).to_int(), bp.substr(0, sp));
-	}
-
-	allow_focus_steal_fn = p_allow_focus_steal_fn;
 }
 
 void EngineDebugger::deinitialize() {
@@ -191,7 +163,5 @@ void EngineDebugger::deinitialize() {
 }
 
 EngineDebugger::~EngineDebugger() {
-	memdelete(script_debugger);
-	script_debugger = nullptr;
 	singleton = nullptr;
 }

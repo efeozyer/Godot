@@ -116,7 +116,7 @@ TEST_SUITE("Validate tests") {
 		Callable callable(obj, "has_method");
 		INFO(callable);
 
-		Signal signal(obj, "script_changed");
+		Signal signal(obj, "property_list_changed");
 		INFO(signal);
 
 		memdelete(obj);

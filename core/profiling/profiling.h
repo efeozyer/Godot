@@ -53,11 +53,6 @@ GODOT_MSVC_WARNING_PUSH_AND_IGNORE(4366) // The result of the unary operator may
 #include <tracy/Tracy.hpp>
 GODOT_MSVC_WARNING_POP
 
-// Hijacking the tracy namespace so we can use their macros.
-namespace tracy {
-const SourceLocationData *intern_source_location(const void *p_function_ptr, const StringName &p_file, const StringName &p_function, const StringName &p_name, uint32_t p_line, bool p_is_script);
-} //namespace tracy
-
 // Define tracing macros.
 #define GodotProfileFrameMark FrameMark
 #define GodotProfileZone(m_zone_name) ZoneNamedN(GD_UNIQUE_NAME(__godot_tracy_szone_), m_zone_name, true)
@@ -74,11 +69,6 @@ const SourceLocationData *intern_source_location(const void *p_function_ptr, con
 	static constexpr tracy::SourceLocationData TracyConcat(__tracy_source_location, TracyLine){ m_zone_name, TracyFunction, TracyFile, (uint32_t)TracyLine, 0 }; \
 	new (&__godot_tracy_zone_##m_group_name) tracy::ScopedZone(&TracyConcat(__tracy_source_location, TracyLine), TRACY_CALLSTACK, true)
 #endif
-
-#define GodotProfileZoneScript(m_ptr, m_file, m_function, m_name, m_line) \
-	tracy::ScopedZone __godot_tracy_script(tracy::intern_source_location(m_ptr, m_file, m_function, m_name, m_line, true))
-#define GodotProfileZoneScriptSystemCall(m_ptr, m_file, m_function, m_name, m_line) \
-	tracy::ScopedZone __godot_tracy_zone_system_call(tracy::intern_source_location(m_ptr, m_file, m_function, m_name, m_line, false))
 
 // Memory allocation
 #ifdef GODOT_PROFILER_TRACK_MEMORY
@@ -105,9 +95,7 @@ void godot_cleanup_profiler();
 
 PERFETTO_DEFINE_CATEGORIES(
 		perfetto::Category("godot")
-				.SetDescription("Godot Engine Events"),
-		perfetto::Category("godot_scripting")
-				.SetDescription("Godot Scripting Events"), );
+				.SetDescription("Godot Engine Events"), );
 
 // See PERFETTO_INTERNAL_SCOPED_EVENT_FINALIZER
 struct PerfettoGroupedEventEnder {
@@ -131,46 +119,6 @@ struct PerfettoGroupedEventEnder {
 #define GodotProfileZoneGrouped(m_group_name, m_zone_name) \
 	__godot_perfetto_zone_##m_group_name._end_now(); \
 	TRACE_EVENT_BEGIN("godot", m_zone_name);
-
-static thread_local HashSet<StringName> __tracing_system_call;
-
-/**
- * Script tracing may cross function boundaries (tracing started in the caller script), so the logic below only triggers
- * a TRACE_EVENT_BEGIN for `GodotProfileZoneScript` if tracing hasn't already been initiated by
- * `GodotProfileZoneScriptSystemCall` in the caller.
- */
-struct PerfettoScriptTracer {
-	StringName name;
-	bool is_system_call;
-	bool tracing;
-
-	PerfettoScriptTracer(const StringName &p_file, const StringName &p_function, const StringName &p_name, int p_line, bool p_system_call) : name(p_name), is_system_call(p_system_call) {
-		if (is_system_call || !__tracing_system_call.erase(name)) {
-			TRACE_EVENT_BEGIN("godot_scripting", perfetto::DynamicString(p_name.string().utf8().get_data()), "source file", p_file.string().utf8().get_data(), "line number", p_line);
-			tracing = true;
-		}
-
-		if (is_system_call) {
-			__tracing_system_call.insert(name);
-		}
-	}
-
-	_FORCE_INLINE_ void _end_now() {
-		if (tracing) {
-			TRACE_EVENT_END("godot_scripting");
-		}
-	}
-
-	_FORCE_INLINE_ ~PerfettoScriptTracer() {
-		_end_now();
-		if (is_system_call) {
-			__tracing_system_call.erase(name);
-		}
-	}
-};
-
-#define GodotProfileZoneScript(m_ptr, m_file, m_function, m_name, m_line) PerfettoScriptTracer __godot_perfetto_script_tracer(m_file, m_function, m_name, m_line, false);
-#define GodotProfileZoneScriptSystemCall(m_ptr, m_file, m_function, m_name, m_line) PerfettoScriptTracer __godot_perfetto_script_system_call_tracer(m_file, m_function, m_name, m_line, true);
 
 #define GodotProfileAlloc(m_ptr, m_size)
 #define GodotProfileFree(m_ptr)
@@ -228,9 +176,6 @@ private:
 #define GodotProfileZone(m_zone_name) \
 	GodotProfileZoneGroupedFirst(__COUNTER__, m_zone_name)
 
-#define GodotProfileZoneScript(m_ptr, m_file, m_function, m_name, m_line)
-#define GodotProfileZoneScriptSystemCall(m_ptr, m_file, m_function, m_name, m_line)
-
 // Instruments has its own memory profiling, so these are no-ops.
 #define GodotProfileAlloc(m_ptr, m_size)
 #define GodotProfileFree(m_ptr)
@@ -261,12 +206,5 @@ void godot_cleanup_profiler();
 // Tell the profiling backend that an allocation was freed.
 // There must be a one to one correspondence of GodotProfileAlloc and GodotProfileFree calls.
 #define GodotProfileFree(m_ptr)
-
-// Define a zone for a script call (dynamic source location).
-// m_ptr is a pointer to the function instance, which will be used for the lookup.
-// m_file, m_function, m_name are StringNames, and m_line is uint32_t
-#define GodotProfileZoneScript(m_ptr, m_file, m_function, m_name, m_line)
-// Define a zone for a system call from a script (dynamic source location).
-#define GodotProfileZoneScriptSystemCall(m_ptr, m_file, m_function, m_name, m_line)
 
 #endif

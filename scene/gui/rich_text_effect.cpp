@@ -31,7 +31,6 @@
 #include "rich_text_effect.h"
 
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 
 CharFXTransform::CharFXTransform() {
 }
@@ -45,14 +44,7 @@ void RichTextEffect::_bind_methods(){
 }
 
 Variant RichTextEffect::get_bbcode() const {
-	Variant r;
-	if (get_script_instance()) {
-		if (!get_script_instance()->get("bbcode", r)) {
-			String path = get_script_instance()->get_script()->get_path();
-			r = path.get_file().get_basename();
-		}
-	}
-	return r;
+	return get(SNAME("bbcode"));
 }
 
 bool RichTextEffect::_process_effect_impl(Ref<CharFXTransform> p_cfx) {

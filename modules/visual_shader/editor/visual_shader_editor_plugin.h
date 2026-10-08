@@ -34,9 +34,9 @@
 #include "../visual_shader_group.h"
 
 #include "core/object/undo_redo.h"
+#include "editor/document/document_editor_base.h"
 #include "editor/inspector/editor_properties.h"
 #include "editor/plugins/editor_resource_conversion_plugin.h"
-#include "editor/script/script_editor_base.h"
 #include "scene/gui/control.h"
 #include "scene/gui/dialogs.h"
 #include "scene/gui/graph_edit.h"
@@ -188,7 +188,6 @@ public:
 	void set_frame_autoshrink_enabled(VisualShader::Type p_type, int p_node_id, bool p_enable);
 	void update_reroute_nodes();
 	int get_constant_index(float p_constant) const;
-	Ref<Script> get_node_script(int p_node_id) const;
 	void update_theme();
 
 	VisualShaderGraphPlugin();
@@ -254,8 +253,8 @@ public:
 	VisualShaderGroupPortsDialog();
 };
 
-class VisualShaderEditor : public ScriptEditorBase {
-	GDCLASS(VisualShaderEditor, ScriptEditorBase);
+class VisualShaderEditor : public DocumentEditorBase {
+	GDCLASS(VisualShaderEditor, DocumentEditorBase);
 	friend class VisualShaderGraphPlugin;
 	friend class VisualShaderGroupPortsDialog;
 	friend class VisualShaderNodePluginDefaultEditor;
@@ -311,12 +310,6 @@ class VisualShaderEditor : public ScriptEditorBase {
 	Ref<CodeHighlighter> syntax_highlighter = nullptr;
 	PanelContainer *error_panel = nullptr;
 	Label *error_label = nullptr;
-
-	bool pending_custom_scripts_to_delete = false;
-	List<Ref<Script>> custom_scripts_to_delete;
-
-	bool _block_update_options_menu = false;
-	bool _block_rebuild_shader = false;
 
 	Point2 saved_node_pos;
 	bool saved_node_pos_dirty = false;
@@ -481,13 +474,11 @@ class VisualShaderEditor : public ScriptEditorBase {
 		String type;
 		String description;
 		Vector<Variant> ops;
-		Ref<Script> script;
 		int mode = 0;
 		int return_type = 0;
 		int func = 0;
 		bool highend = false;
 		bool is_custom = false;
-		bool is_native = false;
 		mutable int temp_idx = 0;
 
 		AddOption(const String &p_name = String(), const String &p_category = String(), const String &p_type = String(), const String &p_description = String(), const Vector<Variant> &p_ops = Vector<Variant>(), int p_return_type = -1, int p_mode = -1, int p_func = -1, bool p_highend = false) {
@@ -513,7 +504,6 @@ class VisualShaderEditor : public ScriptEditorBase {
 	int texture2d_node_option_idx;
 	int texture2d_array_node_option_idx;
 	int texture3d_node_option_idx;
-	int custom_node_option_idx;
 	int curve_node_option_idx;
 	int curve_xyz_node_option_idx;
 	int mesh_emitter_option_idx;
@@ -751,18 +741,10 @@ class VisualShaderEditor : public ScriptEditorBase {
 	void _update_parameter_refs(HashSet<String> &p_names);
 	void _update_varyings();
 
-	void _update_options_menu_deferred();
-	void _rebuild_shader_deferred();
-
 	void _visibility_changed();
 
-	void _get_current_mode_limits(int &r_begin_type, int &r_end_type) const;
-	void _update_custom_script(const Ref<Script> &p_script);
-	void _script_created(const Ref<Script> &p_script);
 	void _resource_saved(const Ref<Resource> &p_resource);
 	void _save_nested_groups();
-	void _resource_removed(const Ref<Resource> &p_resource);
-	void _resources_removed();
 
 	void _param_property_changed(const String &p_property, const Variant &p_value, const String &p_field = "", bool p_changing = false);
 	void _update_current_param();
@@ -770,7 +752,7 @@ class VisualShaderEditor : public ScriptEditorBase {
 	void _param_selected();
 	void _param_unselected();
 
-	static ScriptEditorBase *create_editor(const Ref<Resource> &p_resource);
+	static DocumentEditorBase *create_editor(const Ref<Resource> &p_resource);
 
 protected:
 	void _notification(int p_what);
@@ -797,7 +779,7 @@ public:
 	VisualShaderGraphPlugin *get_graph_plugin() { return graph_plugin.ptr(); }
 
 	void clear_custom_types();
-	void add_custom_type(const String &p_name, const String &p_type, const Ref<Script> &p_script, const String &p_description, int p_return_icon_type, const String &p_category, bool p_highend);
+	void add_custom_type(const String &p_name, const String &p_type, const String &p_description, int p_return_icon_type, const String &p_category, bool p_highend);
 
 	Dictionary get_custom_node_data(Ref<VisualShaderNodeCustom> &p_custom_node);
 	void update_custom_type(const Ref<Resource> &p_resource);

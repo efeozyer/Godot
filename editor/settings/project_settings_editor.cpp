@@ -45,6 +45,8 @@
 #include "editor/settings/gdextension/project_settings_gdextension.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/check_button.h"
+#include "scene/gui/line_edit.h"
+#include "scene/main/timer.h"
 #include "servers/movie_writer/movie_writer.h"
 
 void ProjectSettingsEditor::connect_filesystem_dock_signals(FileSystemDock *p_fs_dock) {
@@ -74,7 +76,6 @@ void ProjectSettingsEditor::popup_project_settings(bool p_clear_filter) {
 	localization_editor->update_translations();
 	autoload_settings->update_autoload();
 	group_settings->update_groups();
-	plugin_settings->update_plugins();
 	import_defaults_editor->clear();
 
 	if (p_clear_filter) {
@@ -110,22 +111,9 @@ void ProjectSettingsEditor::_save() {
 	}
 }
 
-void ProjectSettingsEditor::set_plugins_page() {
-	tab_container->set_current_tab(tab_container->get_tab_idx_from_control(addons_container));
-	addons_container->set_current_tab(0);
-}
-
 void ProjectSettingsEditor::set_general_page(const String &p_category) {
 	tab_container->set_current_tab(tab_container->get_tab_idx_from_control(general_editor));
 	general_settings_inspector->set_current_section(p_category);
-}
-
-void ProjectSettingsEditor::update_plugins() {
-	plugin_settings->update_plugins();
-}
-
-void ProjectSettingsEditor::init_autoloads() {
-	autoload_settings->init_autoloads();
 }
 
 void ProjectSettingsEditor::_setting_edited(const String &p_name) {
@@ -858,10 +846,6 @@ ProjectSettingsEditor::ProjectSettingsEditor(EditorData *p_data) {
 	addons_container->set_theme_type_variation("TabContainerInner");
 	addons_container->set_name(TTRC("Addons"));
 	tab_container->add_child(addons_container);
-
-	plugin_settings = memnew(EditorPluginSettings);
-	plugin_settings->set_name(TTRC("Plugins"));
-	addons_container->add_child(plugin_settings);
 
 	gdextension_settings = memnew(ProjectSettingsGDExtension);
 	gdextension_settings->set_name(TTRC("GDExtension"));

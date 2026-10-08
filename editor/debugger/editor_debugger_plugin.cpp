@@ -34,14 +34,6 @@
 #include "core/object/class_db.h"
 #include "editor/debugger/script_editor_debugger.h"
 
-void EditorDebuggerSession::_breaked(bool p_really_did, bool p_can_debug, const String &p_message, bool p_has_stackdump) {
-	if (p_really_did) {
-		emit_signal(SNAME("breaked"), p_can_debug);
-	} else {
-		emit_signal(SNAME("continued"));
-	}
-}
-
 void EditorDebuggerSession::_started() {
 	emit_signal(SNAME("started"));
 }
@@ -53,17 +45,12 @@ void EditorDebuggerSession::_stopped() {
 void EditorDebuggerSession::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("send_message", "message", "data"), &EditorDebuggerSession::send_message, DEFVAL(Array()));
 	ClassDB::bind_method(D_METHOD("toggle_profiler", "profiler", "enable", "data"), &EditorDebuggerSession::toggle_profiler, DEFVAL(Array()));
-	ClassDB::bind_method(D_METHOD("is_breaked"), &EditorDebuggerSession::is_breaked);
-	ClassDB::bind_method(D_METHOD("is_debuggable"), &EditorDebuggerSession::is_debuggable);
 	ClassDB::bind_method(D_METHOD("is_active"), &EditorDebuggerSession::is_active);
 	ClassDB::bind_method(D_METHOD("add_session_tab", "control"), &EditorDebuggerSession::add_session_tab);
 	ClassDB::bind_method(D_METHOD("remove_session_tab", "control"), &EditorDebuggerSession::remove_session_tab);
-	ClassDB::bind_method(D_METHOD("set_breakpoint", "path", "line", "enabled"), &EditorDebuggerSession::set_breakpoint);
 
 	ADD_SIGNAL(MethodInfo("started"));
 	ADD_SIGNAL(MethodInfo("stopped"));
-	ADD_SIGNAL(MethodInfo("breaked", PropertyInfo(Variant::BOOL, "can_debug")));
-	ADD_SIGNAL(MethodInfo("continued"));
 }
 
 void EditorDebuggerSession::add_session_tab(Control *p_tab) {
@@ -88,24 +75,9 @@ void EditorDebuggerSession::toggle_profiler(const String &p_profiler, bool p_ena
 	debugger->toggle_profiler(p_profiler, p_enable, p_data);
 }
 
-bool EditorDebuggerSession::is_breaked() {
-	ERR_FAIL_NULL_V_MSG(debugger, false, "Plugin is not attached to debugger.");
-	return debugger->is_breaked();
-}
-
-bool EditorDebuggerSession::is_debuggable() {
-	ERR_FAIL_NULL_V_MSG(debugger, false, "Plugin is not attached to debugger.");
-	return debugger->is_debuggable();
-}
-
 bool EditorDebuggerSession::is_active() {
 	ERR_FAIL_NULL_V_MSG(debugger, false, "Plugin is not attached to debugger.");
 	return debugger->is_session_active();
-}
-
-void EditorDebuggerSession::set_breakpoint(const String &p_path, int p_line, bool p_enabled) {
-	ERR_FAIL_NULL_MSG(debugger, "Plugin is not attached to debugger.");
-	debugger->set_breakpoint(p_path, p_line, p_enabled);
 }
 
 void EditorDebuggerSession::detach_debugger() {
@@ -114,7 +86,6 @@ void EditorDebuggerSession::detach_debugger() {
 	}
 	debugger->disconnect("started", callable_mp(this, &EditorDebuggerSession::_started));
 	debugger->disconnect("stopped", callable_mp(this, &EditorDebuggerSession::_stopped));
-	debugger->disconnect("breaked", callable_mp(this, &EditorDebuggerSession::_breaked));
 	for (Control *tab : tabs) {
 		debugger->remove_debugger_tab(tab);
 	}
@@ -128,7 +99,6 @@ EditorDebuggerSession::EditorDebuggerSession(ScriptEditorDebugger *p_debugger) {
 	debugger_id = p_debugger->get_instance_id();
 	debugger->connect("started", callable_mp(this, &EditorDebuggerSession::_started));
 	debugger->connect("stopped", callable_mp(this, &EditorDebuggerSession::_stopped));
-	debugger->connect("breaked", callable_mp(this, &EditorDebuggerSession::_breaked));
 }
 
 EditorDebuggerSession::~EditorDebuggerSession() {
@@ -186,31 +156,10 @@ bool EditorDebuggerPlugin::capture(const String &p_message, const Array &p_data,
 	return false;
 }
 
-void EditorDebuggerPlugin::goto_script_line(const Ref<Script> &p_script, int p_line) {
-	GDVIRTUAL_CALL(_goto_script_line, p_script, p_line);
-}
-
-void EditorDebuggerPlugin::breakpoints_cleared_in_tree() {
-	GDVIRTUAL_CALL(_breakpoints_cleared_in_tree);
-}
-
-void EditorDebuggerPlugin::breakpoint_set_in_tree(const Ref<Script> &p_script, int p_line, bool p_enabled) {
-	GDVIRTUAL_CALL(_breakpoint_set_in_tree, p_script, p_line, p_enabled);
-}
-
 void EditorDebuggerPlugin::_bind_methods() {
 	GDVIRTUAL_BIND(_setup_session, "session_id");
 	GDVIRTUAL_BIND(_has_capture, "capture");
 	GDVIRTUAL_BIND(_capture, "message", "data", "session_id");
-	GDVIRTUAL_BIND(_goto_script_line, "script", "line");
-	GDVIRTUAL_BIND(_breakpoints_cleared_in_tree);
-	GDVIRTUAL_BIND(_breakpoint_set_in_tree, "script", "line", "enabled");
 	ClassDB::bind_method(D_METHOD("get_session", "id"), &EditorDebuggerPlugin::get_session);
 	ClassDB::bind_method(D_METHOD("get_sessions"), &EditorDebuggerPlugin::get_sessions);
-}
-
-EditorDebuggerPlugin::EditorDebuggerPlugin() {
-	EditorDebuggerNode::get_singleton()->connect("goto_script_line", callable_mp(this, &EditorDebuggerPlugin::goto_script_line));
-	EditorDebuggerNode::get_singleton()->connect("breakpoints_cleared_in_tree", callable_mp(this, &EditorDebuggerPlugin::breakpoints_cleared_in_tree));
-	EditorDebuggerNode::get_singleton()->connect("breakpoint_set_in_tree", callable_mp(this, &EditorDebuggerPlugin::breakpoint_set_in_tree));
 }

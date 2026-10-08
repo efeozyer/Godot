@@ -264,7 +264,7 @@ void SnapshotRefCountedView::_refcounted_selected() {
 		inbound_tree->set_v_scroll_enabled(false);
 		inbound_tree->connect(SceneStringName(item_selected), callable_mp(this, &SnapshotRefCountedView::_ref_selected).bind(inbound_tree));
 
-		// The same reference can exist as multiple properties of an object (for example, gdscript `@export` properties exist twice).
+		// The same reference can exist as multiple properties of an object.
 		// We flag for the user if a property is exposed multiple times so it's clearer why there are more references in the list
 		// than the ObjectDB References count would suggest.
 		HashMap<ObjectID, int> property_repeat_count;

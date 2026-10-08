@@ -33,18 +33,17 @@
 #include "core/config/project_settings.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
-#include "core/object/editor_language.h"
 #include "core/templates/hash_set.h"
 #include "editor/doc/editor_help.h"
 #include "editor/docks/scene_tree_dock.h"
 #include "editor/docks/signals_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_variant_type_selectors.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/scene_tree_editor.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/button.h"
@@ -58,24 +57,6 @@
 #include "scene/gui/spin_box.h"
 #include "scene/main/scene_tree.h"
 #include "servers/display/display_server.h"
-
-static Node *_find_first_script(Node *p_root, Node *p_node) {
-	if (p_node != p_root && p_node->get_owner() != p_root) {
-		return nullptr;
-	}
-	if (!p_node->get_script().is_null()) {
-		return p_node;
-	}
-
-	for (int i = 0; i < p_node->get_child_count(); i++) {
-		Node *ret = _find_first_script(p_root, p_node->get_child(i));
-		if (ret) {
-			return ret;
-		}
-	}
-
-	return nullptr;
-}
 
 class ConnectDialogBinds : public Object {
 	GDCLASS(ConnectDialogBinds, Object);
@@ -174,12 +155,10 @@ void ConnectDialog::ok_pressed() {
 	if (!target) {
 		return; // Nothing selected in the tree, not an error.
 	}
-	if (target->get_script().is_null()) {
-		if (!target->has_method(method_name)) {
-			error->set_text(TTR("Target method not found. Specify a valid method or attach a script to the target node."));
-			error->popup_centered();
-			return;
-		}
+	if (!target->has_method(method_name)) {
+		error->set_text(TTR("Target method not found. Specify a valid method."));
+		error->popup_centered();
+		return;
 	}
 	emit_signal(SNAME("connected"));
 	hide();
@@ -215,7 +194,6 @@ void ConnectDialog::_tree_node_selected() {
 	cdbinds->update_base_node_relative(current);
 
 	_update_method_tree();
-	_update_warning_label();
 	_update_ok_enabled();
 }
 
@@ -325,13 +303,6 @@ List<MethodInfo> ConnectDialog::_filter_method_list(const List<MethodInfo> &p_me
 	}
 
 	for (const MethodInfo &mi : p_methods) {
-		if (mi.name.begins_with("@")) {
-			// GH-92782. GDScript inline setters/getters are historically present in `get_method_list()`
-			// and can be called using `Object.call()`. However, these functions are meant to be internal
-			// and their names are not valid identifiers, so let's hide them from the user.
-			continue;
-		}
-
 		if (!p_search_string.is_empty() && !mi.name.containsn(p_search_string)) {
 			continue;
 		}
@@ -397,31 +368,6 @@ void ConnectDialog::_update_method_tree() {
 	root_item->set_text(0, TTR("Methods"));
 	root_item->set_selectable(0, false);
 
-	// If a script is attached, get methods from it.
-	ScriptInstance *si = target->get_script_instance();
-	if (si) {
-		if (si->get_script()->is_built_in()) {
-			si->get_script()->reload(true);
-		}
-		List<MethodInfo> methods;
-		si->get_method_list(&methods);
-		methods = _filter_method_list(methods, signal_info, search_string);
-
-		if (!methods.is_empty()) {
-			TreeItem *si_item = method_tree->create_item(root_item);
-			si_item->set_text(0, TTR("Attached Script"));
-			si_item->set_icon(0, get_editor_theme_icon(SNAME("Script")));
-			si_item->set_selectable(0, false);
-
-			_create_method_tree_items(methods, si_item);
-		}
-	}
-
-	if (script_methods_only->is_pressed()) {
-		empty_tree_label->set_visible(root_item->get_first_child() == nullptr);
-		return;
-	}
-
 	// Get methods from each class in the hierarchy.
 	StringName current_class = target->get_class_name();
 	do {
@@ -450,9 +396,7 @@ void ConnectDialog::_update_method_tree() {
 }
 
 void ConnectDialog::_method_check_button_pressed(const CheckButton *p_button) {
-	if (p_button == script_methods_only) {
-		EditorSettings::get_singleton()->set_project_metadata("editor_metadata", "show_script_methods_only", p_button->is_pressed());
-	} else if (p_button == compatible_methods_only) {
+	if (p_button == compatible_methods_only) {
 		EditorSettings::get_singleton()->set_project_metadata("editor_metadata", "show_compatible_methods_only", p_button->is_pressed());
 	}
 	_update_method_tree();
@@ -482,30 +426,6 @@ void ConnectDialog::_update_ok_enabled() {
 	}
 
 	get_ok_button()->set_disabled(false);
-}
-
-void ConnectDialog::_update_warning_label() {
-	Node *dst = Object::cast_to<Node>(source)->get_node(dst_path);
-
-	if (dst == nullptr) {
-		warning_label->set_visible(false);
-		return;
-	}
-
-	Ref<Script> scr = dst->get_script();
-	if (scr.is_null()) {
-		warning_label->set_visible(false);
-		return;
-	}
-
-	ScriptLanguage *language = scr->get_language();
-	if (language->can_make_function()) {
-		warning_label->set_visible(false);
-		return;
-	}
-
-	warning_label->set_text(vformat(TTR("%s: Callback code won't be generated, please add it manually."), language->get_name()));
-	warning_label->set_visible(true);
 }
 
 void ConnectDialog::_post_popup() {
@@ -735,13 +655,7 @@ void ConnectDialog::init(const ConnectionData &p_cd, const PackedStringArray &p_
 
 void ConnectDialog::popup_dialog(const String &p_for_signal) {
 	from_signal->set_text(p_for_signal);
-	warning_label->add_theme_color_override(SceneStringName(font_color), warning_label->get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
-	error_label->add_theme_color_override(SceneStringName(font_color), error_label->get_theme_color(SNAME("error_color"), EditorStringName(Editor)));
 	filter_nodes->clear();
-
-	if (!advanced->is_pressed()) {
-		error_label->set_visible(!_find_first_script(get_tree()->get_edited_scene_root(), get_tree()->get_edited_scene_root()));
-	}
 
 	if (first_popup) {
 		first_popup = false;
@@ -753,18 +667,10 @@ void ConnectDialog::popup_dialog(const String &p_for_signal) {
 
 void ConnectDialog::_advanced_pressed() {
 	if (advanced->is_pressed()) {
-		connect_to_label->set_text(TTR("Connect to Node:"));
-		tree->set_connect_to_script_mode(false);
-
 		vbc_right->show();
-		error_label->hide();
 	} else {
 		reset_size();
-		connect_to_label->set_text(TTR("Connect to Script:"));
-		tree->set_connect_to_script_mode(true);
-
 		vbc_right->hide();
-		error_label->set_visible(!_find_first_script(get_tree()->get_edited_scene_root(), get_tree()->get_edited_scene_root()));
 	}
 
 	EditorSettings::get_singleton()->set_project_metadata("editor_metadata", "use_advanced_connections", advanced->is_pressed());
@@ -795,7 +701,6 @@ ConnectDialog::ConnectDialog() {
 	tree->set_v_size_flags(Control::SIZE_FILL | Control::SIZE_EXPAND);
 	tree->get_scene_tree()->connect("item_activated", callable_mp(this, &ConnectDialog::_item_activated));
 	tree->connect("node_selected", callable_mp(this, &ConnectDialog::_tree_node_selected));
-	tree->set_connect_to_script_mode(true);
 	tree->get_scene_tree()->set_theme_type_variation("TreeSecondary");
 
 	HBoxContainer *hbc_filter = memnew(HBoxContainer);
@@ -813,20 +718,8 @@ ConnectDialog::ConnectDialog() {
 	focus_current->set_text(TTR("Go to Source"));
 	focus_current->connect(SceneStringName(pressed), callable_mp(this, &ConnectDialog::_focus_currently_connected));
 
-	Node *mc = vbc_left->add_margin_child(TTR("Connect to Script:"), hbc_filter, false);
-	connect_to_label = Object::cast_to<Label>(vbc_left->get_child(mc->get_index() - 1));
+	vbc_left->add_margin_child(TTR("Connect to Node:"), hbc_filter, false);
 	vbc_left->add_child(tree);
-
-	warning_label = memnew(Label);
-	warning_label->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
-	vbc_left->add_child(warning_label);
-	warning_label->hide();
-
-	error_label = memnew(Label);
-	error_label->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
-	error_label->set_text(TTR("Scene does not contain any script."));
-	vbc_left->add_child(error_label);
-	error_label->hide();
 
 	method_popup = memnew(AcceptDialog);
 	method_popup->set_title(TTR("Select Method"));
@@ -857,12 +750,6 @@ ConnectDialog::ConnectDialog() {
 	empty_tree_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	empty_tree_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
 	empty_tree_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD);
-
-	script_methods_only = memnew(CheckButton(TTR("Script Methods Only")));
-	method_vbc->add_child(script_methods_only);
-	script_methods_only->set_h_size_flags(Control::SIZE_SHRINK_END);
-	script_methods_only->set_pressed(EditorSettings::get_singleton()->get_project_metadata("editor_metadata", "show_script_methods_only", true));
-	script_methods_only->connect(SceneStringName(pressed), callable_mp(this, &ConnectDialog::_method_check_button_pressed).bind(script_methods_only));
 
 	compatible_methods_only = memnew(CheckButton(TTR("Compatible Methods Only")));
 	method_vbc->add_child(compatible_methods_only);
@@ -1005,85 +892,6 @@ void ConnectionsDock::_make_or_edit_connection() {
 	bool b_append_source = connect_dialog->get_append_source();
 	cd.flags = CONNECT_PERSIST | (b_deferred ? CONNECT_DEFERRED : 0) | (b_oneshot ? CONNECT_ONE_SHOT : 0) | (b_append_source ? CONNECT_APPEND_SOURCE_OBJECT : 0);
 
-	// If the function is found in target's own script, check the editor setting
-	// to determine if the script should be opened.
-	// If the function is found in an inherited class or script no need to do anything
-	// except making a connection.
-	bool add_script_function_request = false;
-	Ref<Script> scr = target->get_script();
-
-	if (scr.is_valid() && !ClassDB::has_method(target->get_class(), cd.method)) {
-		// Check in target's own script.
-		int32_t line = scr->get_language()->get_editor_language()->find_function(cd.method, scr->get_source_code());
-		if (line != -1) {
-			add_script_function_request = EDITOR_GET("text_editor/behavior/navigation/open_script_when_connecting_signal_to_existing_method");
-		} else {
-			// There is a chance that the method is inherited from another script.
-			bool found_inherited_function = false;
-			Ref<Script> inherited_scr = scr->get_base_script();
-			while (inherited_scr.is_valid()) {
-				int32_t inherited_line = inherited_scr->get_language()->get_editor_language()->find_function(cd.method, inherited_scr->get_source_code());
-				if (inherited_line != -1) {
-					found_inherited_function = true;
-					break;
-				}
-
-				inherited_scr = inherited_scr->get_base_script();
-			}
-
-			add_script_function_request = !found_inherited_function;
-		}
-	}
-
-	if (add_script_function_request) {
-		PackedStringArray script_function_args = connect_dialog->get_signal_args();
-		script_function_args.resize(script_function_args.size() - cd.unbinds);
-
-		// Append the source.
-		if (b_append_source) {
-			String class_name = cd.source->get_class();
-			bool found = false;
-
-			Ref<Script> source_script = cd.source->get_script();
-			if (source_script.is_valid()) {
-				found = source_script->has_script_signal(cd.signal);
-				if (found) {
-					// Check global name in script inheritance chain.
-					bool need_check = found;
-					Ref<Script> base_script = source_script->get_base_script();
-					while (base_script.is_valid()) {
-						need_check = base_script->has_script_signal(cd.signal);
-						if (!need_check) {
-							break;
-						}
-						source_script = base_script;
-						base_script = source_script->get_base_script();
-					}
-					class_name = source_script->get_global_name();
-				}
-			}
-
-			if (!found) {
-				while (!class_name.is_empty()) {
-					// Search in ClassDB according to the inheritance chain.
-					found = ClassDB::has_signal(class_name, cd.signal, true);
-					if (found) {
-						break;
-					}
-					class_name = ClassDB::get_parent_class(class_name);
-				}
-			}
-
-			script_function_args.push_back("source:" + class_name);
-		}
-
-		for (int i = 0; i < cd.binds.size(); i++) {
-			script_function_args.push_back("extra_arg_" + itos(i) + ": " + Variant::get_type_name(cd.binds[i].get_type()));
-		}
-
-		EditorNode::get_singleton()->emit_signal(SNAME("script_add_function_request"), cd.target, cd.method, script_function_args);
-	}
-
 	if (connect_dialog->is_editing()) {
 		_disconnect(connect_dialog->get_source_connection_data());
 		_connect(cd);
@@ -1200,8 +1008,6 @@ void ConnectionsDock::_tree_item_activated() { // "Activation" on double-click.
 
 	if (_get_item_type(*item) == TREE_ITEM_TYPE_SIGNAL) {
 		_open_connection_dialog(*item);
-	} else if (_get_item_type(*item) == TREE_ITEM_TYPE_CONNECTION) {
-		_go_to_method(*item);
 	}
 }
 
@@ -1238,9 +1044,6 @@ void ConnectionsDock::_open_connection_dialog(TreeItem &p_item) {
 	Object *selected_object = ObjectDB::get_instance(selected_object_id);
 	Node *selected_node = Object::cast_to<Node>(selected_object);
 	Node *dst_node = selected_node->get_owner() ? selected_node->get_owner() : selected_node;
-	if (!dst_node || dst_node->get_script().is_null()) {
-		dst_node = _find_first_script(get_tree()->get_edited_scene_root(), get_tree()->get_edited_scene_root());
-	}
 	cd.source = selected_object;
 	cd.target = dst_node;
 	cd.signal = signal_name;
@@ -1273,39 +1076,11 @@ void ConnectionsDock::_open_edit_connection_dialog(TreeItem &p_item) {
 	}
 }
 
-/*
- * Open slot method location in script editor.
- */
-void ConnectionsDock::_go_to_method(TreeItem &p_item) {
-	if (_get_item_type(p_item) != TREE_ITEM_TYPE_CONNECTION) {
-		return;
-	}
-
-	Connection connection = p_item.get_metadata(0);
-	ConnectDialog::ConnectionData cd = connection;
-	Object *selected_object = ObjectDB::get_instance(selected_object_id);
-	ERR_FAIL_COND(cd.source != selected_object); // Shouldn't happen but... bugcheck.
-
-	if (!cd.target) {
-		return;
-	}
-
-	Ref<Script> scr = cd.target->get_script();
-
-	if (scr.is_null()) {
-		return;
-	}
-
-	if (scr.is_valid() && ScriptEditor::get_singleton()->script_goto_method(scr, cd.method)) {
-		ScriptEditor::get_singleton()->focus_script_editor(scr); // TODO: Move this to goto_method().
-	}
-}
-
 void ConnectionsDock::_handle_class_menu_option(int p_option) {
 	switch (p_option) {
 		case CLASS_MENU_OPEN_DOCS:
-			ScriptEditor::get_singleton()->goto_help("class:" + class_menu_doc_class_name);
-			ScriptEditor::get_singleton()->focus_editor(); // TODO: Move this to goto_help().
+			DocumentEditor::get_singleton()->goto_help("class:" + class_menu_doc_class_name);
+			DocumentEditor::get_singleton()->focus_editor(); // TODO: Move this to goto_help().
 			break;
 	}
 }
@@ -1334,8 +1109,8 @@ void ConnectionsDock::_handle_signal_menu_option(int p_option) {
 			DisplayServer::get_singleton()->clipboard_set(meta["name"]);
 		} break;
 		case SIGNAL_MENU_OPEN_DOCS: {
-			ScriptEditor::get_singleton()->goto_help("class_signal:" + String(meta["class"]) + ":" + String(meta["name"]));
-			ScriptEditor::get_singleton()->focus_editor();
+			DocumentEditor::get_singleton()->goto_help("class_signal:" + String(meta["class"]) + ":" + String(meta["name"]));
+			DocumentEditor::get_singleton()->focus_editor();
 		} break;
 	}
 }
@@ -1369,9 +1144,6 @@ void ConnectionsDock::_handle_slot_menu_option(int p_option) {
 	switch (p_option) {
 		case SLOT_MENU_EDIT: {
 			_open_edit_connection_dialog(*item);
-		} break;
-		case SLOT_MENU_GO_TO_METHOD: {
-			_go_to_method(*item);
 		} break;
 		case SLOT_MENU_DISCONNECT: {
 			Connection connection = item->get_metadata(0);
@@ -1510,7 +1282,6 @@ void ConnectionsDock::_notification(int p_what) {
 			signal_menu->set_item_icon(signal_menu->get_item_index(SIGNAL_MENU_OPEN_DOCS), get_editor_theme_icon(SNAME("Help")));
 
 			slot_menu->set_item_icon(slot_menu->get_item_index(SLOT_MENU_EDIT), get_editor_theme_icon(SNAME("Edit")));
-			slot_menu->set_item_icon(slot_menu->get_item_index(SLOT_MENU_GO_TO_METHOD), get_editor_theme_icon(SNAME("ArrowRight")));
 			slot_menu->set_item_icon(slot_menu->get_item_index(SLOT_MENU_DISCONNECT), get_editor_theme_icon(SNAME("Unlinked")));
 
 			tree->add_theme_constant_override("icon_max_width", get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor)));
@@ -1568,9 +1339,7 @@ void ConnectionsDock::update_tree() {
 
 	TreeItem *root = tree->create_item();
 	DocTools *doc_data = EditorHelp::get_doc_data();
-	EditorData &editor_data = EditorNode::get_editor_data();
 	StringName native_base = selected_object->get_class();
-	Ref<Script> script_base = selected_object->get_script();
 
 	bool use_monospace_font = EDITOR_GET("interface/theme/use_monospace_font_for_editor_symbols");
 	Ref<Font> monospace_font = get_theme_font(SNAME("source"), EditorStringName(EditorFonts));
@@ -1581,74 +1350,32 @@ void ConnectionsDock::update_tree() {
 		Ref<Texture2D> class_icon;
 		List<MethodInfo> class_signals;
 
-		if (script_base.is_valid()) {
-			class_name = script_base->get_global_name();
-			if (class_name.is_empty()) {
-				class_name = script_base->get_path().get_file();
-			}
+		class_name = native_base;
+		doc_class_name = native_base;
 
-			doc_class_name = script_base->get_global_name();
-			if (doc_class_name.is_empty()) {
-				doc_class_name = script_base->get_path().trim_prefix("res://").quote();
-			}
-			if (!doc_class_name.is_empty() && !doc_data->class_list.find(doc_class_name)) {
-				doc_class_name = String();
-			}
-
-			class_icon = editor_data.get_script_icon(script_base->get_path());
-			if (class_icon.is_null() && has_theme_icon(native_base, EditorStringName(EditorIcons))) {
-				class_icon = get_editor_theme_icon(native_base);
-			}
-
-			script_base->get_script_signal_list(&class_signals);
-
-			// TODO: Core: Add optional parameter to ignore base classes (no_inheritance like in ClassDB).
-			Ref<Script> base = script_base->get_base_script();
-			if (base.is_valid()) {
-				List<MethodInfo> base_signals;
-				base->get_script_signal_list(&base_signals);
-				HashSet<String> base_signal_names;
-				for (const MethodInfo &signal : base_signals) {
-					base_signal_names.insert(signal.name);
-				}
-				for (List<MethodInfo>::Element *F = class_signals.front(); F;) {
-					List<MethodInfo>::Element *N = F->next();
-					if (base_signal_names.has(F->get().name)) {
-						class_signals.erase(F);
-					}
-					F = N;
-				}
-			}
-
-			script_base = base;
-		} else {
-			class_name = native_base;
-			doc_class_name = native_base;
-
-			if (!doc_data->class_list.find(doc_class_name)) {
-				doc_class_name = String();
-			}
-
-			if (has_theme_icon(native_base, EditorStringName(EditorIcons))) {
-				class_icon = get_editor_theme_icon(native_base);
-			}
-
-			ClassDB::get_signal_list(native_base, &class_signals, true);
-
-			// Hide underscored native signals as they are meant to be private.
-			for (List<MethodInfo>::Element *E = class_signals.front(); E;) {
-				List<MethodInfo>::Element *N = E->next();
-				const MethodInfo &mi = E->get();
-
-				if (mi.name.is_empty() || mi.name[0] == '_') {
-					class_signals.erase(E);
-				}
-
-				E = N;
-			}
-
-			native_base = ClassDB::get_parent_class(native_base);
+		if (!doc_data->class_list.find(doc_class_name)) {
+			doc_class_name = String();
 		}
+
+		if (has_theme_icon(native_base, EditorStringName(EditorIcons))) {
+			class_icon = get_editor_theme_icon(native_base);
+		}
+
+		ClassDB::get_signal_list(native_base, &class_signals, true);
+
+		// Hide underscored native signals as they are meant to be private.
+		for (List<MethodInfo>::Element *E = class_signals.front(); E;) {
+			List<MethodInfo>::Element *N = E->next();
+			const MethodInfo &mi = E->get();
+
+			if (mi.name.is_empty() || mi.name[0] == '_') {
+				class_signals.erase(E);
+			}
+
+			E = N;
+		}
+
+		native_base = ClassDB::get_parent_class(native_base);
 
 		if (class_icon.is_null()) {
 			class_icon = get_editor_theme_icon(SNAME("Object"));
@@ -1835,7 +1562,6 @@ ConnectionsDock::ConnectionsDock() {
 	slot_menu->connect(SceneStringName(id_pressed), callable_mp(this, &ConnectionsDock::_handle_slot_menu_option));
 	slot_menu->connect("about_to_popup", callable_mp(this, &ConnectionsDock::_slot_menu_about_to_popup));
 	slot_menu->add_item(TTR("Edit..."), SLOT_MENU_EDIT);
-	slot_menu->add_item(TTR("Go to Method"), SLOT_MENU_GO_TO_METHOD);
 	slot_menu->add_shortcut(ED_SHORTCUT("connections_editor/disconnect", TTRC("Disconnect"), Key::KEY_DELETE), SLOT_MENU_DISCONNECT);
 	holder->add_child(slot_menu);
 

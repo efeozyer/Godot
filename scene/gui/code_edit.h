@@ -30,15 +30,12 @@
 
 #pragma once
 
-#include "core/object/script_language.h"
 #include "scene/gui/text_edit.h"
 
 class CodeEdit : public TextEdit {
 	GDCLASS(CodeEdit, TextEdit)
 
 public:
-	// Keep enums in sync with:
-	// core/object/script_language.h - ScriptLanguage::CodeCompletionKind
 	enum CodeCompletionKind {
 		KIND_CLASS,
 		KIND_FUNCTION,
@@ -53,7 +50,6 @@ public:
 		KIND_KEYWORD,
 	};
 
-	// core/object/script_language.h - ScriptLanguage::CodeCompletionLocation
 	enum CodeCompletionLocation {
 		LOCATION_LOCAL = 0,
 		LOCATION_PARENT_MASK = 1 << 8,

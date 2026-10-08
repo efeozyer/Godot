@@ -56,7 +56,6 @@ class EditorFileSystemDirectory : public Object {
 	struct FileInfo {
 		String file;
 		StringName type;
-		StringName resource_script_class; // If any resource has script with a global class name, its found here.
 		ResourceUID::ID uid = ResourceUID::INVALID_ID;
 		uint64_t modified_time = 0;
 		uint64_t import_modified_time = 0;
@@ -66,15 +65,7 @@ class EditorFileSystemDirectory : public Object {
 		String import_group_file;
 		Vector<String> deps;
 		bool verified = false; //used for checking changes
-		// This is for script resources only.
-		struct ScriptClassInfo {
-			String name;
-			String extends;
-			String icon_path;
-			bool is_abstract = false;
-			bool is_tool = false;
-		};
-		ScriptClassInfo class_info;
+		String icon_path;
 	};
 
 	Vector<FileInfo *> files;
@@ -94,14 +85,10 @@ public:
 	String get_file_path(int p_idx) const;
 	ResourceUID::ID get_file_uid(int p_idx) const;
 	StringName get_file_type(int p_idx) const;
-	StringName get_file_resource_script_class(int p_idx) const;
 	Vector<String> get_file_deps(int p_idx) const;
 	bool get_file_import_is_valid(int p_idx) const;
 	uint64_t get_file_modified_time(int p_idx) const;
 	uint64_t get_file_import_modified_time(int p_idx) const;
-	String get_file_script_class_name(int p_idx) const; //used for scripts
-	String get_file_script_class_extends(int p_idx) const; //used for scripts
-	String get_file_script_class_icon_path(int p_idx) const; //used for scripts
 	String get_file_icon_path(int p_idx) const; //used for FileSystemDock
 
 	EditorFileSystemDirectory *get_parent();
@@ -195,7 +182,7 @@ class EditorFileSystem : public Node {
 	void _notify_filesystem_changed();
 	void _scan_filesystem();
 	void _first_scan_filesystem();
-	void _first_scan_process_scripts(const ScannedDirectory *p_scan_dir, List<String> &p_gdextension_extensions, HashSet<String> &p_existing_class_names, HashSet<String> &p_extensions);
+	void _first_scan_process_extensions(const ScannedDirectory *p_scan_dir, List<String> &p_gdextension_extensions, HashSet<String> &p_extensions);
 
 	static void _scan_for_uid_directory(const ScannedDirectory *p_scan_dir, const HashSet<String> &p_import_extensions);
 
@@ -209,12 +196,9 @@ class EditorFileSystem : public Node {
 
 	static EditorFileSystem *singleton;
 
-	using ScriptClassInfo = EditorFileSystemDirectory::FileInfo::ScriptClassInfo;
-
 	/* Used for reading the filesystem cache file */
 	struct FileCache {
 		StringName type;
-		String resource_script_class;
 		ResourceUID::ID uid = ResourceUID::INVALID_ID;
 		uint64_t modification_time = 0;
 		uint64_t import_modification_time = 0;
@@ -223,7 +207,6 @@ class EditorFileSystem : public Node {
 		Vector<String> deps;
 		bool import_valid = false;
 		String import_group_file;
-		ScriptClassInfo class_info;
 	};
 
 	HashMap<String, FileCache> file_cache;
@@ -258,7 +241,7 @@ class EditorFileSystem : public Node {
 	HashSet<String> import_extensions;
 
 	static int _scan_new_dir(ScannedDirectory *p_dir, Ref<DirAccess> &da);
-	void _process_file_system(const ScannedDirectory *p_scan_dir, EditorFileSystemDirectory *p_dir, ScanProgress &p_progress, HashSet<String> *p_processed_files);
+	void _process_file_system(const ScannedDirectory *p_scan_dir, EditorFileSystemDirectory *p_dir, ScanProgress &p_progress);
 
 	Thread thread_sources;
 	bool scanning_changes = false;
@@ -296,32 +279,7 @@ class EditorFileSystem : public Node {
 		}
 	};
 
-	struct ScriptClassInfoUpdate : public ScriptClassInfo {
-		StringName type;
-		ScriptClassInfoUpdate() = default;
-		explicit ScriptClassInfoUpdate(const ScriptClassInfo &p_info) :
-				ScriptClassInfo(p_info) {}
-		static ScriptClassInfoUpdate from_file_info(const EditorFileSystemDirectory::FileInfo *p_fi) {
-			ScriptClassInfoUpdate update;
-			update.type = p_fi->type;
-			update.name = p_fi->class_info.name;
-			update.extends = p_fi->class_info.extends;
-			update.icon_path = p_fi->class_info.icon_path;
-			update.is_abstract = p_fi->class_info.is_abstract;
-			update.is_tool = p_fi->class_info.is_tool;
-			return update;
-		}
-	};
-
-	Mutex update_script_mutex;
-	HashMap<String, ScriptClassInfoUpdate> update_script_paths;
-	HashSet<String> update_script_paths_documentation;
-	void _queue_update_script_class(const String &p_path, const ScriptClassInfoUpdate &p_script_update);
-	void _update_script_classes();
-	void _update_script_documentation();
 	void _process_update_pending();
-	void _process_removed_files(const HashSet<String> &p_processed_files);
-	bool _should_reload_script(const String &p_path);
 
 	Mutex update_scene_mutex;
 	HashSet<String> update_scene_paths;
@@ -329,8 +287,6 @@ class EditorFileSystem : public Node {
 	void _update_scene_groups();
 	void _update_pending_scene_groups();
 	void _get_all_scenes(EditorFileSystemDirectory *p_dir, HashSet<String> &r_list);
-
-	ScriptClassInfo _get_global_script_class(const String &p_type, const String &p_path) const;
 
 	static Error _resource_import(const String &p_path);
 	static Ref<Resource> _load_resource_on_startup(ResourceFormatImporter *p_importer, const String &p_path, Error *r_error, bool p_use_sub_threads, float *r_progress, ResourceLoaderConstants::CacheMode p_cache_mode);
@@ -342,7 +298,6 @@ class EditorFileSystem : public Node {
 	void _move_group_files(EditorFileSystemDirectory *efd, const String &p_group_file, const String &p_new_location);
 
 	HashSet<String> group_file_cache;
-	HashMap<String, String> file_icon_cache;
 
 	bool refresh_queued = false;
 	HashSet<ObjectID> folders_to_sort;
@@ -369,10 +324,6 @@ class EditorFileSystem : public Node {
 
 	void _update_file_icon_path(EditorFileSystemDirectory::FileInfo *file_info);
 	void _update_files_icon_path(EditorFileSystemDirectory *edp = nullptr);
-	bool _remove_invalid_global_class_names(const HashSet<String> &p_existing_class_names);
-	String _get_file_by_class_name(EditorFileSystemDirectory *p_dir, const String &p_class_name, EditorFileSystemDirectory::FileInfo *&r_file_info);
-
-	void _register_global_class_script(const String &p_search_path, const String &p_target_path, const ScriptClassInfoUpdate &p_script_update);
 
 protected:
 	void _notification(int p_what);
@@ -380,7 +331,7 @@ protected:
 
 public:
 	// The name is the version, to keep compatibility with different versions of Godot.
-	static inline String CACHE_FILE_NAME = "filesystem_cache10";
+	static inline String CACHE_FILE_NAME = "filesystem_cache11";
 
 	static EditorFileSystem *get_singleton() { return singleton; }
 
@@ -392,9 +343,8 @@ public:
 	void scan();
 	void scan_changes();
 	void update_file(const String &p_file);
-	void update_files(const Vector<String> &p_script_paths);
+	void update_files(const Vector<String> &p_paths);
 	HashSet<String> get_valid_extensions() const;
-	void register_global_class_script(const String &p_search_path, const String &p_target_path);
 
 	void filesystem_changed();
 

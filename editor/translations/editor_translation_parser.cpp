@@ -32,7 +32,6 @@
 
 #include "core/error/error_macros.h"
 #include "core/object/class_db.h" // IWYU pragma: keep. `GDVIRTUAL_BIND` macro.
-#include "core/object/script_language.h"
 #include "core/templates/hash_set.h"
 
 EditorTranslationParser *EditorTranslationParser::singleton = nullptr;

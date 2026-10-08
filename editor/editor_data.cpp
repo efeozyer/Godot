@@ -43,7 +43,6 @@
 #include "editor/inspector/multi_node_edit.h"
 #include "editor/plugins/editor_plugin.h"
 #include "scene/main/scene_tree.h"
-#include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
 
 void EditorSelectionHistory::cleanup_history() {
@@ -284,7 +283,7 @@ void EditorData::copy_object_params(Object *p_object) {
 	p_object->get_property_list(&pinfo);
 
 	for (const PropertyInfo &E : pinfo) {
-		if (!(E.usage & PROPERTY_USAGE_EDITOR) || E.name == "script" || E.name == "scripts" || E.name == "resource_path") {
+		if (!(E.usage & PROPERTY_USAGE_EDITOR) || E.name == "resource_path") {
 			continue;
 		}
 
@@ -292,12 +291,6 @@ void EditorData::copy_object_params(Object *p_object) {
 		pd.name = E.name;
 		pd.value = p_object->get(pd.name);
 		clipboard.push_back(pd);
-	}
-}
-
-void EditorData::get_editor_breakpoints(List<String> *p_breakpoints) {
-	for (int i = 0; i < editor_plugins.size(); i++) {
-		editor_plugins[i]->get_breakpoints(p_breakpoints);
 	}
 }
 
@@ -542,82 +535,8 @@ EditorPlugin *EditorData::get_extension_editor_plugin(const StringName &p_class_
 	return plugin == nullptr ? nullptr : *plugin;
 }
 
-void EditorData::add_custom_type(const String &p_type, const String &p_inherits, const Ref<Script> &p_script, const Ref<Texture2D> &p_icon) {
-	ERR_FAIL_COND_MSG(p_script.is_null(), "It's not a reference to a valid Script object.");
-	CustomType ct;
-	ct.name = p_type;
-	ct.icon = p_icon;
-	ct.script = p_script;
-
-	if (!custom_types.has(p_inherits)) {
-		custom_types[p_inherits] = Vector<CustomType>();
-	}
-	custom_types[p_inherits].push_back(ct);
-}
-
-Variant EditorData::instantiate_custom_type(const String &p_type, const String &p_inherits) {
-	if (get_custom_types().has(p_inherits)) {
-		for (int i = 0; i < get_custom_types()[p_inherits].size(); i++) {
-			if (get_custom_types()[p_inherits][i].name == p_type) {
-				Ref<Script> script = get_custom_types()[p_inherits][i].script;
-
-				// Store in a variant to initialize the refcount if needed.
-				Variant v = ClassDB::instantiate(p_inherits);
-				ERR_FAIL_COND_V(!v, Variant());
-				Object *ob = v;
-
-				Node *n = Object::cast_to<Node>(ob);
-				if (n) {
-					n->set_name(p_type);
-				}
-				PropertyUtils::assign_custom_type_script(ob, script);
-				ob->set_script(script);
-				return v;
-			}
-		}
-	}
-
-	return Variant();
-}
-
-const EditorData::CustomType *EditorData::get_custom_type_by_name(const String &p_type) const {
-	for (const KeyValue<String, Vector<CustomType>> &E : custom_types) {
-		for (const CustomType &F : E.value) {
-			if (F.name == p_type) {
-				return &F;
-			}
-		}
-	}
-	return nullptr;
-}
-
-const EditorData::CustomType *EditorData::get_custom_type_by_path(const String &p_path) const {
-	for (const KeyValue<String, Vector<CustomType>> &E : custom_types) {
-		for (const CustomType &F : E.value) {
-			if (F.script->get_path() == p_path) {
-				return &F;
-			}
-		}
-	}
-	return nullptr;
-}
-
 bool EditorData::is_type_recognized(const String &p_type) const {
-	return ClassDB::class_exists(p_type) || ScriptServer::is_global_class(p_type) || get_custom_type_by_name(p_type);
-}
-
-void EditorData::remove_custom_type(const String &p_type) {
-	for (KeyValue<String, Vector<CustomType>> &E : custom_types) {
-		for (int i = 0; i < E.value.size(); i++) {
-			if (E.value[i].name == p_type) {
-				E.value.remove_at(i);
-				if (E.value.is_empty()) {
-					custom_types.erase(E.key);
-				}
-				return;
-			}
-		}
-	}
+	return ClassDB::class_exists(p_type);
 }
 
 void EditorData::instantiate_object_properties(Object *p_object) {
@@ -898,22 +817,6 @@ void EditorData::move_edited_scene_to_index(int p_idx) {
 	current_edited_scene = p_idx;
 }
 
-Ref<Script> EditorData::get_scene_root_script(int p_idx) const {
-	ERR_FAIL_INDEX_V(p_idx, edited_scene.size(), Ref<Script>());
-	if (!edited_scene[p_idx].root) {
-		return Ref<Script>();
-	}
-	Ref<Script> s = edited_scene[p_idx].root->get_script();
-	if (s.is_null() && edited_scene[p_idx].root->get_child_count()) {
-		Node *n = edited_scene[p_idx].root->get_child(0);
-		while (s.is_null() && n && !n->is_instance()) {
-			s = n->get_script();
-			n = n->get_parent();
-		}
-	}
-	return s;
-}
-
 String EditorData::get_scene_title(int p_idx, bool p_always_strip_extension) const {
 	ERR_FAIL_INDEX_V(p_idx, edited_scene.size(), String());
 	if (!edited_scene[p_idx].root) {
@@ -1030,139 +933,10 @@ void EditorData::get_plugin_window_layout(Ref<ConfigFile> p_layout) {
 	}
 }
 
-bool EditorData::script_class_is_parent(const String &p_class, const String &p_inherits) {
-	if (!ScriptServer::is_global_class(p_class)) {
-		return false;
-	}
-
-	String base = p_class;
-	while (base != p_inherits) {
-		if (ClassDB::class_exists(base)) {
-			return ClassDB::is_parent_class(base, p_inherits);
-		} else if (ScriptServer::is_global_class(base)) {
-			base = ScriptServer::get_global_class_base(base);
-		} else {
-			return false;
-		}
-	}
-	return true;
-}
-
-Variant EditorData::script_class_instance(const String &p_class) {
-	if (ScriptServer::is_global_class(p_class)) {
-		Ref<Script> script = script_class_load_script(p_class);
-		if (script.is_valid()) {
-			// Store in a variant to initialize the refcount if needed.
-			Variant v = ClassDB::instantiate(script->get_instance_base_type());
-			if (v) {
-				Object *obj = v;
-				PropertyUtils::assign_custom_type_script(obj, script);
-				obj->set_script(script);
-			}
-			return v;
-		}
-	}
-	return Variant();
-}
-
-Ref<Script> EditorData::script_class_load_script(const String &p_class) const {
-	if (!ScriptServer::is_global_class(p_class)) {
-		return Ref<Script>();
-	}
-
-	String path = ScriptServer::get_global_class_path(p_class);
-	return ResourceLoader::load(path, "Script");
-}
-
-void EditorData::script_class_set_icon_path(const String &p_class, const String &p_icon_path) {
-	_script_class_icon_paths[p_class] = p_icon_path;
-}
-
-String EditorData::script_class_get_icon_path(const String &p_class, bool *r_valid) const {
-	String current = p_class;
-	while (true) {
-		if (!ScriptServer::is_global_class(current)) {
-			// If the classnames chain has a native class ancestor, we're done with success.
-			if (r_valid) {
-				*r_valid = ClassDB::class_exists(current);
-			}
-			return String();
-		}
-		HashMap<StringName, String>::ConstIterator E = _script_class_icon_paths.find(current);
-		if ((bool)E) {
-			if (r_valid) {
-				*r_valid = !E->value.is_empty();
-				return E->value;
-			} else if (!E->value.is_empty()) {
-				return E->value;
-			}
-		}
-		current = ScriptServer::get_global_class_base(current);
-	}
-}
-
-StringName EditorData::script_class_get_name(const String &p_path) const {
-	return _script_class_file_to_path.has(p_path) ? _script_class_file_to_path[p_path] : StringName();
-}
-
-void EditorData::script_class_set_name(const String &p_path, const StringName &p_class) {
-	_script_class_file_to_path[p_path] = p_class;
-}
-
-void EditorData::script_class_save_global_classes() {
-	LocalVector<StringName> global_classes;
-	ScriptServer::get_global_class_list(global_classes);
-	Array array_classes;
-	for (const StringName &class_name : global_classes) {
-		Dictionary d;
-		String *icon = _script_class_icon_paths.getptr(class_name);
-		d["class"] = class_name;
-		d["language"] = ScriptServer::get_global_class_language(class_name);
-		d["path"] = ScriptServer::get_global_class_path(class_name);
-		d["base"] = ScriptServer::get_global_class_base(class_name);
-		d["icon"] = icon ? *icon : String();
-		d["is_abstract"] = ScriptServer::is_global_class_abstract(class_name);
-		d["is_tool"] = ScriptServer::is_global_class_tool(class_name);
-		array_classes.push_back(d);
-	}
-	ProjectSettings::get_singleton()->store_global_class_list(array_classes);
-}
-
-void EditorData::script_class_load_icon_paths() {
-	script_class_clear_icon_paths();
-
-#ifndef DISABLE_DEPRECATED
-	if (ProjectSettings::get_singleton()->has_setting("_global_script_class_icons")) {
-		Dictionary d = GLOBAL_GET("_global_script_class_icons");
-
-		for (const KeyValue<Variant, Variant> &kv : d) {
-			String name = kv.key.operator String();
-			_script_class_icon_paths[name] = kv.value;
-
-			String path = ScriptServer::get_global_class_path(name);
-			script_class_set_name(path, name);
-		}
-		ProjectSettings::get_singleton()->clear("_global_script_class_icons");
-	}
-#endif
-
-	Array script_classes = ProjectSettings::get_singleton()->get_global_class_list();
-	for (int i = 0; i < script_classes.size(); i++) {
-		Dictionary d = script_classes[i];
-		if (!d.has("class") || !d.has("path") || !d.has("icon")) {
-			continue;
-		}
-
-		String name = d["class"];
-		_script_class_icon_paths[name] = d["icon"];
-		script_class_set_name(d["path"], name);
-	}
-}
-
 Ref<Texture2D> EditorData::extension_class_get_icon(const String &p_class) const {
 	if (GDExtensionManager::get_singleton()->class_has_icon_path(p_class)) {
 		String icon_path = GDExtensionManager::get_singleton()->class_get_icon_path(p_class);
-		Ref<Texture2D> icon = _load_script_icon(icon_path);
+		Ref<Texture2D> icon = _load_icon(icon_path);
 		if (icon.is_valid()) {
 			return icon;
 		}
@@ -1170,7 +944,7 @@ Ref<Texture2D> EditorData::extension_class_get_icon(const String &p_class) const
 	return nullptr;
 }
 
-Ref<Texture2D> EditorData::_load_script_icon(const String &p_path) const {
+Ref<Texture2D> EditorData::_load_icon(const String &p_path) const {
 	if (!p_path.is_empty() && ResourceLoader::exists(p_path)) {
 		Ref<Texture2D> icon = ResourceLoader::load(p_path);
 		if (icon.is_valid()) {
@@ -1180,79 +954,8 @@ Ref<Texture2D> EditorData::_load_script_icon(const String &p_path) const {
 	return nullptr;
 }
 
-Ref<Texture2D> EditorData::get_script_icon(const String &p_script_path) {
-	// Take from the local cache, if available.
-	{
-		Ref<Texture2D> *icon = _script_icon_cache.getptr(p_script_path);
-		if (icon) {
-			// Can be an empty value if we can't resolve any icon for this script.
-			// An empty value is still cached to avoid unnecessary attempts at resolving it again.
-			return *icon;
-		}
-	}
-
-	// Fast path in case the whole hierarchy is made of global classes.
-	StringName class_name = script_class_get_name(p_script_path);
-	{
-		if (class_name != StringName()) {
-			bool icon_valid = false;
-			String icon_path = script_class_get_icon_path(class_name, &icon_valid);
-			if (icon_valid) {
-				Ref<Texture2D> icon = _load_script_icon(icon_path);
-				_script_icon_cache[p_script_path] = icon;
-				return icon;
-			}
-		}
-	}
-
-	Ref<Script> base_scr = ResourceLoader::load(p_script_path, "Script");
-	while (base_scr.is_valid()) {
-		// Check for scripted classes.
-		String icon_path;
-		StringName base_class_name = script_class_get_name(base_scr->get_path());
-		if (base_scr->is_built_in() || base_class_name == StringName()) {
-			icon_path = base_scr->get_class_icon_path();
-		} else {
-			icon_path = script_class_get_icon_path(base_class_name);
-		}
-
-		Ref<Texture2D> icon = _load_script_icon(icon_path);
-		if (icon.is_valid()) {
-			_script_icon_cache[p_script_path] = icon;
-			return icon;
-		}
-
-		// Check for legacy custom classes defined by plugins.
-		// TODO: Should probably be deprecated in 4.x
-		const EditorData::CustomType *ctype = get_custom_type_by_path(base_scr->get_path());
-		if (ctype && ctype->icon.is_valid()) {
-			_script_icon_cache[p_script_path] = ctype->icon;
-			return ctype->icon;
-		}
-
-		// Move to the base class.
-		base_scr = base_scr->get_base_script();
-	}
-
-	// Check if the base type is an extension-defined type.
-	Ref<Texture2D> ext_icon = extension_class_get_icon(class_name);
-	if (ext_icon.is_valid()) {
-		_script_icon_cache[p_script_path] = ext_icon;
-		return ext_icon;
-	}
-
-	// If no icon found, cache it as null.
-	_script_icon_cache[p_script_path] = Ref<Texture2D>();
-	return Ref<Texture2D>();
-}
-
-void EditorData::clear_script_icon_cache() {
-	_script_icon_cache.clear();
-}
-
 EditorData::EditorData() {
 	undo_redo_manager = memnew(EditorUndoRedoManager);
-	script_class_load_icon_paths();
 }
 
 EditorData::~EditorData() {

@@ -78,12 +78,6 @@ void PropertySelector::_update_search() {
 
 			v.get_property_list(&props);
 		} else {
-			Object *obj = ObjectDB::get_instance(script);
-			if (Object::cast_to<Script>(obj)) {
-				props.push_back(PropertyInfo(Variant::NIL, "Script Variables", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_CATEGORY));
-				Object::cast_to<Script>(obj)->get_script_property_list(&props);
-			}
-
 			StringName base = base_type;
 			while (base) {
 				props.push_back(PropertyInfo(Variant::NIL, base, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_CATEGORY));
@@ -104,17 +98,11 @@ void PropertySelector::_update_search() {
 				category->set_text(0, E.name);
 				category->set_selectable(0, false);
 
-				Ref<Texture2D> icon;
-				if (E.name == "Script Variables") {
-					icon = search_options->get_editor_theme_icon(SNAME("Script"));
-				} else {
-					icon = EditorNode::get_singleton()->get_class_icon(E.name);
-				}
-				category->set_icon(0, icon);
+				category->set_icon(0, EditorNode::get_singleton()->get_class_icon(E.name));
 				continue;
 			}
 
-			if (!(E.usage & PROPERTY_USAGE_EDITOR) && !(E.usage & PROPERTY_USAGE_SCRIPT_VARIABLE)) {
+			if (!(E.usage & PROPERTY_USAGE_EDITOR)) {
 				continue;
 			}
 
@@ -166,28 +154,6 @@ void PropertySelector::_update_search() {
 			Variant::construct(type, v, nullptr, 0, ce);
 			v.get_method_list(&methods);
 		} else {
-			Ref<Script> script_ref = ObjectDB::get_ref<Script>(script);
-			if (script_ref.is_valid()) {
-				if (script_ref->is_built_in()) {
-					script_ref->reload(true);
-				}
-
-				List<MethodInfo> script_methods;
-				script_ref->get_script_method_list(&script_methods);
-
-				methods.push_back(MethodInfo("*Script Methods")); // TODO: Split by inheritance.
-
-				for (const MethodInfo &mi : script_methods) {
-					if (mi.name.begins_with("@")) {
-						// GH-92782. GDScript inline setters/getters are historically present in `get_method_list()`
-						// and can be called using `Object.call()`. However, these functions are meant to be internal
-						// and their names are not valid identifiers, so let's hide them from the user.
-						continue;
-					}
-					methods.push_back(mi);
-				}
-			}
-
 			// Skip getters and setters of properties because users will usually use the property instead.
 			HashSet<StringName> methods_to_skip;
 			for (const KeyValue<StringName, GDType::Member> &kv : ClassDB::get_gdtype(base_type)->members()) {
@@ -223,7 +189,6 @@ void PropertySelector::_update_search() {
 		TreeItem *category = nullptr;
 
 		bool found = false;
-		bool script_methods = false;
 
 		for (MethodInfo &mi : methods) {
 			if (mi.name.begins_with("*")) {
@@ -234,22 +199,14 @@ void PropertySelector::_update_search() {
 				category->set_text(0, mi.name.replace_first("*", ""));
 				category->set_selectable(0, false);
 
-				Ref<Texture2D> icon;
-				script_methods = false;
 				String rep = mi.name.remove_char('*');
-				if (mi.name == "*Script Methods") {
-					icon = search_options->get_editor_theme_icon(SNAME("Script"));
-					script_methods = true;
-				} else {
-					icon = EditorNode::get_singleton()->get_class_icon(rep);
-				}
-				category->set_icon(0, icon);
+				category->set_icon(0, EditorNode::get_singleton()->get_class_icon(rep));
 
 				continue;
 			}
 
 			String name = mi.name.get_slicec(':', 0);
-			if (!script_methods && name.begins_with("_") && !(mi.flags & METHOD_FLAG_VIRTUAL)) {
+			if (name.begins_with("_") && !(mi.flags & METHOD_FLAG_VIRTUAL)) {
 				continue;
 			}
 
@@ -547,26 +504,9 @@ void PropertySelector::select_method_from_base_type(const String &p_base, const 
 	base_type = p_base;
 	selected = p_current;
 	type = Variant::NIL;
-	script = ObjectID();
 	properties = false;
 	instance = nullptr;
 	virtuals_only = p_virtuals_only;
-
-	popup_centered_ratio(0.6);
-	search_box->set_text("");
-	search_box->grab_focus();
-	_update_search();
-}
-
-void PropertySelector::select_method_from_script(const Ref<Script> &p_script, const String &p_current) {
-	ERR_FAIL_COND(p_script.is_null());
-	base_type = p_script->get_instance_base_type();
-	selected = p_current;
-	type = Variant::NIL;
-	script = p_script->get_instance_id();
-	properties = false;
-	instance = nullptr;
-	virtuals_only = false;
 
 	popup_centered_ratio(0.6);
 	search_box->set_text("");
@@ -579,7 +519,6 @@ void PropertySelector::select_method_from_basic_type(Variant::Type p_type, const
 	base_type = "";
 	selected = p_current;
 	type = p_type;
-	script = ObjectID();
 	properties = false;
 	instance = nullptr;
 	virtuals_only = false;
@@ -594,13 +533,6 @@ void PropertySelector::select_method_from_instance(Object *p_instance, const Str
 	base_type = p_instance->get_class();
 	selected = p_current;
 	type = Variant::NIL;
-	script = ObjectID();
-	{
-		Ref<Script> scr = p_instance->get_script();
-		if (scr.is_valid()) {
-			script = scr->get_instance_id();
-		}
-	}
 	properties = false;
 	instance = nullptr;
 	virtuals_only = false;
@@ -615,24 +547,6 @@ void PropertySelector::select_property_from_base_type(const String &p_base, cons
 	base_type = p_base;
 	selected = p_current;
 	type = Variant::NIL;
-	script = ObjectID();
-	properties = true;
-	instance = nullptr;
-	virtuals_only = false;
-
-	popup_centered_ratio(0.6);
-	search_box->set_text("");
-	search_box->grab_focus();
-	_update_search();
-}
-
-void PropertySelector::select_property_from_script(const Ref<Script> &p_script, const String &p_current) {
-	ERR_FAIL_COND(p_script.is_null());
-
-	base_type = p_script->get_instance_base_type();
-	selected = p_current;
-	type = Variant::NIL;
-	script = p_script->get_instance_id();
 	properties = true;
 	instance = nullptr;
 	virtuals_only = false;
@@ -648,7 +562,6 @@ void PropertySelector::select_property_from_basic_type(Variant::Type p_type, con
 	base_type = "";
 	selected = p_current;
 	type = p_type;
-	script = ObjectID();
 	properties = true;
 	instance = nullptr;
 	virtuals_only = false;
@@ -663,7 +576,6 @@ void PropertySelector::select_property_from_instance(Object *p_instance, const S
 	base_type = "";
 	selected = p_current;
 	type = Variant::NIL;
-	script = ObjectID();
 	properties = true;
 	instance = p_instance;
 	virtuals_only = false;

@@ -59,24 +59,6 @@ public:
 		bool deserialize(const Array &p_arr);
 	};
 
-	// Script Profiler
-	struct ScriptFunctionSignature {
-		StringName name;
-		int id = -1;
-
-		Array serialize();
-		bool deserialize(const Array &p_arr);
-	};
-
-	struct ScriptFunctionInfo {
-		StringName name;
-		int sig_id = -1;
-		int call_count = 0;
-		double self_time = 0;
-		double total_time = 0;
-		double internal_time = 0;
-	};
-
 	// Servers profiler
 	struct ServerFunctionInfo {
 		StringName name;
@@ -94,9 +76,7 @@ public:
 		double process_time = 0;
 		double physics_time = 0;
 		double physics_frame_time = 0;
-		double script_time = 0;
 		List<ServerInfo> servers;
-		Vector<ScriptFunctionInfo> script_functions;
 
 		Array serialize();
 		bool deserialize(const Array &p_arr);
@@ -112,7 +92,6 @@ public:
 	};
 
 private:
-	class ScriptsProfiler;
 	class ServersProfiler;
 	class VisualProfiler;
 

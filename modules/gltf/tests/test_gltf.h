@@ -74,7 +74,6 @@ static Node *gltf_import(const String &p_file) {
 	HashMap<StringName, Variant> options(21);
 	options["nodes/root_type"] = "";
 	options["nodes/root_name"] = "";
-	options["nodes/root_script"] = Variant();
 	options["nodes/apply_root_scale"] = true;
 	options["nodes/root_scale"] = 1.0;
 	options["meshes/ensure_tangents"] = true;
@@ -88,7 +87,6 @@ static Node *gltf_import(const String &p_file) {
 	options["animation/fps"] = 30;
 	options["animation/trimming"] = false;
 	options["animation/remove_immutable_tracks"] = true;
-	options["import_script/path"] = "";
 	options["extract_path"] = "res://";
 	options["_subresources"] = Dictionary();
 	options["gltf/naming_version"] = 1;

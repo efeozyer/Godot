@@ -32,7 +32,6 @@
 
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/os/safe_binary_mutex.h"
 #include "core/os/thread_safe.h"
@@ -67,12 +66,6 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 		// Tasks must start with these at default values. They are free to set-and-forget otherwise.
 		set_current_thread_safe_for_nodes(false);
 		MessageQueue::set_thread_singleton_override(nullptr);
-
-		// Since the WorkerThreadPool is started before the script server,
-		// its pre-created threads can't have ScriptServer::thread_enter() called on them early.
-		// Therefore, we do it late at the first opportunity, so in case the task
-		// about to be run uses scripting, guarantees are held.
-		ScriptServer::thread_enter();
 
 		task_mutex.lock();
 		p_task->pool_thread_index = pool_thread_index;
@@ -598,9 +591,6 @@ bool WorkerThreadPool::_handle_runlevel(ThreadData *p_thread_data, MutexLock<Bin
 		} break;
 		case RUNLEVEL_EXIT_LANGUAGES: {
 			if (!p_thread_data->exited_languages) {
-				p_lock.temp_unlock();
-				ScriptServer::thread_exit();
-				p_lock.temp_relock();
 				p_thread_data->exited_languages = true;
 				runlevel_data.exit_languages.num_exited_threads++;
 				control_cond_var.notify_all();
@@ -617,18 +607,6 @@ void WorkerThreadPool::yield() {
 	int th_index = get_thread_index();
 	ERR_FAIL_COND_MSG(th_index == -1, "This function can only be called from a worker thread.");
 	_wait_collaboratively(&threads[th_index], ThreadData::YIELDING);
-
-	task_mutex.lock();
-	if (runlevel < RUNLEVEL_EXIT_LANGUAGES) {
-		// If this long-lived task started before the scripting server was initialized,
-		// now is a good time to have scripting languages ready for the current thread.
-		// Otherwise, such a piece of setup won't happen unless another task has been
-		// run during the collaborative wait.
-		task_mutex.unlock();
-		ScriptServer::thread_enter();
-	} else {
-		task_mutex.unlock();
-	}
 }
 
 void WorkerThreadPool::notify_yield_over(TaskID p_task_id) {
@@ -847,7 +825,7 @@ void WorkerThreadPool::exit_languages_threads() {
 		control_cond_var.wait(lock);
 	}
 
-	// Wait until all threads have detached from scripting languages.
+	// Wait until all threads have acknowledged that no more tasks are accepted.
 	_switch_runlevel(RUNLEVEL_EXIT_LANGUAGES);
 	while (runlevel_data.exit_languages.num_exited_threads != threads.size()) {
 		control_cond_var.wait(lock);

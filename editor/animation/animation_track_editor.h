@@ -75,7 +75,6 @@ public:
 	bool use_fps = false;
 	AnimationTrackEditor *editor = nullptr;
 
-	bool _hide_script_from_inspector() { return true; }
 	bool _hide_metadata_from_inspector() { return true; }
 	bool _dont_undo_redo() { return true; }
 
@@ -113,7 +112,6 @@ public:
 	bool use_fps = false;
 	AnimationTrackEditor *editor = nullptr;
 
-	bool _hide_script_from_inspector() { return true; }
 	bool _hide_metadata_from_inspector() { return true; }
 	bool _dont_undo_redo() { return true; }
 
@@ -145,7 +143,6 @@ public:
 
 	AnimationMarkerEdit *marker_edit = nullptr;
 
-	bool _hide_script_from_inspector() { return true; }
 	bool _hide_metadata_from_inspector() { return true; }
 	bool _dont_undo_redo() { return true; }
 
@@ -172,7 +169,6 @@ public:
 
 	AnimationMarkerEdit *marker_edit = nullptr;
 
-	bool _hide_script_from_inspector() { return true; }
 	bool _hide_metadata_from_inspector() { return true; }
 	bool _dont_undo_redo() { return true; }
 

@@ -40,6 +40,7 @@
 #include "editor/docks/editor_dock.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/inspector_dock.h"
+#include "editor/document/document_editor_plugin.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
@@ -53,7 +54,6 @@
 #include "editor/run/embedded_process.h"
 #include "editor/run/run_instances_dialog.h"
 #include "editor/scene/canvas_item_editor_plugin.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_feature_profile.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -638,7 +638,6 @@ void GameView::_stop_pressed() {
 	}
 
 	_detach_script_debugger();
-	paused = false;
 
 	EditorNode::get_singleton()->set_unfocused_low_processor_usage_mode_enabled(true);
 	embedded_process->reset();
@@ -1042,26 +1041,15 @@ void GameView::_update_game_window_size_label() {
 }
 
 void GameView::_update_embed_window_size() {
-	if (paused) {
-		// When paused, Godot does not re-render. As a result, resizing the game window to a larger size
-		// causes artifacts and flickering. However, resizing to a smaller size seems fine.
-		// To prevent artifacts and flickering, we will force the game window to maintain its size.
-		// Using the same technique as SIZE_MODE_FIXED, the embedded process control will
-		// prevent resizing the game to a larger size while maintaining the aspect ratio.
-		embedded_process->set_window_size(size_paused);
-		embedded_process->set_keep_aspect(false);
-
+	if (embed_size_mode == SIZE_MODE_FIXED || embed_size_mode == SIZE_MODE_KEEP_ASPECT) {
+		// The embedded process control will need the desired window size.
+		EditorRun::WindowPlacement placement = EditorRun::get_window_placement();
+		embedded_process->set_window_size(placement.size);
 	} else {
-		if (embed_size_mode == SIZE_MODE_FIXED || embed_size_mode == SIZE_MODE_KEEP_ASPECT) {
-			// The embedded process control will need the desired window size.
-			EditorRun::WindowPlacement placement = EditorRun::get_window_placement();
-			embedded_process->set_window_size(placement.size);
-		} else {
-			// Stretch... No need for the window size.
-			embedded_process->set_window_size(Size2i());
-		}
-		embedded_process->set_keep_aspect(embed_size_mode == SIZE_MODE_KEEP_ASPECT);
+		// Stretch... No need for the window size.
+		embedded_process->set_window_size(Size2i());
 	}
+	embedded_process->set_keep_aspect(embed_size_mode == SIZE_MODE_KEEP_ASPECT);
 }
 
 void GameView::_debug_hide_selection_button_pressed() {
@@ -1440,8 +1428,7 @@ void GameView::_window_close_request() {
 	// the embedded game to be seen without a parent window for a fraction of second.
 	if (EditorRunBar::get_singleton()->is_playing() && (embedded_process->is_embedding_completed() || embedded_process->is_embedding_in_progress())) {
 		// When the embedding is not complete, we need to kill the process.
-		// If the game is paused, the close request will not be processed by the game, so it's better to kill the process.
-		if (paused || embedded_process->is_embedding_in_progress()) {
+		if (embedded_process->is_embedding_in_progress()) {
 			if (window_wrapper->get_window_enabled()) {
 				embedded_process->reset_timers();
 				window_wrapper->set_window_enabled(false);
@@ -1457,20 +1444,6 @@ void GameView::_window_close_request() {
 			embedded_process->request_close();
 		}
 	}
-}
-
-void GameView::_debugger_breaked(bool p_breaked, bool p_can_debug) {
-	if (p_breaked == paused) {
-		return;
-	}
-
-	paused = p_breaked;
-
-	if (paused) {
-		size_paused = embedded_process->get_screen_embedded_window_rect().size;
-	}
-
-	_update_embed_window_size();
 }
 
 void GameView::_feature_profile_changed() {
@@ -1874,8 +1847,6 @@ GameView::GameView(Ref<GameViewDebugger> p_debugger, EmbeddedProcessBase *p_embe
 	p_wrapper->connect("window_close_requested", callable_mp(this, &GameView::_window_close_request));
 	p_wrapper->connect("window_size_changed", callable_mp(this, &GameView::_update_floating_window_settings));
 
-	EditorDebuggerNode::get_singleton()->connect("breaked", callable_mp(this, &GameView::_debugger_breaked));
-
 	EditorFeatureProfileManager::get_singleton()->connect("current_feature_profile_changed", callable_mp(this, &GameView::_feature_profile_changed));
 }
 
@@ -1957,7 +1928,7 @@ void GameViewPluginBase::_save_last_editor(const String &p_editor) {
 
 void GameViewPluginBase::_focus_another_editor() {
 	if (_is_window_wrapper_enabled()) {
-		if (last_editor.is_empty() || (last_editor == "Script" && ScriptEditor::get_singleton()->get_current_layout() == EditorDock::DOCK_LAYOUT_FLOATING)) {
+		if (last_editor.is_empty() || (last_editor == "Docs" && DocumentEditor::get_singleton()->get_current_layout() == EditorDock::DOCK_LAYOUT_FLOATING)) {
 			CanvasItemEditor::get_singleton()->make_visible();
 		} else {
 			EditorDock *last_dock = EditorDockManager::get_singleton()->get_dock_by_name(last_editor);

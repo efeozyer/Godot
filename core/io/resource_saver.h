@@ -69,8 +69,6 @@ class ResourceSaver {
 	static ResourceSavedCallback save_callback;
 	static ResourceSaverGetResourceIDForPath save_get_id_for_path;
 
-	static Ref<ResourceFormatSaver> _find_custom_resource_format_saver(const String &p_path);
-
 public:
 	enum SaverFlags {
 		FLAG_NONE = 0,
@@ -97,8 +95,4 @@ public:
 
 	static void set_save_callback(ResourceSavedCallback p_callback);
 	static void set_get_resource_id_for_path(ResourceSaverGetResourceIDForPath p_callback);
-
-	static bool add_custom_resource_format_saver(const String &p_script_path);
-	static void add_custom_savers();
-	static void remove_custom_savers();
 };

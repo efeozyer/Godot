@@ -59,7 +59,6 @@ class SnapshotSummaryView : public SnapshotView {
 	void _push_overview_blurb(const String &p_title, GameStateSnapshot *p_snapshot);
 	void _push_node_blurb(const String &p_title, GameStateSnapshot *p_snapshot);
 	void _push_refcounted_blurb(const String &p_title, GameStateSnapshot *p_snapshot);
-	void _push_object_blurb(const String &p_title, GameStateSnapshot *p_snapshot);
 
 protected:
 	void _notification(int p_what);

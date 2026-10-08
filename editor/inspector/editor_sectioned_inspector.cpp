@@ -101,7 +101,7 @@ class SectionedInspectorFilter : public Object {
 		for (PropertyInfo &pi : pinfo) {
 			int sp = pi.name.find_char('/');
 
-			if (pi.name == "resource_path" || pi.name == "resource_name" || pi.name == "resource_local_to_scene" || pi.name.begins_with("script/") || pi.name.begins_with("_global_script")) { //skip resource stuff
+			if (pi.name == "resource_path" || pi.name == "resource_name" || pi.name == "resource_local_to_scene") { //skip resource stuff
 				continue;
 			}
 
@@ -253,7 +253,7 @@ void SectionedInspector::update_category_list() {
 			continue;
 		}
 
-		if (pi.name.contains_char(':') || pi.name == "script" || pi.name == "resource_name" || pi.name == "resource_path" || pi.name == "resource_local_to_scene" || pi.name.begins_with("_global_script")) {
+		if (pi.name.contains_char(':') || pi.name == "resource_name" || pi.name == "resource_path" || pi.name == "resource_local_to_scene") {
 			continue;
 		}
 

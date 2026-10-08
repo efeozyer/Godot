@@ -30,7 +30,10 @@
 
 #pragma once
 
-#include "editor/script/script_editor_plugin.h"
+#include "editor/document/document_editor_container.h"
+#include "editor/plugins/editor_plugin.h"
+
+class EditorDock;
 
 class ShaderEditorPlugin : public EditorPlugin {
 	GDCLASS(ShaderEditorPlugin, EditorPlugin);
@@ -75,7 +78,7 @@ public:
 
 	virtual String get_unsaved_status(const String &p_for_scene) const override;
 	virtual void save_external_data() override;
-	virtual void apply_changes() override { shader_container->apply_scripts(); }
+	virtual void apply_changes() override { shader_container->apply_documents(); }
 
 	ShaderEditorPlugin();
 	~ShaderEditorPlugin();
