@@ -17,14 +17,24 @@
 //               byte 2  first direction | second direction << 3
 //               byte 3  first index high bits | second index high bits << 2
 //                       | 16 if the first tile is used | 32 if the second tile is used
-//   weights   eight bytes per sample (index = (z * size + x) * 8): how much of each of the
-//             eight material layers TerrainLayerMaterial shows there. They add up to 255.
+//
+// Every cell is two triangles. By default they all split along the same diagonal. With
+// alternate_diagonals the split alternates from cell to cell and the normals are the average of
+// the triangles around each sample, which is how the original game's terrain is built
+// (CTerrainPatch::Tick, CTerrain::SetNormals).
+//
+//   weights   eight bytes per sample (index = (z * size + x) * 8): the numbers of the four
+//             material layers TerrainLayerMaterial blends there, then how much of each. The
+//             amounts add up to 255. There can be MAX_LAYERS layers in all.
 class TerrainData : public Resource {
 	GDCLASS(TerrainData, Resource);
 
 public:
 	enum {
-		LAYER_COUNT = 8,
+		// Layers a single sample blends, and the bytes it takes to say which and how much.
+		LAYER_BLEND = 4,
+		WEIGHT_STRIDE = 8,
+		MAX_LAYERS = 128,
 		TILE_SLOTS = 2,
 		TILE_DIRECTIONS = 8,
 		MAX_TILE_INDEX = 1023,
@@ -39,6 +49,7 @@ public:
 private:
 	int size = 0;
 	float cell_size = 1.0;
+	bool alternate_diagonals = false;
 	Vector<float> heights;
 	Vector<uint8_t> tiles;
 	Vector<uint8_t> weights;
@@ -56,6 +67,11 @@ public:
 
 	void set_cell_size(float p_size);
 	float get_cell_size() const { return cell_size; }
+
+	void set_alternate_diagonals(bool p_alternate);
+	bool is_alternating_diagonals() const { return alternate_diagonals; }
+	// Whether the cell is split from its (x, z) corner to its (x + 1, z + 1) corner.
+	bool is_cell_split_forward(int p_x, int p_z) const { return !alternate_diagonals || ((p_x + p_z) & 1) == 0; }
 
 	void set_heights(const Vector<float> &p_heights);
 	Vector<float> get_heights() const { return heights; }
@@ -91,6 +107,14 @@ public:
 	bool is_tile_used(int p_x, int p_z, int p_slot) const;
 
 	float get_layer_weight(int p_x, int p_z, int p_layer) const;
+	// One sample's eight bytes: how much (0 to 255) of a layer it has, and setting that. The
+	// other layers of the sample give way in proportion; the weakest one makes room for a layer
+	// the sample did not have.
+	static int get_sample_weight(const uint8_t *p_sample, int p_layer);
+	static void set_sample_weight(uint8_t *p_sample, int p_layer, int p_weight);
+	// Weights as they were stored before: eight bytes per sample, one per layer.
+	void set_dense_weights(const Vector<uint8_t> &p_weights);
+	Vector<uint8_t> get_dense_weights() const { return Vector<uint8_t>(); }
 
 	// Rectangles of each channel, for undo and for copying.
 	Vector<float> get_heights_region(const Rect2i &p_rect) const;

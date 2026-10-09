@@ -106,6 +106,10 @@ public:
 	void set_light_map_texture_size(int p_size);
 	int get_light_map_texture_size() const;
 
+	// Draws the cells that have no tile as a grey checkerboard instead of the colour map, so that
+	// they stand out while a terrain is being edited. Terrain3D turns it on in the editor.
+	void set_empty_cell_checker(bool p_enable);
+
 	void set_tile_patches(int p_patches);
 	int get_tile_patches() const;
 

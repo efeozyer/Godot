@@ -3739,7 +3739,8 @@ void AnimationTrackEdit::append_to_selection(const Rect2 &p_box, bool p_deselect
 	}
 	// Left Border including space occupied by keyframes on t=0.
 	int limit_start_hitbox = timeline->get_name_limit() - type_icon->get_width();
-	Rect2 select_rect(limit_start_hitbox, 0, get_size().width - timeline->get_name_limit() - timeline->get_buttons_width(), get_size().height);
+	// The track can be narrower than its name column and buttons, which leaves no room for keys.
+	Rect2 select_rect(limit_start_hitbox, 0, MAX(get_size().width - timeline->get_name_limit() - timeline->get_buttons_width(), 0.0f), get_size().height);
 	select_rect = select_rect.intersection(p_box);
 
 	// Select should happen in the opposite order of drawing for more accurate overlap select.

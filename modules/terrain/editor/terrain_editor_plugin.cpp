@@ -1,23 +1,36 @@
 #include "terrain_editor_plugin.h"
 
+#include "core/config/project_settings.h"
 #include "core/input/input.h"
 #include "core/input/input_event.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "core/io/image.h"
+#include "core/io/resource_loader.h"
+#include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "editor/docks/editor_dock.h"
 #include "editor/docks/editor_dock_manager.h"
+#include "editor/docks/filesystem_dock.h"
+#include "editor/file_system/editor_file_system.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_file_dialog.h"
+#include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
+#include "scene/gui/dialogs.h"
 #include "scene/gui/grid_container.h"
+#include "scene/gui/item_list.h"
 #include "scene/gui/label.h"
 #include "scene/gui/option_button.h"
+#include "scene/gui/panel_container.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/gui/separator.h"
 #include "scene/gui/spin_box.h"
 #include "scene/gui/texture_rect.h"
@@ -57,6 +70,504 @@ void TerrainEditorPlugin::_select_tool(int p_tool) {
 	for (int i = 0; i < TOOL_MAX; i++) {
 		tool_buttons[i]->set_pressed_no_signal(i == p_tool);
 	}
+	_update_tile_list();
+}
+
+void TerrainEditorPlugin::_update_tile_list() {
+	// The tiles are offered while they can be painted.
+	Ref<TextureLayered> textures;
+	if (active && tool == TOOL_PAINT_TILE && terrain && terrain->get_data().is_valid() && terrain->get_mode() == Terrain3D::MODE_TILES && terrain->get_tile_material().is_valid()) {
+		textures = terrain->get_tile_material()->get_tile_textures();
+	}
+	tile_column->set_visible(textures.is_valid());
+	if (textures.is_null()) {
+		return;
+	}
+	if (textures != tile_list_source) {
+		tile_list_source = textures;
+		tile_list->clear();
+		const int icon_size = int(48 * EDSCALE);
+		const int count = MIN(textures->get_layers(), int(TerrainData::MAX_TILE_INDEX) + 1);
+		for (int i = 0; i < count; i++) {
+			Ref<Texture2D> icon;
+			Ref<Image> image = textures->get_layer_data(i);
+			if (image.is_valid() && !image->is_empty()) {
+				image = image->duplicate();
+				if (!image->is_compressed() || image->decompress() == OK) {
+					image->clear_mipmaps();
+					image->resize(icon_size, icon_size, Image::INTERPOLATE_BILINEAR);
+					icon = ImageTexture::create_from_image(image);
+				}
+			}
+			tile_list->add_item(itos(i), icon);
+		}
+	}
+	const int index = int(tile_index->get_value());
+	if (index < tile_list->get_item_count() && !tile_list->is_selected(index)) {
+		tile_list->select(index);
+		tile_list->ensure_current_is_visible();
+	}
+}
+
+void TerrainEditorPlugin::_update_layer_list() {
+	layer_list_queued = false;
+	Ref<TerrainLayerMaterial> material;
+	if (terrain && terrain->get_data().is_valid() && terrain->get_mode() == Terrain3D::MODE_LAYERS) {
+		material = terrain->get_layer_material();
+	}
+	if (material != layer_list_material) {
+		const Callable changed = callable_mp(this, &TerrainEditorPlugin::_layer_material_changed);
+		if (layer_list_material.is_valid() && layer_list_material->is_connected(CoreStringName(changed), changed)) {
+			layer_list_material->disconnect(CoreStringName(changed), changed);
+		}
+		layer_list_material = material;
+		revealed_layer = -1;
+		if (material.is_valid()) {
+			material->connect(CoreStringName(changed), changed);
+		}
+		layer_list_dirty = true;
+	}
+	layer_column->set_visible(material.is_valid());
+	if (material.is_null()) {
+		return;
+	}
+	if (layer_list_dirty) {
+		layer_list_dirty = false;
+		layer_list->clear();
+		const int icon_size = int(48 * EDSCALE);
+		for (int i = 0; i < material->get_layer_count(); i++) {
+			// The layer's texture with its tint, or the tint alone.
+			Ref<Image> image;
+			const Ref<Texture2D> albedo = material->get_layer_albedo(i);
+			if (albedo.is_valid()) {
+				image = albedo->get_image();
+				if (image.is_valid() && !image->is_empty()) {
+					image = image->duplicate();
+					if (image->is_compressed() && image->decompress() != OK) {
+						image.unref();
+					}
+				} else {
+					image.unref();
+				}
+			}
+			const Color tint = material->get_layer_color(i);
+			if (image.is_valid()) {
+				image->clear_mipmaps();
+				image->convert(Image::FORMAT_RGB8);
+				image->resize(icon_size, icon_size, Image::INTERPOLATE_BILINEAR);
+				if (tint != Color(1, 1, 1)) {
+					for (int y = 0; y < icon_size; y++) {
+						for (int x = 0; x < icon_size; x++) {
+							image->set_pixel(x, y, image->get_pixel(x, y) * tint);
+						}
+					}
+				}
+			} else {
+				image = Image::create_empty(icon_size, icon_size, false, Image::FORMAT_RGB8);
+				image->fill(tint);
+			}
+			layer_list->add_item(itos(i + 1), ImageTexture::create_from_image(image));
+			if (albedo.is_valid() && albedo->get_path().is_resource_file()) {
+				layer_list->set_item_tooltip(i, albedo->get_path());
+			}
+		}
+	}
+	const int selected = layer->get_selected();
+	if (selected >= 0 && selected < layer_list->get_item_count() && !layer_list->is_selected(selected)) {
+		layer_list->select(selected);
+		layer_list->ensure_current_is_visible();
+	}
+}
+
+void TerrainEditorPlugin::_layer_material_changed() {
+	// A texture or a tint was changed, or layers were added; several changes make one refresh.
+	layer_list_dirty = true;
+	if (!layer_list_queued) {
+		layer_list_queued = true;
+		callable_mp(this, &TerrainEditorPlugin::_update_panel).call_deferred();
+	}
+}
+
+// Opens the layer's settings in the inspector, where the material is shown, and closes those of
+// the layer that was open before.
+void TerrainEditorPlugin::_reveal_layer(int p_index) {
+	if (layer_list_material.is_null() || p_index == revealed_layer) {
+		return;
+	}
+	if (revealed_layer >= 0) {
+		layer_list_material->editor_set_section_unfold(vformat("Layer %d", revealed_layer + 1), false);
+	}
+	revealed_layer = p_index;
+	layer_list_material->editor_set_section_unfold(vformat("Layer %d", p_index + 1), true);
+	layer_list_material->notify_property_list_changed();
+}
+
+void TerrainEditorPlugin::_layer_list_selected(int p_index) {
+	_reveal_layer(p_index);
+	if (p_index < layer->get_item_count()) {
+		layer->select(p_index);
+	}
+	// Picking a layer is picking what to paint.
+	if (!tool_buttons[TOOL_PAINT_LAYER]->is_disabled()) {
+		_select_tool(TOOL_PAINT_LAYER);
+	}
+}
+
+void TerrainEditorPlugin::_layer_list_clicked(int p_index, const Vector2 &p_position, int p_button) {
+	if (p_button != int(MouseButton::RIGHT) || layer_list_material.is_null() || p_index >= layer_list_material->get_layer_count()) {
+		return;
+	}
+	layer_menu_layer = p_index;
+	// A texture made by the conversion from tiles lives in the scene and has no file to show.
+	const Ref<Texture2D> albedo = layer_list_material->get_layer_albedo(p_index);
+	const bool has_file = albedo.is_valid() && albedo->get_path().is_resource_file();
+	layer_menu->set_item_disabled(layer_menu->get_item_index(TILE_MENU_SHOW_IN_FILE_MANAGER), !has_file);
+	layer_menu->set_item_disabled(layer_menu->get_item_index(TILE_MENU_SHOW_IN_FILESYSTEM), !has_file);
+	layer_menu->set_position(layer_list->get_screen_position() + p_position);
+	layer_menu->reset_size();
+	layer_menu->popup();
+}
+
+// Moves the 3D view to a place given in grid units.
+void TerrainEditorPlugin::_focus_view(const Vector2 &p_grid) {
+	const Ref<TerrainData> data = terrain->get_data();
+	const float size = data->get_cell_size();
+	const Vector3 position = terrain->get_global_transform().xform(Vector3(p_grid.x * size, data->sample_height(p_grid), -p_grid.y * size));
+	Node3DEditorViewport *viewport = Node3DEditor::get_singleton()->get_last_used_viewport();
+	if (viewport) {
+		Dictionary state;
+		state["position"] = position;
+		state["distance"] = size * 8.0f;
+		viewport->set_state(state);
+	}
+}
+
+void TerrainEditorPlugin::_show_layer_in_terrain(int p_layer) {
+	if (!terrain || terrain->get_data().is_null()) {
+		return;
+	}
+	const Ref<TerrainData> data = terrain->get_data();
+	const int size = data->get_size();
+	const uint8_t *weights = data->weights_ptr();
+	// The places where the layer is what is mostly seen.
+	Vector<int> found;
+	for (int i = 0; i < size * size; i++) {
+		if (TerrainData::get_sample_weight(weights + i * TerrainData::WEIGHT_STRIDE, p_layer) >= 128) {
+			found.push_back(i);
+		}
+	}
+	if (found.is_empty()) {
+		status->set_text(vformat(TTR("Layer %d is not painted anywhere."), p_layer + 1));
+		return;
+	}
+	const int sample = found[Math::rand() % found.size()];
+	_focus_view(Vector2(sample % size, sample / size));
+	status->set_text(vformat(TTR("Layer %d at (%d, %d), one of %d places painted with it."), p_layer + 1, sample % size, sample / size, found.size()));
+}
+
+void TerrainEditorPlugin::_replace_layer_confirmed() {
+	if (layer_list_material.is_null() || replace_layer >= layer_list_material->get_layer_count() || replace_path.is_empty()) {
+		return;
+	}
+	// The layer refers to the image as a file of the project, at the image's own size.
+	String path = ProjectSettings::get_singleton()->localize_path(replace_path);
+	if (!path.begins_with("res://")) {
+		String folder = "res://";
+		if (terrain && terrain->get_data().is_valid() && terrain->get_data()->get_path().is_resource_file()) {
+			folder = terrain->get_data()->get_path().get_base_dir();
+		}
+		folder = folder.path_join("layers");
+		path = folder.path_join(replace_path.get_file());
+		const Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_RESOURCES);
+		if (dir->make_dir_recursive(folder) != OK || dir->copy(replace_path, path) != OK) {
+			status->set_text(vformat(TTR("Cannot copy %s to %s."), replace_path, path));
+			return;
+		}
+		EditorFileSystem::get_singleton()->update_file(path);
+		EditorFileSystem::get_singleton()->reimport_files({ path });
+	}
+	const Ref<Texture2D> texture = ResourceLoader::load(path);
+	if (texture.is_null()) {
+		status->set_text(vformat(TTR("Cannot load %s as a texture."), path));
+		return;
+	}
+	const String property = vformat("layer_%d/albedo", replace_layer + 1);
+	EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
+	ur->create_action_for_history(TTR("Replace Terrain Layer Texture"), ur->get_history_id_for_object(terrain));
+	// The material may be a file of its own, which would otherwise put it in another history than the node.
+	ur->force_fixed_history();
+	ur->add_do_property(layer_list_material.ptr(), property, texture);
+	ur->add_undo_property(layer_list_material.ptr(), property, layer_list_material->get_layer_albedo(replace_layer));
+	ur->commit_action();
+	status->set_text(vformat(TTR("Layer %d now shows %s."), replace_layer + 1, path));
+}
+
+void TerrainEditorPlugin::_layer_menu_pressed(int p_id) {
+	if (layer_list_material.is_null() || layer_menu_layer >= layer_list_material->get_layer_count()) {
+		return;
+	}
+	if (p_id == TILE_MENU_SHOW_IN_TERRAIN) {
+		_show_layer_in_terrain(layer_menu_layer);
+		return;
+	}
+	if (p_id == TILE_MENU_REPLACE) {
+		replace_layer = layer_menu_layer;
+		replace_image.unref();
+		replace_path = String();
+		replace_preview->set_texture(Ref<Texture2D>());
+		replace_hint->set_text(TTR("Drop an image here"));
+		replace_hint->show();
+		replace_note->set_text(TTR("The image becomes the layer's colour texture. A file from outside the project is copied into it, next to the terrain's data."));
+		replace_dialog->set_title(vformat(TTR("Replace the Texture of Layer %d"), replace_layer + 1));
+		replace_dialog->get_ok_button()->set_disabled(true);
+		replace_dialog->popup_centered();
+		return;
+	}
+	const Ref<Texture2D> albedo = layer_list_material->get_layer_albedo(layer_menu_layer);
+	if (albedo.is_null() || !albedo->get_path().is_resource_file()) {
+		return;
+	}
+	if (p_id == TILE_MENU_SHOW_IN_FILE_MANAGER) {
+		OS::get_singleton()->shell_show_in_file_manager(ProjectSettings::get_singleton()->globalize_path(albedo->get_path()), true);
+	} else if (p_id == TILE_MENU_SHOW_IN_FILESYSTEM) {
+		FileSystemDock::get_singleton()->navigate_to_path(albedo->get_path());
+	}
+}
+
+void TerrainEditorPlugin::_layer_option_selected(int p_index) {
+	_reveal_layer(p_index);
+	if (p_index < layer_list->get_item_count()) {
+		layer_list->select(p_index);
+		layer_list->ensure_current_is_visible();
+	}
+}
+
+void TerrainEditorPlugin::_tile_list_selected(int p_index) {
+	tile_index->set_value(p_index);
+}
+
+void TerrainEditorPlugin::_tile_list_clicked(int p_index, const Vector2 &p_position, int p_button) {
+	if (p_button != int(MouseButton::RIGHT)) {
+		return;
+	}
+	tile_index->set_value(p_index);
+	// Every tile is a layer of one texture array, so they all lead to the same file.
+	const bool has_file = tile_list_source.is_valid() && tile_list_source->get_path().is_resource_file();
+	tile_menu->set_item_disabled(tile_menu->get_item_index(TILE_MENU_SHOW_IN_FILE_MANAGER), !has_file);
+	tile_menu->set_item_disabled(tile_menu->get_item_index(TILE_MENU_SHOW_IN_FILESYSTEM), !has_file);
+	tile_menu->set_position(tile_list->get_screen_position() + p_position);
+	tile_menu->reset_size();
+	tile_menu->popup();
+}
+
+void TerrainEditorPlugin::_show_tile_in_terrain(int p_tile) {
+	if (!terrain || terrain->get_data().is_null()) {
+		return;
+	}
+	const Ref<TerrainData> data = terrain->get_data();
+	const int cells = data->get_cells();
+	const uint8_t *tiles = data->tiles_ptr();
+	Vector<int> found;
+	for (int i = 0; i < cells * cells; i++) {
+		const uint8_t *t = tiles + i * 4;
+		const bool first = (t[3] & 16) && (t[0] | ((t[3] & 3) << 8)) == p_tile;
+		const bool second = (t[3] & 16) && (t[3] & 32) && (t[1] | (((t[3] >> 2) & 3) << 8)) == p_tile;
+		if (first || second) {
+			found.push_back(i);
+		}
+	}
+	if (found.is_empty()) {
+		status->set_text(vformat(TTR("Tile %d is not used by any cell."), p_tile));
+		return;
+	}
+	const int cell = found[Math::rand() % found.size()];
+	const int x = cell % cells;
+	const int z = cell / cells;
+	const float size = data->get_cell_size();
+	const Vector2 grid(x + 0.5f, z + 0.5f);
+	const Vector3 position = terrain->get_global_transform().xform(Vector3(grid.x * size, data->sample_height(grid), -grid.y * size));
+	Node3DEditorViewport *viewport = Node3DEditor::get_singleton()->get_last_used_viewport();
+	if (viewport) {
+		Dictionary state;
+		state["position"] = position;
+		state["distance"] = size * 8.0f;
+		viewport->set_state(state);
+	}
+	status->set_text(vformat(TTR("Tile %d at cell (%d, %d), one of %d cells that use it."), p_tile, x, z, found.size()));
+}
+
+void TerrainEditorPlugin::_replace_tile_popup(int p_tile) {
+	replace_tile = p_tile;
+	replace_layer = -1;
+	replace_note->set_text(TTR("The image is resized to the tiles' size. Replacing rewrites the tile texture file and cannot be undone."));
+	replace_image.unref();
+	replace_preview->set_texture(Ref<Texture2D>());
+	replace_hint->set_text(TTR("Drop an image here"));
+	replace_hint->show();
+	replace_dialog->set_title(vformat(TTR("Replace Tile %d"), p_tile));
+	replace_dialog->get_ok_button()->set_disabled(true);
+	replace_dialog->popup_centered();
+}
+
+void TerrainEditorPlugin::_replace_browse_pressed() {
+	replace_file_dialog->popup_file_dialog();
+}
+
+void TerrainEditorPlugin::_replace_files_dropped(const PackedStringArray &p_files) {
+	if (!p_files.is_empty()) {
+		_replace_file_selected(p_files[0]);
+	}
+}
+
+void TerrainEditorPlugin::_replace_file_selected(const String &p_path) {
+	replace_path = p_path;
+	const Ref<Image> image = Image::load_from_file(p_path);
+	if (image.is_null() || image->is_empty() || (image->is_compressed() && image->decompress() != OK)) {
+		replace_image.unref();
+		replace_preview->set_texture(Ref<Texture2D>());
+		replace_hint->set_text(vformat(TTR("Cannot read %s as an image."), p_path.get_file()));
+		replace_hint->show();
+		replace_dialog->get_ok_button()->set_disabled(true);
+		return;
+	}
+	replace_image = image;
+	replace_preview->set_texture(ImageTexture::create_from_image(image));
+	replace_hint->hide();
+	replace_dialog->get_ok_button()->set_disabled(false);
+}
+
+// Writes a texture array as a DDS file, every level of the first layer, then of the next.
+Error TerrainEditorPlugin::_save_tile_array(const Ref<ImageTextureLayered> &p_textures, const String &p_path) {
+	uint32_t dxgi = 0;
+	switch (p_textures->get_format()) {
+		case Image::FORMAT_DXT1:
+			dxgi = 71; // DXGI_FORMAT_BC1_UNORM
+			break;
+		case Image::FORMAT_DXT3:
+			dxgi = 74; // DXGI_FORMAT_BC2_UNORM
+			break;
+		case Image::FORMAT_DXT5:
+			dxgi = 77; // DXGI_FORMAT_BC3_UNORM
+			break;
+		case Image::FORMAT_RGBA8:
+			dxgi = 28; // DXGI_FORMAT_R8G8B8A8_UNORM
+			break;
+		default:
+			return ERR_UNAVAILABLE;
+	}
+	Vector<Ref<Image>> layers;
+	for (int i = 0; i < p_textures->get_layers(); i++) {
+		const Ref<Image> layer = p_textures->get_layer_data(i);
+		ERR_FAIL_COND_V(layer.is_null(), ERR_INVALID_DATA);
+		layers.push_back(layer);
+	}
+	ERR_FAIL_COND_V(layers.is_empty(), ERR_INVALID_DATA);
+	const bool compressed = dxgi != 28;
+	const int levels = layers[0]->get_mipmap_count() + 1;
+	const uint32_t width = p_textures->get_width();
+	const uint32_t height = p_textures->get_height();
+	const uint32_t first_level = compressed ? MAX(1u, width / 4) * MAX(1u, height / 4) * (dxgi == 71 ? 8 : 16) : width * 4;
+
+	Error err = OK;
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE, &err);
+	if (file.is_null()) {
+		return err;
+	}
+	file->store_buffer((const uint8_t *)"DDS ", 4);
+	file->store_32(124);
+	// Caps, height, width and pixel format, the size of the first level, and the level count.
+	file->store_32(0x1 | 0x2 | 0x4 | 0x1000 | (compressed ? 0x80000 : 0x8) | (levels > 1 ? 0x20000 : 0));
+	file->store_32(height);
+	file->store_32(width);
+	file->store_32(first_level);
+	file->store_32(0);
+	file->store_32(levels > 1 ? levels : 0);
+	for (int i = 0; i < 11; i++) {
+		file->store_32(0);
+	}
+	file->store_32(32);
+	file->store_32(0x4);
+	file->store_buffer((const uint8_t *)"DX10", 4);
+	for (int i = 0; i < 5; i++) {
+		file->store_32(0);
+	}
+	file->store_32(0x1000 | (levels > 1 ? 0x400008 : 0));
+	for (int i = 0; i < 4; i++) {
+		file->store_32(0);
+	}
+	file->store_32(dxgi);
+	file->store_32(3); // D3D10_RESOURCE_DIMENSION_TEXTURE2D
+	file->store_32(0);
+	file->store_32(layers.size());
+	file->store_32(0);
+	for (const Ref<Image> &layer : layers) {
+		file->store_buffer(layer->get_data());
+	}
+	return file->get_error();
+}
+
+void TerrainEditorPlugin::_replace_confirmed() {
+	if (replace_layer >= 0) {
+		_replace_layer_confirmed();
+		return;
+	}
+	const Ref<ImageTextureLayered> textures = tile_list_source;
+	if (replace_image.is_null() || textures.is_null() || replace_tile >= textures->get_layers()) {
+		return;
+	}
+	// The image takes the size, the levels and the format of the layers it joins.
+	Ref<Image> image = replace_image->duplicate();
+	const Image::Format format = textures->get_format();
+	image->convert(format == Image::FORMAT_DXT1 ? Image::FORMAT_RGB8 : Image::FORMAT_RGBA8);
+	image->resize(textures->get_width(), textures->get_height(), Image::INTERPOLATE_LANCZOS);
+	if (textures->has_mipmaps()) {
+		image->generate_mipmaps();
+	}
+	if (format == Image::FORMAT_DXT1 || format == Image::FORMAT_DXT5) {
+		image->compress_from_channels(Image::COMPRESS_S3TC, format == Image::FORMAT_DXT1 ? Image::USED_CHANNELS_RGB : Image::USED_CHANNELS_RGBA);
+	} else if (!Image::is_format_compressed(format)) {
+		image->convert(format);
+	}
+	if (image->get_format() != format) {
+		status->set_text(vformat(TTR("The tile textures are stored as %s, which an image cannot be turned into here."), Image::get_format_name(format)));
+		return;
+	}
+	textures->update_layer(image, replace_tile);
+
+	String saved;
+	const String path = textures->get_path();
+	if (path.is_resource_file()) {
+		const Error err = path.has_extension("dds") ? _save_tile_array(textures, path) : ResourceSaver::save(textures, path);
+		if (err == OK) {
+			saved = " " + vformat(TTR("Saved to %s."), path);
+		} else {
+			saved = " " + vformat(TTR("It could not be saved to %s, so the change lasts until the editor closes."), path);
+		}
+	}
+	// The list keeps small copies of the tiles; make them again.
+	tile_list_source.unref();
+	_update_panel();
+	status->set_text(vformat(TTR("Replaced the texture of tile %d."), replace_tile) + saved);
+}
+
+void TerrainEditorPlugin::_tile_menu_pressed(int p_id) {
+	if (p_id == TILE_MENU_REPLACE) {
+		_replace_tile_popup(int(tile_index->get_value()));
+		return;
+	}
+	if (p_id == TILE_MENU_SHOW_IN_TERRAIN) {
+		_show_tile_in_terrain(int(tile_index->get_value()));
+		return;
+	}
+	if (tile_list_source.is_null() || !tile_list_source->get_path().is_resource_file()) {
+		return;
+	}
+	const String path = tile_list_source->get_path();
+	if (p_id == TILE_MENU_SHOW_IN_FILE_MANAGER) {
+		OS::get_singleton()->shell_show_in_file_manager(ProjectSettings::get_singleton()->globalize_path(path), true);
+	} else if (p_id == TILE_MENU_SHOW_IN_FILESYSTEM) {
+		FileSystemDock::get_singleton()->navigate_to_path(path);
+	}
 }
 
 void TerrainEditorPlugin::_update_panel() {
@@ -79,10 +590,26 @@ void TerrainEditorPlugin::_update_panel() {
 	}
 	mode->set_disabled(!terrain);
 	create_button->set_disabled(!terrain);
+	bake_button->set_disabled(!terrain);
+	convert_button->set_disabled(!has_data || !tiles || terrain->get_tile_material().is_null());
 	layer->set_disabled(!has_data || tiles);
+	{
+		// One entry for each layer of the terrain's material.
+		const int layers = terrain && terrain->get_layer_material().is_valid() ? terrain->get_layer_material()->get_layer_count() : 8;
+		if (layer->get_item_count() != layers) {
+			const int selected = MAX(layer->get_selected(), 0);
+			layer->clear();
+			for (int i = 0; i < layers; i++) {
+				layer->add_item(vformat(TTR("Layer %d"), i + 1));
+			}
+			layer->select(MIN(selected, layers - 1));
+		}
+	}
 	tile_index->set_editable(has_data && tiles);
 	tile_slot->set_disabled(!has_data || !tiles);
 	tile_direction->set_disabled(!has_data || !tiles);
+	_update_tile_list();
+	_update_layer_list();
 	create_button->set_text(has_data ? TTR("Resize") : TTR("Create"));
 	if (has_data) {
 		const Ref<TerrainData> data = terrain->get_data();
@@ -97,6 +624,13 @@ void TerrainEditorPlugin::_update_panel() {
 
 void TerrainEditorPlugin::_update_tile_preview() {
 	tile_preview->set_texture(Ref<Texture2D>());
+	if (tile_column->is_visible()) {
+		const int listed = int(tile_index->get_value());
+		if (listed < tile_list->get_item_count() && !tile_list->is_selected(listed)) {
+			tile_list->select(listed);
+			tile_list->ensure_current_is_visible();
+		}
+	}
 	if (!terrain || terrain->get_mode() != Terrain3D::MODE_TILES || terrain->get_tile_material().is_null()) {
 		return;
 	}
@@ -122,7 +656,9 @@ void TerrainEditorPlugin::_mode_selected(int p_mode) {
 		return;
 	}
 	EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
-	ur->create_action(TTR("Change Terrain Mode"));
+	ur->create_action_for_history(TTR("Change Terrain Mode"), ur->get_history_id_for_object(terrain));
+	// The data may be a file of its own, which would otherwise put it in another history than the node.
+	ur->force_fixed_history();
 	ur->add_do_property(terrain, "mode", p_mode);
 	ur->add_undo_property(terrain, "mode", terrain->get_mode());
 	if (p_mode == Terrain3D::MODE_LAYERS && terrain->get_layer_material().is_null()) {
@@ -154,7 +690,9 @@ void TerrainEditorPlugin::_create_pressed() {
 		data.instantiate();
 		data->set_cell_size(cell);
 		data->set_size(cells + 1);
-		ur->create_action(TTR("Create Terrain Data"));
+		ur->create_action_for_history(TTR("Create Terrain Data"), ur->get_history_id_for_object(terrain));
+		// The data may be a file of its own, which would otherwise put it in another history than the node.
+		ur->force_fixed_history();
 		ur->add_do_property(terrain, "data", data);
 		ur->add_undo_property(terrain, "data", Ref<TerrainData>());
 		if (terrain->get_mode() == Terrain3D::MODE_LAYERS && terrain->get_layer_material().is_null()) {
@@ -172,14 +710,16 @@ void TerrainEditorPlugin::_create_pressed() {
 	} else {
 		// Resizing drops what falls outside, so the whole state is kept for undo.
 		const Ref<TerrainData> data = terrain->get_data();
-		ur->create_action(TTR("Resize Terrain"));
+		ur->create_action_for_history(TTR("Resize Terrain"), ur->get_history_id_for_object(terrain));
+		// The data may be a file of its own, which would otherwise put it in another history than the node.
+		ur->force_fixed_history();
 		ur->add_do_property(data.ptr(), "cell_size", cell);
 		ur->add_do_property(data.ptr(), "size", cells + 1);
 		ur->add_undo_property(data.ptr(), "cell_size", data->get_cell_size());
 		ur->add_undo_property(data.ptr(), "size", data->get_size());
 		ur->add_undo_property(data.ptr(), "heights", data->get_heights());
 		ur->add_undo_property(data.ptr(), "tiles", data->get_tiles());
-		ur->add_undo_property(data.ptr(), "weights", data->get_weights());
+		ur->add_undo_property(data.ptr(), "layer_weights", data->get_weights());
 	}
 	ur->add_do_method(this, "_update_panel");
 	ur->add_undo_method(this, "_update_panel");
@@ -207,14 +747,82 @@ void TerrainEditorPlugin::_import_file_selected(const String &p_path) {
 	const Vector<float> before = data->get_heights();
 	data->import_heightmap(image, float(import_min->get_value()), float(import_max->get_value()));
 	EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
-	ur->create_action(TTR("Import Terrain Heightmap"));
+	ur->create_action_for_history(TTR("Import Terrain Heightmap"), ur->get_history_id_for_object(terrain));
+	// The data may be a file of its own, which would otherwise put it in another history than the node.
+	ur->force_fixed_history();
 	ur->add_do_property(data.ptr(), "heights", data->get_heights());
 	ur->add_undo_property(data.ptr(), "heights", before);
 	ur->commit_action(false);
 }
 
+void TerrainEditorPlugin::_convert_pressed() {
+	if (!terrain || terrain->get_data().is_null()) {
+		return;
+	}
+	Vector<uint8_t> weights;
+	Ref<TerrainLayerMaterial> material;
+	if (!terrain->build_layers_from_tiles(weights, material)) {
+		status->set_text(TTR("Nothing to convert: the terrain has no tiles or no tile textures."));
+		return;
+	}
+	const Ref<TerrainData> data = terrain->get_data();
+	EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
+	ur->create_action_for_history(TTR("Convert Terrain Tiles to Layers"), ur->get_history_id_for_object(terrain));
+	// The data may be a file of its own, which would otherwise put it in another history than the node.
+	ur->force_fixed_history();
+	ur->add_do_property(data.ptr(), "layer_weights", weights);
+	ur->add_undo_property(data.ptr(), "layer_weights", data->get_weights());
+	ur->add_do_property(terrain, "layer_material", material);
+	ur->add_undo_property(terrain, "layer_material", terrain->get_layer_material());
+	ur->add_do_property(terrain, "mode", Terrain3D::MODE_LAYERS);
+	ur->add_undo_property(terrain, "mode", terrain->get_mode());
+	ur->add_do_method(this, "_update_panel");
+	ur->add_undo_method(this, "_update_panel");
+	ur->commit_action();
+}
+
+void TerrainEditorPlugin::_bake_collision_pressed() {
+	if (!terrain) {
+		return;
+	}
+	const Ref<ConcavePolygonShape3D> before = terrain->get_collision_baked_shape();
+	const int triangles = terrain->bake_collision();
+	if (triangles < 0) {
+		status->set_text(TTR("Nothing to bake: set Collision > Bake Source of the terrain to the node that holds the objects."));
+		return;
+	}
+	const Ref<ConcavePolygonShape3D> baked = terrain->get_collision_baked_shape();
+	// Many triangles make a scene file slow to load as text, so the shape goes into a file of its
+	// own next to the terrain's data when that has one.
+	String path = baked->get_path();
+	if (!path.is_resource_file() && terrain->get_data().is_valid() && terrain->get_data()->get_path().is_resource_file()) {
+		path = terrain->get_data()->get_path().get_basename() + "_collision.res";
+	}
+	String where;
+	if (path.is_resource_file()) {
+		if (ResourceSaver::save(baked, path, ResourceSaver::FLAG_CHANGE_PATH | ResourceSaver::FLAG_COMPRESS) == OK) {
+			where = " " + vformat(TTR("Saved as %s."), path);
+		} else {
+			ERR_PRINT(vformat("Terrain: cannot save the baked collision to '%s'.", path));
+		}
+	}
+	EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
+	ur->create_action(TTR("Bake Terrain Collision"));
+	ur->add_do_property(terrain, "collision_baked_shape", baked);
+	ur->add_undo_property(terrain, "collision_baked_shape", before);
+	ur->commit_action();
+	status->set_text(vformat(TTR("Baked %d collision triangles."), triangles) + where);
+}
+
 void TerrainEditorPlugin::_terrain_exiting() {
 	edit(nullptr);
+}
+
+float TerrainEditorPlugin::_brush_distance(const Vector2 &p_offset) const {
+	if (shape->get_selected() == 1) {
+		return MAX(Math::abs(p_offset.x), Math::abs(p_offset.y));
+	}
+	return p_offset.length();
 }
 
 float TerrainEditorPlugin::_falloff(float p_distance) const {
@@ -264,7 +872,12 @@ void TerrainEditorPlugin::_update_cursor() {
 		for (int i = 0; i < points; i++) {
 			for (int k = 0; k < 2; k++) {
 				const float angle = Math::TAU * float(i + k) / points;
-				Vector3 p = brush_position + Vector3(Math::cos(angle), 0.0, Math::sin(angle)) * pass_radius;
+				Vector3 direction(Math::cos(angle), 0.0, Math::sin(angle));
+				if (shape->get_selected() == 1) {
+					// Pushed out onto the square around the circle.
+					direction /= MAX(Math::abs(direction.x), Math::abs(direction.z));
+				}
+				Vector3 p = brush_position + direction * pass_radius;
 				p.y = data->sample_height(terrain->to_grid(p)) + 0.05f;
 				ring.push_back(p);
 			}
@@ -368,7 +981,7 @@ void TerrainEditorPlugin::_sculpt(float p_delta) {
 
 	for (int z = z0; z <= z1; z++) {
 		for (int x = x0; x <= x1; x++) {
-			const float f = _falloff(Vector2(x - centre.x, z - centre.y).length() * cell);
+			const float f = _falloff(_brush_distance(Vector2(x - centre.x, z - centre.y)) * cell);
 			if (f <= 0.0f) {
 				continue;
 			}
@@ -429,39 +1042,16 @@ void TerrainEditorPlugin::_paint_layer(float p_delta) {
 	uint8_t *weights = data->weights_ptrw();
 	for (int z = z0; z <= z1; z++) {
 		for (int x = x0; x <= x1; x++) {
-			const float f = _falloff(Vector2(x - centre.x, z - centre.y).length() * cell);
+			const float f = _falloff(_brush_distance(Vector2(x - centre.x, z - centre.y)) * cell);
 			if (f <= 0.0f) {
 				continue;
 			}
-			uint8_t *w = weights + (z * size + x) * TerrainData::LAYER_COUNT;
+			uint8_t *sample = weights + (z * size + x) * TerrainData::WEIGHT_STRIDE;
 			const float amount = MIN(power * f * p_delta * 8.0f, 1.0f);
-			const float now = w[target] / 255.0f;
+			const int now = TerrainData::get_sample_weight(sample, target);
 			// At least one step, or a weak brush would never arrive.
-			const int wanted = MIN(255, MAX(int(Math::round((now + (1.0f - now) * amount) * 255.0f)), w[target] + 1));
-			// The other layers give way in proportion, so that the weights still add up to 255.
-			int others = 0;
-			for (int i = 0; i < TerrainData::LAYER_COUNT; i++) {
-				if (i != target) {
-					others += w[i];
-				}
-			}
-			const int room = 255 - wanted;
-			int given = 0;
-			int largest = -1;
-			for (int i = 0; i < TerrainData::LAYER_COUNT; i++) {
-				if (i == target) {
-					continue;
-				}
-				w[i] = others > 0 ? uint8_t(w[i] * room / others) : 0;
-				given += w[i];
-				if (largest < 0 || w[i] > w[largest]) {
-					largest = i;
-				}
-			}
-			w[target] = uint8_t(wanted);
-			// What rounding lost goes to the painted layer.
-			w[target] += uint8_t(255 - wanted - given);
-			(void)largest;
+			const int wanted = MIN(255, MAX(int(Math::round((now / 255.0f + (1.0f - now / 255.0f) * amount) * 255.0f)), now + 1));
+			TerrainData::set_sample_weight(sample, target, wanted);
 		}
 	}
 	const Rect2i rect(x0, z0, x1 - x0 + 1, z1 - z0 + 1);
@@ -493,17 +1083,20 @@ void TerrainEditorPlugin::_paint_tile() {
 		for (int x = x0; x <= x1; x++) {
 			// A cell is painted when its centre is under the brush; the cell under the cursor always is.
 			const bool under_cursor = x == int(Math::floor(centre.x)) && z == int(Math::floor(centre.y));
-			if (!under_cursor && Vector2(x + 0.5f - centre.x, z + 0.5f - centre.y).length() * cell > r) {
+			if (!under_cursor && _brush_distance(Vector2(x + 0.5f - centre.x, z + 0.5f - centre.y)) * cell > r) {
 				continue;
 			}
 			uint8_t *t = tiles + (z * cells + x) * 4;
 			uint8_t next[4] = { t[0], t[1], t[2], t[3] };
+			// The two tiles of a cell are added together, so the first one is the cell's ground and
+			// the second an overlay on it. Painting or erasing the ground takes the overlay with it;
+			// left in place it would brighten whatever is painted next.
 			if (erase) {
-				next[3] &= slot == 0 ? ~16 : ~32;
+				next[3] &= slot == 0 ? ~(16 | 32) : ~32;
 			} else if (slot == 0) {
 				next[0] = index & 255;
 				next[2] = (next[2] & 0x38) | direction;
-				next[3] = (next[3] & ~0x13) | (index >> 8) | 16;
+				next[3] = (next[3] & ~(0x13 | 32)) | (index >> 8) | 16;
 			} else {
 				next[1] = index & 255;
 				next[2] = (next[2] & 0x07) | (direction << 3);
@@ -536,7 +1129,9 @@ void TerrainEditorPlugin::_end_stroke() {
 	const Ref<TerrainData> data = terrain->get_data();
 	EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
 	const Rect2i rect = stroke_rect;
-	ur->create_action(vformat(TTR("Terrain: %s"), TTR(tool_names[stroke_tool])));
+	ur->create_action_for_history(vformat(TTR("Terrain: %s"), TTR(tool_names[stroke_tool])), ur->get_history_id_for_object(terrain));
+	// The data may be a file of its own, which would otherwise put it in another history than the node.
+	ur->force_fixed_history();
 	if (stroke_channel == TerrainData::CHANNEL_HEIGHT) {
 		Vector<float> before;
 		before.resize(rect.size.x * rect.size.y);
@@ -550,7 +1145,7 @@ void TerrainEditorPlugin::_end_stroke() {
 	} else {
 		const bool tiles = stroke_channel == TerrainData::CHANNEL_TILES;
 		const int side = tiles ? data->get_cells() : data->get_size();
-		const int stride = tiles ? 4 : int(TerrainData::LAYER_COUNT);
+		const int stride = tiles ? 4 : int(TerrainData::WEIGHT_STRIDE);
 		Vector<uint8_t> before;
 		before.resize(rect.size.x * rect.size.y * stride);
 		for (int z = 0; z < rect.size.y; z++) {
@@ -598,6 +1193,54 @@ EditorPlugin::AfterGUIInput TerrainEditorPlugin::forward_3d_gui_input(Camera3D *
 	}
 
 	Ref<InputEventMouseButton> button = p_event;
+	// Alt and the right button pick up the tile under the cursor: it becomes the tile to paint,
+	// with its orientation, and Paint Tile becomes the tool.
+	if (button.is_valid() && button->get_button_index() == MouseButton::RIGHT && button->is_alt_pressed() && terrain->get_mode() == Terrain3D::MODE_TILES) {
+		if (button->is_pressed() && !stroking && _update_brush(p_camera, button->get_position())) {
+			const Ref<TerrainData> data = terrain->get_data();
+			const Vector2 grid = terrain->to_grid(brush_position);
+			const int x = CLAMP(int(Math::floor(grid.x)), 0, data->get_cells() - 1);
+			const int z = CLAMP(int(Math::floor(grid.y)), 0, data->get_cells() - 1);
+			// The slot being painted, or the other one if the cell does not use it.
+			int slot = tile_slot->get_selected();
+			if (!data->is_tile_used(x, z, slot) && data->is_tile_used(x, z, 1 - slot)) {
+				slot = 1 - slot;
+			}
+			if (data->is_tile_used(x, z, slot)) {
+				tile_slot->select(slot);
+				tile_direction->select(data->get_tile_direction(x, z, slot));
+				_select_tool(TOOL_PAINT_TILE);
+				tile_index->set_value(data->get_tile_index(x, z, slot));
+			}
+		}
+		return AFTER_GUI_INPUT_STOP;
+	}
+	// In layers mode they pick up the layer under the cursor: the strongest one of the nearest
+	// sample becomes the layer to paint, and Paint Layer becomes the tool.
+	if (button.is_valid() && button->get_button_index() == MouseButton::RIGHT && button->is_alt_pressed() && terrain->get_mode() == Terrain3D::MODE_LAYERS) {
+		if (button->is_pressed() && !stroking && _update_brush(p_camera, button->get_position())) {
+			const Ref<TerrainData> data = terrain->get_data();
+			const Vector2 grid = terrain->to_grid(brush_position);
+			const int x = CLAMP(int(Math::round(grid.x)), 0, data->get_size() - 1);
+			const int z = CLAMP(int(Math::round(grid.y)), 0, data->get_size() - 1);
+			const uint8_t *sample = data->weights_ptr() + (z * data->get_size() + x) * TerrainData::WEIGHT_STRIDE;
+			int strongest = 0;
+			for (int i = 1; i < TerrainData::LAYER_BLEND; i++) {
+				if (sample[TerrainData::LAYER_BLEND + i] > sample[TerrainData::LAYER_BLEND + strongest]) {
+					strongest = i;
+				}
+			}
+			const int picked = sample[strongest];
+			if (picked < layer->get_item_count()) {
+				layer->select(picked);
+				_layer_option_selected(picked);
+				if (!tool_buttons[TOOL_PAINT_LAYER]->is_disabled()) {
+					_select_tool(TOOL_PAINT_LAYER);
+				}
+			}
+		}
+		return AFTER_GUI_INPUT_STOP;
+	}
 	if (button.is_valid() && button->get_button_index() == MouseButton::LEFT) {
 		if (button->is_pressed()) {
 			// Alt is left to the viewport, which orbits with it.
@@ -732,6 +1375,12 @@ TerrainEditorPlugin::TerrainEditorPlugin() {
 	radius = _add_spin(brush, TTR("Radius"), 0.25, 1000, 0.25, 8, "m");
 	strength = _add_spin(brush, TTR("Strength"), 1, 100, 1, 50, "%");
 	hardness = _add_spin(brush, TTR("Hardness"), 0, 100, 1, 30, "%");
+	brush->add_child(memnew(Label(TTR("Shape"))));
+	shape = memnew(OptionButton);
+	shape->add_item(TTR("Round"));
+	shape->add_item(TTR("Square"));
+	shape->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	brush->add_child(shape);
 	height = _add_spin(brush, TTR("Height"), -10000, 10000, 0.01, 0, "m");
 
 	column = _add_column(panel);
@@ -741,18 +1390,15 @@ TerrainEditorPlugin::TerrainEditorPlugin() {
 	column->add_child(paint);
 	paint->add_child(memnew(Label(TTR("Layer"))));
 	layer = memnew(OptionButton);
-	for (int i = 0; i < TerrainData::LAYER_COUNT; i++) {
-		layer->add_item(vformat(TTR("Layer %d"), i + 1));
-	}
 	layer->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	paint->add_child(layer);
 
 	tile_index = _add_spin(paint, TTR("Tile"), 0, TerrainData::MAX_TILE_INDEX, 1, 0);
 	tile_index->connect(SceneStringName(value_changed), callable_mp(this, &TerrainEditorPlugin::_update_tile_preview).unbind(1));
-	paint->add_child(memnew(Label(TTR("Slot"))));
+	paint->add_child(memnew(Label(TTR("Paint As"))));
 	tile_slot = memnew(OptionButton);
-	tile_slot->add_item(TTR("First"));
-	tile_slot->add_item(TTR("Second"));
+	tile_slot->add_item(TTR("Ground"));
+	tile_slot->add_item(TTR("Overlay (added)"));
 	tile_slot->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	paint->add_child(tile_slot);
 	paint->add_child(memnew(Label(TTR("Direction"))));
@@ -780,12 +1426,113 @@ TerrainEditorPlugin::TerrainEditorPlugin() {
 	import_button->connect(SceneStringName(pressed), callable_mp(this, &TerrainEditorPlugin::_import_pressed));
 	column->add_child(import_button);
 
+	convert_button = memnew(Button(TTR("Convert Tiles to Layers")));
+	convert_button->set_tooltip_text(TTR("Turns the tiles into painted layers: every kind of ground becomes a layer with its tile as the texture.\nThe tiles are kept, so the Texturing selector brings them back."));
+	convert_button->connect(SceneStringName(pressed), callable_mp(this, &TerrainEditorPlugin::_convert_pressed));
+	column->add_child(convert_button);
+
+	bake_button = memnew(Button(TTR("Bake Collision")));
+	bake_button->set_tooltip_text(TTR("Turns the meshes below the terrain's Bake Source into collision that is kept with the terrain.\nNodes in the group \"no_collision\" are left out."));
+	bake_button->connect(SceneStringName(pressed), callable_mp(this, &TerrainEditorPlugin::_bake_collision_pressed));
+	column->add_child(bake_button);
+
 	import_dialog = memnew(EditorFileDialog);
 	import_dialog->set_file_mode(FileDialog::FILE_MODE_OPEN_FILE);
 	import_dialog->set_access(FileDialog::ACCESS_FILESYSTEM);
 	import_dialog->add_filter("*.png,*.exr,*.jpg,*.jpeg,*.tga,*.bmp,*.webp", TTR("Images"));
 	import_dialog->connect("file_selected", callable_mp(this, &TerrainEditorPlugin::_import_file_selected));
 	column->add_child(import_dialog);
+
+	// Every tile of the terrain's texture array, shown while Paint Tile is the tool.
+	tile_column = _add_column(panel);
+	tile_column->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	tile_column->add_child(memnew(Label(TTR("Tiles"))));
+	tile_list = memnew(ItemList);
+	tile_list->set_icon_mode(ItemList::ICON_MODE_TOP);
+	tile_list->set_max_columns(0);
+	tile_list->set_same_column_width(true);
+	tile_list->set_fixed_icon_size(Size2i(int(48 * EDSCALE), int(48 * EDSCALE)));
+	tile_list->set_custom_minimum_size(Size2(320, 120) * EDSCALE);
+	tile_list->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	tile_list->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	tile_list->connect(SceneStringName(item_selected), callable_mp(this, &TerrainEditorPlugin::_tile_list_selected));
+	tile_list->set_allow_rmb_select(true);
+	tile_list->connect("item_clicked", callable_mp(this, &TerrainEditorPlugin::_tile_list_clicked));
+	tile_column->add_child(tile_list);
+
+	tile_menu = memnew(PopupMenu);
+	tile_menu->add_item(TTR("Show in File Manager"), TILE_MENU_SHOW_IN_FILE_MANAGER);
+	tile_menu->add_item(TTR("Show in FileSystem"), TILE_MENU_SHOW_IN_FILESYSTEM);
+	tile_menu->add_separator();
+	tile_menu->add_item(TTR("Show in Terrain (Random)"), TILE_MENU_SHOW_IN_TERRAIN);
+	tile_menu->add_separator();
+	tile_menu->add_item(TTR("Replace..."), TILE_MENU_REPLACE);
+
+	replace_dialog = memnew(ConfirmationDialog);
+	replace_dialog->set_ok_button_text(TTR("Replace"));
+	replace_dialog->connect(SceneStringName(confirmed), callable_mp(this, &TerrainEditorPlugin::_replace_confirmed));
+	replace_dialog->connect("files_dropped", callable_mp(this, &TerrainEditorPlugin::_replace_files_dropped));
+	panel->add_child(replace_dialog);
+	VBoxContainer *replace_box = memnew(VBoxContainer);
+	replace_dialog->add_child(replace_box);
+	PanelContainer *replace_area = memnew(PanelContainer);
+	replace_area->set_custom_minimum_size(Size2(320, 320) * EDSCALE);
+	replace_box->add_child(replace_area);
+	replace_preview = memnew(TextureRect);
+	replace_preview->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	replace_preview->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
+	replace_area->add_child(replace_preview);
+	replace_hint = memnew(Label);
+	replace_hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	replace_hint->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+	replace_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	replace_area->add_child(replace_hint);
+	Button *replace_browse = memnew(Button(TTR("Browse...")));
+	replace_browse->connect(SceneStringName(pressed), callable_mp(this, &TerrainEditorPlugin::_replace_browse_pressed));
+	replace_box->add_child(replace_browse);
+	replace_note = memnew(Label);
+	replace_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	replace_note->set_custom_minimum_size(Size2(320, 0) * EDSCALE);
+	replace_box->add_child(replace_note);
+
+	replace_file_dialog = memnew(EditorFileDialog);
+	replace_file_dialog->set_file_mode(FileDialog::FILE_MODE_OPEN_FILE);
+	replace_file_dialog->set_access(FileDialog::ACCESS_FILESYSTEM);
+	replace_file_dialog->add_filter("*.png,*.jpg,*.jpeg,*.tga,*.bmp,*.webp,*.dds", TTR("Images"));
+	replace_file_dialog->connect("file_selected", callable_mp(this, &TerrainEditorPlugin::_replace_file_selected));
+	replace_dialog->add_child(replace_file_dialog);
+	tile_menu->connect(SceneStringName(id_pressed), callable_mp(this, &TerrainEditorPlugin::_tile_menu_pressed));
+	tile_column->add_child(tile_menu);
+	tile_column->hide();
+
+	// Every layer of the terrain's material, shown while the terrain is in layers mode.
+	layer_column = _add_column(panel);
+	layer_column->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	layer_column->add_child(memnew(Label(TTR("Layers"))));
+	layer_list = memnew(ItemList);
+	layer_list->set_icon_mode(ItemList::ICON_MODE_TOP);
+	layer_list->set_max_columns(0);
+	layer_list->set_same_column_width(true);
+	layer_list->set_fixed_icon_size(Size2i(int(48 * EDSCALE), int(48 * EDSCALE)));
+	layer_list->set_custom_minimum_size(Size2(320, 120) * EDSCALE);
+	layer_list->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	layer_list->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	layer_list->connect(SceneStringName(item_selected), callable_mp(this, &TerrainEditorPlugin::_layer_list_selected));
+	layer_list->set_allow_rmb_select(true);
+	layer_list->connect("item_clicked", callable_mp(this, &TerrainEditorPlugin::_layer_list_clicked));
+	layer_column->add_child(layer_list);
+
+	layer_menu = memnew(PopupMenu);
+	layer_menu->add_item(TTR("Show in File Manager"), TILE_MENU_SHOW_IN_FILE_MANAGER);
+	layer_menu->add_item(TTR("Show in FileSystem"), TILE_MENU_SHOW_IN_FILESYSTEM);
+	layer_menu->add_separator();
+	layer_menu->add_item(TTR("Show in Terrain (Random)"), TILE_MENU_SHOW_IN_TERRAIN);
+	layer_menu->add_separator();
+	layer_menu->add_item(TTR("Replace..."), TILE_MENU_REPLACE);
+	layer_menu->connect(SceneStringName(id_pressed), callable_mp(this, &TerrainEditorPlugin::_layer_menu_pressed));
+	layer_column->add_child(layer_menu);
+	layer_column->hide();
+	layer->connect(SceneStringName(item_selected), callable_mp(this, &TerrainEditorPlugin::_layer_option_selected));
 
 	cursor_mesh.instantiate();
 	cursor_material.instantiate();

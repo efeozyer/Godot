@@ -50,6 +50,10 @@ private:
 
 	real_t walk_speed = 1.5;
 	real_t run_speed_scale = 3.0;
+	// CPlayerMySelf::m_bTempMoveTurbo: the client's speed-up for game masters, ten times the
+	// speed while the key is held. Here it is Q, for anyone.
+	real_t turbo_speed_scale = 10.0;
+	bool turbo = false;
 	real_t move_speed_scale = 1.0;
 	bool running = true;
 	real_t key_turn_speed = Math::deg_to_rad((real_t)60.0);
@@ -67,6 +71,12 @@ private:
 	StringName animation_walk;
 	StringName animation_run;
 	StringName animation_walk_backward;
+	// The client's ANI_SITDOWN, ANI_SITDOWN_BREATH and ANI_STANDUP, by their clip names.
+	StringName animation_sit_down = "SitDown";
+	StringName animation_sit_idle = "SitDown_Breath";
+	StringName animation_stand_up = "StandUp";
+	// CPlayerMySelf::m_bSitDown.
+	bool sitting = false;
 
 	MoveState move_state = MOVE_STATE_STOP;
 	int animation_state = -1;
@@ -83,6 +93,7 @@ private:
 	KeyState key_backward_alt;
 	KeyState key_move_continuous;
 	KeyState key_toggle_run;
+	KeyState key_sit;
 
 	bool left_click_pending = false;
 	bool left_button_down = false;
@@ -140,6 +151,9 @@ public:
 	void set_walk_speed(real_t p_speed);
 	real_t get_walk_speed() const;
 
+	void set_turbo_speed_scale(real_t p_scale);
+	real_t get_turbo_speed_scale() const;
+
 	void set_run_speed_scale(real_t p_scale);
 	real_t get_run_speed_scale() const;
 
@@ -184,6 +198,20 @@ public:
 
 	void set_animation_run(const StringName &p_name);
 	StringName get_animation_run() const;
+
+	void set_animation_sit_down(const StringName &p_name);
+	StringName get_animation_sit_down() const;
+
+	void set_animation_sit_idle(const StringName &p_name);
+	StringName get_animation_sit_idle() const;
+
+	void set_animation_stand_up(const StringName &p_name);
+	StringName get_animation_stand_up() const;
+
+	// CGameProcMain::CommandSitDown. The character only sits down from a standstill. Standing up
+	// plays its animation unless p_immediately, which is how a move command gets it going.
+	void command_sit_down(bool p_sit, bool p_immediately);
+	bool is_sitting() const;
 
 	void set_animation_walk_backward(const StringName &p_name);
 	StringName get_animation_walk_backward() const;

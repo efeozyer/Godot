@@ -116,7 +116,11 @@ real_t PlayerController::_get_state_speed() const {
 			speed = -speed;
 		} break;
 	}
-	return speed * move_speed_scale;
+	speed *= move_speed_scale;
+	if (turbo) {
+		speed *= turbo_speed_scale;
+	}
+	return speed;
 }
 
 // Stands in for CPlayerMySelf::CheckCollision. The client never slides along an obstacle: a hit on
@@ -390,6 +394,12 @@ void PlayerController::_process_keys(double p_delta) {
 	key_backward_alt.update(enabled && input->is_physical_key_pressed(Key::DOWN));
 	key_move_continuous.update(enabled && input->is_physical_key_pressed(Key::E));
 	key_toggle_run.update(enabled && input->is_physical_key_pressed(Key::Y));
+	key_sit.update(enabled && input->is_physical_key_pressed(Key::C));
+	turbo = enabled && input->is_physical_key_pressed(Key::Q);
+
+	if (key_sit.press) {
+		command_sit_down(!sitting, false);
+	}
 
 	// Shift+Y is a different shortcut in the client.
 	if (key_toggle_run.press && !input->is_physical_key_pressed(Key::SHIFT)) {
@@ -459,6 +469,11 @@ void PlayerController::_target_or_pos_move() {
 // The movement block of CPlayerMySelf::Tick. The client places the character on the terrain
 // height itself; here the body's gravity and floor handling do that.
 void PlayerController::_tick_move(double p_delta) {
+	// CGameProcMain::CommandMove: a character that is told to move gets up at once.
+	if (sitting && move_state != MOVE_STATE_STOP) {
+		command_sit_down(false, true);
+	}
+
 	Vector3 horizontal;
 	if (move_state != MOVE_STATE_STOP) {
 		move_speed = _get_state_speed();
@@ -496,7 +511,71 @@ void PlayerController::_tick_move(double p_delta) {
 	move_and_slide();
 }
 
+void PlayerController::command_sit_down(bool p_sit, bool p_immediately) {
+	if (p_sit == sitting || (p_sit && move_state != MOVE_STATE_STOP)) {
+		return;
+	}
+	sitting = p_sit;
+
+	AnimationPlayer *player = Object::cast_to<AnimationPlayer>(get_node_or_null(animation_player_path));
+	if (!player) {
+		return;
+	}
+	player->clear_queue();
+	if (sitting) {
+		// Down, then the seated idle for as long as the character sits.
+		if (player->has_animation(animation_sit_down)) {
+			player->play(animation_sit_down);
+			if (player->has_animation(animation_sit_idle)) {
+				player->queue(animation_sit_idle);
+			}
+		} else if (player->has_animation(animation_sit_idle)) {
+			player->play(animation_sit_idle);
+		}
+	} else if (!p_immediately && player->has_animation(animation_stand_up)) {
+		// Up, then the standing idle; a movement state that follows takes over as usual.
+		player->play(animation_stand_up);
+		if (player->has_animation(animation_idle)) {
+			player->queue(animation_idle);
+		}
+		animation_state = MOVE_STATE_STOP;
+	} else {
+		animation_state = -1;
+	}
+}
+
+bool PlayerController::is_sitting() const {
+	return sitting;
+}
+
+void PlayerController::set_animation_sit_down(const StringName &p_name) {
+	animation_sit_down = p_name;
+}
+
+StringName PlayerController::get_animation_sit_down() const {
+	return animation_sit_down;
+}
+
+void PlayerController::set_animation_sit_idle(const StringName &p_name) {
+	animation_sit_idle = p_name;
+}
+
+StringName PlayerController::get_animation_sit_idle() const {
+	return animation_sit_idle;
+}
+
+void PlayerController::set_animation_stand_up(const StringName &p_name) {
+	animation_stand_up = p_name;
+}
+
+StringName PlayerController::get_animation_stand_up() const {
+	return animation_stand_up;
+}
+
 void PlayerController::_update_animation() {
+	if (sitting) {
+		return;
+	}
 	if (animation_state == move_state) {
 		return;
 	}
@@ -580,6 +659,14 @@ void PlayerController::set_walk_speed(real_t p_speed) {
 
 real_t PlayerController::get_walk_speed() const {
 	return walk_speed;
+}
+
+void PlayerController::set_turbo_speed_scale(real_t p_scale) {
+	turbo_speed_scale = p_scale;
+}
+
+real_t PlayerController::get_turbo_speed_scale() const {
+	return turbo_speed_scale;
 }
 
 void PlayerController::set_run_speed_scale(real_t p_scale) {
@@ -720,6 +807,8 @@ StringName PlayerController::get_animation_walk_backward() const {
 void PlayerController::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_walk_speed", "speed"), &PlayerController::set_walk_speed);
 	ClassDB::bind_method(D_METHOD("get_walk_speed"), &PlayerController::get_walk_speed);
+	ClassDB::bind_method(D_METHOD("set_turbo_speed_scale", "scale"), &PlayerController::set_turbo_speed_scale);
+	ClassDB::bind_method(D_METHOD("get_turbo_speed_scale"), &PlayerController::get_turbo_speed_scale);
 	ClassDB::bind_method(D_METHOD("set_run_speed_scale", "scale"), &PlayerController::set_run_speed_scale);
 	ClassDB::bind_method(D_METHOD("get_run_speed_scale"), &PlayerController::get_run_speed_scale);
 	ClassDB::bind_method(D_METHOD("set_move_speed_scale", "scale"), &PlayerController::set_move_speed_scale);
@@ -752,6 +841,14 @@ void PlayerController::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_animation_run"), &PlayerController::get_animation_run);
 	ClassDB::bind_method(D_METHOD("set_animation_walk_backward", "name"), &PlayerController::set_animation_walk_backward);
 	ClassDB::bind_method(D_METHOD("get_animation_walk_backward"), &PlayerController::get_animation_walk_backward);
+	ClassDB::bind_method(D_METHOD("set_animation_sit_down", "name"), &PlayerController::set_animation_sit_down);
+	ClassDB::bind_method(D_METHOD("get_animation_sit_down"), &PlayerController::get_animation_sit_down);
+	ClassDB::bind_method(D_METHOD("set_animation_sit_idle", "name"), &PlayerController::set_animation_sit_idle);
+	ClassDB::bind_method(D_METHOD("get_animation_sit_idle"), &PlayerController::get_animation_sit_idle);
+	ClassDB::bind_method(D_METHOD("set_animation_stand_up", "name"), &PlayerController::set_animation_stand_up);
+	ClassDB::bind_method(D_METHOD("get_animation_stand_up"), &PlayerController::get_animation_stand_up);
+	ClassDB::bind_method(D_METHOD("command_sit_down", "sit", "immediately"), &PlayerController::command_sit_down);
+	ClassDB::bind_method(D_METHOD("is_sitting"), &PlayerController::is_sitting);
 	ClassDB::bind_method(D_METHOD("get_move_state"), &PlayerController::get_move_state);
 
 	// Defaults are the client's constants: MOVE_SPEED_WHEN_WALK, MOVE_DELTA_WHEN_RUNNING,
@@ -759,6 +856,7 @@ void PlayerController::_bind_methods() {
 	ADD_GROUP("Movement", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "walk_speed", PROPERTY_HINT_RANGE, "0,20,0.01,or_greater,suffix:m/s"), "set_walk_speed", "get_walk_speed");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "run_speed_scale", PROPERTY_HINT_RANGE, "0,10,0.01,or_greater"), "set_run_speed_scale", "get_run_speed_scale");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "turbo_speed_scale", PROPERTY_HINT_RANGE, "1,20,0.1,or_greater"), "set_turbo_speed_scale", "get_turbo_speed_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "move_speed_scale", PROPERTY_HINT_RANGE, "0,10,0.01,or_greater"), "set_move_speed_scale", "get_move_speed_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "running"), "set_running", "is_running");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "key_turn_speed", PROPERTY_HINT_RANGE, "0,720,0.1,or_greater,radians_as_degrees"), "set_key_turn_speed", "get_key_turn_speed");
@@ -778,6 +876,9 @@ void PlayerController::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "animation_walk"), "set_animation_walk", "get_animation_walk");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "animation_run"), "set_animation_run", "get_animation_run");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "animation_walk_backward"), "set_animation_walk_backward", "get_animation_walk_backward");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "animation_sit_down"), "set_animation_sit_down", "get_animation_sit_down");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "animation_sit_idle"), "set_animation_sit_idle", "get_animation_sit_idle");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "animation_stand_up"), "set_animation_stand_up", "get_animation_stand_up");
 
 	BIND_ENUM_CONSTANT(MOVE_STATE_STOP);
 	BIND_ENUM_CONSTANT(MOVE_STATE_WALK);

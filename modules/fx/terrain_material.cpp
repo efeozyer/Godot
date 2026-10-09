@@ -28,6 +28,7 @@ uniform sampler2D cell_map : filter_nearest, repeat_disable;
 uniform sampler2D color_map : filter_linear_mipmap, repeat_disable;
 uniform sampler2D light_map : filter_linear, repeat_disable;
 uniform bool has_color_map = false;
+uniform bool empty_cell_checker = false;
 uniform bool light_map_enabled = false;
 
 uniform float cell_size = 4.0; // TILE_SIZE
@@ -201,6 +202,8 @@ void fragment() {
 		TILE_ALPHA_TEST
 		// The tile set holds pre-masked edge pieces, so the sum of the two layers is a blend.
 		color = first.rgb + second.rgb;
+	} else if (empty_cell_checker && (info.a & 16) == 0) {
+		color = mix(vec3(0.75), vec3(0.94), mod(cell.x + cell.y, 2.0));
 	} else if (has_color_map) {
 		color = color_map_layer(p, dx, dy, vertex_light);
 	}
@@ -265,6 +268,10 @@ void TerrainMaterial::_apply_world(const EffectWorld &p_world) {
 
 void TerrainMaterial::_effect_world_changed(const EffectWorld &p_world) {
 	_apply_world(p_world);
+}
+
+void TerrainMaterial::set_empty_cell_checker(bool p_enable) {
+	RS::get_singleton()->material_set_param(_get_material(), "empty_cell_checker", p_enable);
 }
 
 void TerrainMaterial::set_tile_textures(const Ref<TextureLayered> &p_texture) {

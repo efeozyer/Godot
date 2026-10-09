@@ -38,14 +38,16 @@ private:
 
 	real_t third_person_distance = 7.0;
 	real_t third_person_distance_min = 2.0;
-	real_t third_person_distance_max = 10.0;
+	// 0 leaves zooming out unlimited.
+	real_t third_person_distance_max = 0.0;
 	real_t third_person_pitch = Math::deg_to_rad((real_t)25.0);
 	real_t third_person_pitch_min = Math::deg_to_rad((real_t)10.0);
 	real_t camera_yaw = 0.0;
 
 	real_t zoom = 1.0;
 	real_t zoom_min = 0.4;
-	real_t zoom_max = 1.6;
+	// 0 leaves zooming out unlimited.
+	real_t zoom_max = 0.0;
 	real_t pitch_min = Math::deg_to_rad((real_t)-50.0);
 	real_t pitch_max = Math::deg_to_rad((real_t)70.0);
 

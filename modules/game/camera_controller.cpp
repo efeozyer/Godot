@@ -74,9 +74,15 @@ void CameraController::_camera_yaw_add(real_t p_radians) {
 // CGameEng::CameraZoom. The first person view has no zoom.
 void CameraController::_camera_zoom(real_t p_amount) {
 	if (view_point == VIEW_POINT_BACKWARD || view_point == VIEW_POINT_FORWARD) {
-		zoom = CLAMP(zoom - p_amount, zoom_min, zoom_max);
+		zoom = MAX(zoom - p_amount, zoom_min);
+		if (zoom_max > 0.0) {
+			zoom = MIN(zoom, zoom_max);
+		}
 	} else if (view_point == VIEW_POINT_THIRD_PERSON) {
-		third_person_distance = CLAMP(third_person_distance - (real_t)4.0 * p_amount, third_person_distance_min, third_person_distance_max);
+		third_person_distance = MAX(third_person_distance - (real_t)4.0 * p_amount, third_person_distance_min);
+		if (third_person_distance_max > 0.0) {
+			third_person_distance = MIN(third_person_distance, third_person_distance_max);
+		}
 	}
 }
 
@@ -640,7 +646,7 @@ void CameraController::_bind_methods() {
 	ADD_GROUP("Other Views", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "zoom", PROPERTY_HINT_RANGE, "0.1,4,0.01,or_greater"), "set_zoom", "get_zoom");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "zoom_min", PROPERTY_HINT_RANGE, "0.1,4,0.01,or_greater"), "set_zoom_min", "get_zoom_min");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "zoom_max", PROPERTY_HINT_RANGE, "0.1,4,0.01,or_greater"), "set_zoom_max", "get_zoom_max");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "zoom_max", PROPERTY_HINT_RANGE, "0,4,0.01,or_greater"), "set_zoom_max", "get_zoom_max");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pitch_min", PROPERTY_HINT_RANGE, "-90,90,0.1,radians_as_degrees"), "set_pitch_min", "get_pitch_min");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pitch_max", PROPERTY_HINT_RANGE, "-90,90,0.1,radians_as_degrees"), "set_pitch_max", "get_pitch_max");
 
